@@ -1,7 +1,7 @@
 # Personal parts data — never commit to a shared repo.
-# (The fictional samples live in examples/, which IS committed.)
-parts/
-sessions/
+# (Root-anchored so the fictional samples in examples/ still commit.)
+/parts/
+/sessions/
 .claude/agents/part-*.md
 
 # OS noise

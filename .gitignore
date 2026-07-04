@@ -1,0 +1,9 @@
+# Personal parts data — never commit to a shared repo.
+# (The fictional samples live in examples/, which IS committed.)
+parts/
+sessions/
+.claude/agents/part-*.md
+
+# OS noise
+.DS_Store
+Thumbs.db

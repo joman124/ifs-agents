@@ -1,0 +1,8 @@
+{
+  "name": "ifs-agents",
+  "description": "IFS-based agent templating system: interview your inner parts with guided LLM sessions, build evolving part profiles, and spawn them as agents that react to any dataset — individually or as a table meeting.",
+  "version": "0.1.0",
+  "author": {
+    "name": "joman"
+  }
+}

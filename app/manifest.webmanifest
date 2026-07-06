@@ -1,0 +1,15 @@
+{
+  "name": "Inner Table - ifs-agents",
+  "short_name": "Inner Table",
+  "description": "Meet your inner parts, build their profiles, and hold table meetings. A private, on-device IFS-inspired journaling tool.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14110e",
+  "theme_color": "#14110e",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

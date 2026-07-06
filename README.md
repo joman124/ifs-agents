@@ -66,7 +66,29 @@ part has a positive intent; there are no bad parts. Longer version:
    (as parallel subagents in Claude Code); a Self-led synthesis names
    agreements, polarizations, needs, and a recommendation — for *you* to decide.
 
-## Quickstart A — Claude Code
+## Quickstart A — the webapp (Inner Table)
+
+The [`app/`](app/) directory is **Inner Table**, a mobile-first installable
+webapp version of this whole flow — no install, no backend, no account:
+
+- **Parts library** with coverage rings, type badges, and compile-readiness
+  indicators; **swarm map** as an interactive touch-draggable graph.
+- **Live guided sessions** (intake, check-in, mapping, embody, table meeting)
+  as a chat, powered by your own Gemini or Anthropic API key — the key and all
+  profiles stay on your device. No key? A **copy-prompt mode** generates the
+  portable prompt for any chat you already use, and imports the result back.
+- **Round-trip markdown**: profiles import/export in the exact
+  `parts/<slug>.md` format, so the webapp and the Claude Code skills below
+  interoperate on the same files.
+- Installable PWA (Add to Home Screen), works offline, dark/light, and a
+  one-tap "ground me" pause with the safety boundaries built in.
+
+Run it locally with any static server (`python -m http.server --directory app`)
+or deploy it: the included GitHub Actions workflow publishes `app/` to GitHub
+Pages on every push (enable it once under **Settings → Pages → Source: GitHub
+Actions**).
+
+## Quickstart B — Claude Code
 
 Install as a plugin (or clone and add the `skills/` to your project), then from
 any project directory:
@@ -83,7 +105,7 @@ A typical first arc: one intake (10–20 min), two or three check-ins across a
 couple of weeks, a second part's intake, one mapping session — then your first
 table meeting over something real (a budget CSV, a job offer, a draft essay).
 
-## Quickstart B — any LLM (no tooling)
+## Quickstart C — any LLM (no tooling)
 
 The `templates/` files are self-contained prompts:
 
@@ -99,6 +121,7 @@ The `templates/` files are self-contained prompts:
 
 | Path | What it is |
 |---|---|
+| `app/` | Inner Table — the installable mobile webapp (PWA, zero backend) |
 | `templates/` | The portable prompts — the heart of the system |
 | `schema/part-schema.md` | Canonical profile schema, edge types, coverage model, compile-readiness bar |
 | `skills/` | Claude Code slash-command wrappers around the templates |

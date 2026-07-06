@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="116" fill="#14110e"/>
+  <!-- table -->
+  <ellipse cx="256" cy="330" rx="150" ry="46" fill="none" stroke="#3a322a" stroke-width="14"/>
+  <!-- candle flame at the head of the table (Self) -->
+  <circle cx="256" cy="176" r="46" fill="rgba(232,168,84,.16)" stroke="#e8a854" stroke-width="10"/>
+  <path d="M256 150 c 16 18 12 34 0 44 c -12 -10 -16 -26 0 -44 z" fill="#e8a854"/>
+  <!-- parts seated around the table -->
+  <circle cx="130" cy="300" r="26" fill="#7c9ce8"/>
+  <circle cx="382" cy="300" r="26" fill="#e87c6a"/>
+  <circle cx="180" cy="376" r="26" fill="#b48ce8"/>
+  <circle cx="332" cy="376" r="26" fill="#8a8f98"/>
+  <!-- threads to Self -->
+  <g stroke="#e8a854" stroke-width="6" opacity=".45">
+    <line x1="150" y1="282" x2="230" y2="200"/>
+    <line x1="362" y1="282" x2="282" y2="200"/>
+    <line x1="196" y1="356" x2="240" y2="218"/>
+    <line x1="316" y1="356" x2="272" y2="218"/>
+  </g>
+</svg>

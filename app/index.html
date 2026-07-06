@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14110e" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf6ef" media="(prefers-color-scheme: light)">
+<meta name="description" content="Inner Table - meet your inner parts, build their profiles, and hold table meetings. A private, on-device IFS-inspired journaling tool.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Inner Table">
+<title>Inner Table &mdash; ifs-agents</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon.svg">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- ============ ONBOARDING ============ -->
+<div id="onboarding" class="onboarding hidden" role="dialog" aria-modal="true">
+  <div class="onboard-track" id="onboardTrack">
+
+    <section class="onboard-slide">
+      <div class="onboard-art"><span class="glyph glyph-table"></span></div>
+      <h1 class="serif">Inner Table</h1>
+      <p class="lead">Meet your inner parts through gentle guided interviews. Build evolving profiles of each one &mdash; then invite them to a table meeting over anything real: a decision, a budget, a draft.</p>
+      <p class="dim">Based on the open-source <b>ifs-agents</b> system and Internal Family Systems (Richard Schwartz).</p>
+      <button class="btn btn-primary btn-big" data-next>Begin</button>
+    </section>
+
+    <section class="onboard-slide">
+      <div class="onboard-art"><span class="glyph glyph-shield"></span></div>
+      <h2 class="serif">This is not therapy</h2>
+      <p class="lead">It is a self-exploration and journaling tool. It deliberately excludes therapeutic depth work &mdash; no trauma processing, no unburdening. That work belongs with a trained practitioner.</p>
+      <ul class="rules">
+        <li>Permission first &mdash; anything can be declined</li>
+        <li>Protectors set the pace &mdash; hesitation means back off</li>
+        <li>Stopping anytime is a fine outcome</li>
+      </ul>
+      <p class="dim">If you are in crisis, use a crisis line &mdash; <b>988</b> in the US &mdash; not this tool.</p>
+      <button class="btn btn-primary btn-big" data-next>I understand</button>
+    </section>
+
+    <section class="onboard-slide">
+      <div class="onboard-art"><span class="glyph glyph-lock"></span></div>
+      <h2 class="serif">Yours, and only yours</h2>
+      <p class="lead">Everything lives on this device. No account, no server, no analytics. Part profiles are intimate &mdash; export backups and keep them private.</p>
+      <p class="dim">Live sessions can use your own AI key (sent directly from your device to the provider), or a copy-paste mode with any chat you already trust.</p>
+      <button class="btn btn-primary btn-big" id="onboardDone">Enter</button>
+    </section>
+
+  </div>
+  <div class="onboard-dots" id="onboardDots"><i class="on"></i><i></i><i></i></div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="app" class="app hidden">
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="brand serif" id="topTitle">Inner Table</span>
+      <button class="iconbtn" id="themeBtn" aria-label="Toggle theme"><span class="glyph glyph-moon"></span></button>
+    </div>
+  </header>
+
+  <main id="views">
+    <!-- PARTS -->
+    <section class="view" id="view-parts">
+      <div class="view-pad">
+        <div id="partsList"></div>
+        <div id="partsEmpty" class="empty hidden">
+          <div class="empty-art"><span class="glyph glyph-spark"></span></div>
+          <h2 class="serif">No parts yet</h2>
+          <p>Is there a feeling, urge, or inner voice that keeps showing up? Start an intake interview and get to know it.</p>
+          <button class="btn btn-primary btn-big" data-action="new-intake">Meet a part</button>
+          <button class="btn btn-ghost" data-action="load-sample">Load the sample part ("The Critic")</button>
+        </div>
+      </div>
+      <button class="fab" id="fabNew" aria-label="New session"><span class="fab-plus">+</span></button>
+    </section>
+
+    <!-- MAP -->
+    <section class="view hidden" id="view-map">
+      <div id="mapWrap" class="map-wrap">
+        <svg id="swarmSvg" class="swarm"></svg>
+        <div id="mapEmpty" class="empty map-empty hidden">
+          <div class="empty-art"><span class="glyph glyph-web"></span></div>
+          <h2 class="serif">The swarm map</h2>
+          <p>Once you have two or more parts, run a mapping session to chart who protects whom, who is allied, who is polarized.</p>
+        </div>
+        <div class="map-legend" id="mapLegend"></div>
+      </div>
+    </section>
+
+    <!-- SESSIONS -->
+    <section class="view hidden" id="view-sessions">
+      <div class="view-pad">
+        <div id="sessionsList"></div>
+        <div id="sessionsEmpty" class="empty hidden">
+          <div class="empty-art"><span class="glyph glyph-book"></span></div>
+          <h2 class="serif">No sessions yet</h2>
+          <p>Session transcripts and table meetings you save will appear here.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view hidden" id="view-settings">
+      <div class="view-pad" id="settingsPane"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar" role="tablist">
+    <button class="tab active" data-view="parts" role="tab"><span class="glyph glyph-parts"></span><span>Parts</span></button>
+    <button class="tab" data-view="map" role="tab"><span class="glyph glyph-web"></span><span>Map</span></button>
+    <button class="tab" data-view="sessions" role="tab"><span class="glyph glyph-book"></span><span>Sessions</span></button>
+    <button class="tab" data-view="settings" role="tab"><span class="glyph glyph-gear"></span><span>Settings</span></button>
+  </nav>
+
+</div>
+
+<!-- ============ SHEET (bottom drawer) ============ -->
+<div id="sheetBackdrop" class="sheet-backdrop hidden"></div>
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
+  <div class="sheet-grip"></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<!-- ============ FULLSCREEN PANEL (chat / profile) ============ -->
+<div id="panel" class="panel hidden">
+  <header class="panel-top">
+    <button class="iconbtn" id="panelBack" aria-label="Back"><span class="glyph glyph-back"></span></button>
+    <div class="panel-title" id="panelTitle"></div>
+    <div class="panel-actions" id="panelActions"></div>
+  </header>
+  <div class="panel-body" id="panelBody"></div>
+</div>
+
+<!-- ============ GROUNDING OVERLAY ============ -->
+<div id="ground" class="ground hidden" role="dialog" aria-modal="true">
+  <div class="ground-inner">
+    <div class="breath"><div class="breath-ring"></div><span id="breathLabel">breathe in</span></div>
+    <h2 class="serif">Take a moment</h2>
+    <p>The session is paused. Feel your feet on the floor. Name five things you can see. There is no finish line here.</p>
+    <p class="dim">Feeling <i>moved</i> is normal. Feeling <i>overwhelmed</i> is the signal to close the session. If you are in crisis, call or text <b>988</b> (US) or see <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p>
+    <button class="btn btn-primary btn-big" id="groundResume">Return to session</button>
+    <button class="btn btn-ghost" id="groundEnd">End the session gently</button>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/schema.js"></script>
+<script src="js/markdown.js"></script>
+<script src="js/store.js"></script>
+<script src="js/templates.js"></script>
+<script src="js/llm.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

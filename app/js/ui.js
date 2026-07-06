@@ -270,13 +270,15 @@
     openSheet(
       '<h2 class="sheet-title serif">Start something</h2>' +
       menuItem("", "Meet a new part", "intake interview · 10-20 min", "mi-intake") +
+      menuItem("", "Create a part by hand", "just a name is enough to start", "mi-create") +
       menuItem("", "Check in with a part", parts.length ? "deepen an existing profile" : "you need a part first", "mi-checkin", !parts.length) +
       menuItem("", "Map two parts", parts.length >= 2 ? "who protects, who conflicts" : "you need two parts first", "mi-map", parts.length < 2) +
       menuItem("", "A part reacts to material", ready.length ? "embody one part over a document or decision" : "no part is developed enough yet", "mi-embody", !ready.length) +
       menuItem("", "Table meeting", ready.length >= 2 ? "all developed parts respond; Self synthesizes" : "needs two developed parts", "mi-meeting", ready.length < 2) +
-      menuItem("", "Import a profile", "paste a parts/<slug>.md file", "mi-import")
+      menuItem("", "Import a profile", "paste text or pick a .md file", "mi-import")
     );
     bind("#mi-intake", function () { closeSheet(); startSession("intake", []); });
+    bind("#mi-create", function () { createPartSheet(""); });
     bind("#mi-checkin", function () { pickPart("Who do you want to check in with?", function (slug) { startSession("checkin", [slug]); }); });
     bind("#mi-map", function () { closeSheet(); startSession("mapping", parts.map(function (p) { return p.slug; })); });
     bind("#mi-embody", function () { pickPart("Which part should react?", function (slug) { askMaterial("embody", [slug]); }, true); });
@@ -290,7 +292,8 @@
     "mi-map": "🕸",         // web
     "mi-embody": "📄",      // document
     "mi-meeting": "🕯",     // candle
-    "mi-import": "⤓"             // down arrow
+    "mi-import": "⤓",            // down arrow
+    "mi-create": "✎"             // pencil
   };
 
   function menuItem(icon, title, sub, id, disabled) {
@@ -343,20 +346,149 @@
     closeSheet();
     setTimeout(function () {
       openSheet(
-        '<h2 class="sheet-title serif">Import a profile</h2>' +
-        '<p class="dim">Paste the full contents of a <b>parts/&lt;slug&gt;.md</b> file (YAML frontmatter + narrative sections). Works with profiles made by the Claude Code skills or any LLM using the portable prompts.</p>' +
-        '<textarea id="importBox" placeholder="---\nname: ..."></textarea>' +
-        '<div style="height:12px"></div>' +
-        '<button class="btn btn-primary btn-big" id="importGo">Import</button>'
+        '<h2 class="sheet-title serif">Add a part</h2>' +
+        '<p class="dim">Paste a saved profile, or the end-of-session output from any AI chat &mdash; prose around it is fine, I\'ll find the profile.</p>' +
+        '<textarea id="importBox" placeholder="---&#10;name: ..."></textarea>' +
+        '<div style="height:10px"></div>' +
+        '<div style="display:flex;gap:10px">' +
+        '<button class="btn btn-soft" id="importFile" style="flex:1">Pick a .md file</button>' +
+        '<button class="btn btn-primary" id="importGo" style="flex:1">Import</button>' +
+        '</div>' +
+        '<div id="importResult"></div>' +
+        '<p class="dim" style="text-align:center;margin:14px 0 6px">no file? no problem</p>' +
+        '<button class="btn btn-soft btn-big" id="importByHand">Create the part by hand instead</button>'
       );
-      $("#importGo").addEventListener("click", function () {
-        try {
-          var profiles = MD.extractProfiles($("#importBox").value);
-          if (!profiles.length) throw new Error("no profile found in that text");
-          profiles.forEach(ST.upsertPart);
-          closeSheet(); renderParts();
-          toast("Imported: " + profiles.map(function (p) { return p.name; }).join(", "));
-        } catch (e) { toast("Import failed: " + e.message); }
+      $("#importGo").addEventListener("click", function () { reviewImport($("#importBox").value); });
+      $("#importByHand").addEventListener("click", function () { createPartSheet(""); });
+      $("#importFile").addEventListener("click", function () {
+        var inp = document.createElement("input");
+        inp.type = "file"; inp.accept = ".md,.txt,text/markdown,text/plain";
+        inp.addEventListener("change", function () {
+          var f = inp.files[0]; if (!f) return;
+          f.text().then(function (txt) {
+            var box = $("#importBox");
+            if (box) { box.value = txt; reviewImport(txt); }
+          });
+        });
+        inp.click();
+      });
+    }, 240);
+  }
+
+  /* Analyze pasted/loaded text and render a preview (or friendly diagnosis)
+     into the import sheet. Nothing is saved until the person confirms. */
+  function reviewImport(text) {
+    var box = $("#importResult");
+    if (!box) return;
+    var res = MD.analyze(text);
+
+    if (res.profiles.length) {
+      var cards = res.profiles.map(function (p) {
+        var exists = !!ST.getPart(p.slug);
+        return '<div class="part-card" style="cursor:default">' +
+          '<div class="part-card-main"><div class="part-card-name">' + esc(p.name) +
+          ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + '</span></div>' +
+          '<div class="part-card-sub">' + (exists ? "updates your existing " + esc(p.name) : "new part") +
+          ' &middot; ' + Math.round(S.coverageScore(p) * 100) + '% developed</div></div></div>';
+      }).join("");
+      box.innerHTML =
+        '<div class="readiness ok" style="margin-top:14px">&#10003; Found ' + res.profiles.length + ' profile' + (res.profiles.length > 1 ? "s" : "") + '</div>' +
+        cards +
+        '<button class="btn btn-primary btn-big" id="importConfirm">Add to library</button>';
+      $("#importConfirm").addEventListener("click", function () {
+        res.profiles.forEach(ST.upsertPart);
+        closeSheet(); renderParts(); buzz(12);
+        toast("Welcomed: " + res.profiles.map(function (p) { return p.name; }).join(", "));
+        if (res.profiles.length === 1) openProfile(res.profiles[0].slug);
+      });
+      return;
+    }
+
+    if (res.salvage) {
+      var p = res.salvage;
+      var missingHTML = res.missing.length
+        ? '<p class="dim" style="margin:8px 2px">Still missing: ' + esc(res.missing.join("; ")) + '. A check-in session (or two) will fill that in naturally.</p>'
+        : "";
+      box.innerHTML =
+        '<div class="readiness no" style="margin-top:14px">That wasn\'t a complete profile, but I could read most of it.</div>' +
+        '<div class="part-card" style="cursor:default"><div class="part-card-main">' +
+        '<div class="part-card-name">' + esc(p.name) + ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + '</span></div>' +
+        '<div class="part-card-sub">' + (ST.getPart(p.slug) ? "updates your existing " + esc(p.name) : "new part") + '</div></div></div>' +
+        missingHTML +
+        '<button class="btn btn-primary btn-big" id="importSalvage">Import what was found</button>';
+      $("#importSalvage").addEventListener("click", function () {
+        ST.upsertPart(p);
+        closeSheet(); renderParts(); buzz(12);
+        toast("Welcomed: " + p.name);
+        openProfile(p.slug);
+      });
+      return;
+    }
+
+    box.innerHTML =
+      '<div class="readiness no" style="margin-top:14px">' + esc(res.error.title) + '</div>' +
+      '<p class="dim" style="margin:8px 2px">' + esc(res.error.hint) + '</p>';
+  }
+
+  /* Create a part with a simple form - no file, no interview required.
+     The profile starts thin on purpose; check-ins deepen it. */
+  function createPartSheet(prefillName) {
+    closeSheet();
+    setTimeout(function () {
+      openSheet(
+        '<h2 class="sheet-title serif">Create a part by hand</h2>' +
+        '<p class="dim">Just a name is enough &mdash; everything else can stay unknown and emerge in check-ins. Only write what you actually sense.</p>' +
+        '<label class="fieldlabel">Name</label>' +
+        '<input id="cpName" autocomplete="off" placeholder="The Critic, The Night Owl, the knot in my chest..." value="' + esc(prefillName || "") + '">' +
+        '<label class="fieldlabel">Type &mdash; only if it\'s told you</label>' +
+        '<div class="seg" id="cpType">' +
+        segBtn("unknown", "Unknown", "unknown") + segBtn("manager", "Manager", "unknown") +
+        segBtn("firefighter", "Firefighter", "unknown") + segBtn("exile", "Exile", "unknown") +
+        '</div>' +
+        '<label class="fieldlabel">Felt age (optional)</label>' +
+        '<input id="cpAge" autocomplete="off" placeholder="about 7, teenage, ageless...">' +
+        '<label class="fieldlabel">Where it lives in or around the body (optional)</label>' +
+        '<input id="cpLoc" autocomplete="off" placeholder="chest, behind the eyes, hovering to my left...">' +
+        '<label class="fieldlabel">How it tries to help (optional)</label>' +
+        '<textarea id="cpIntent" placeholder="What do you sense it is trying to protect you from, or move you toward?"></textarea>' +
+        '<div style="height:14px"></div>' +
+        '<button class="btn btn-primary btn-big" id="cpSave">Create part</button>' +
+        '<div id="cpMsg"></div>'
+      );
+      $("#cpType").addEventListener("click", function (e) {
+        var b = e.target.closest("button"); if (!b) return;
+        document.querySelectorAll("#cpType button").forEach(function (x) { x.classList.remove("on"); });
+        b.classList.add("on"); buzz();
+      });
+      $("#cpSave").addEventListener("click", function () {
+        var name = $("#cpName").value.trim();
+        var msg = $("#cpMsg");
+        if (!name) {
+          msg.innerHTML = '<div class="readiness no" style="margin-top:12px">It needs a name &mdash; even a working one like "the tight feeling" is fine.</div>';
+          return;
+        }
+        var slug = S.slugify(name);
+        var existing = ST.getPart(slug);
+        if (existing) {
+          msg.innerHTML =
+            '<div class="readiness no" style="margin-top:12px">You already have a part called ' + esc(existing.name) + '.</div>' +
+            '<button class="btn btn-soft btn-big" id="cpOpen" style="margin-top:8px">Open it instead</button>';
+          $("#cpOpen").addEventListener("click", function () { closeSheet(); openProfile(slug); });
+          return;
+        }
+        var p = S.blankPart(name);
+        p.type = (document.querySelector("#cpType button.on") || {}).dataset ? document.querySelector("#cpType button.on").dataset.val : "unknown";
+        p.age = $("#cpAge").value.trim();
+        p.location = $("#cpLoc").value.trim();
+        p.positive_intent = $("#cpIntent").value.trim();
+        var cats = ["introduction"];
+        p.coverage.introduction = "partial";
+        if (p.positive_intent) { p.coverage.positive_intent = "partial"; cats.push("positive_intent"); }
+        p.sessions.push({ date: S.todayISO(), mode: "intake", categories: cats, note: "profile started by hand" });
+        ST.upsertPart(p);
+        closeSheet(); renderParts(); buzz(12);
+        toast("Welcome, " + p.name + " - deepen it with a check-in anytime");
+        openProfile(slug);
       });
     }, 240);
   }
@@ -789,6 +921,7 @@
       var t = e.target.closest("[data-action]");
       if (!t) return;
       if (t.dataset.action === "new-intake") startSession("intake", []);
+      if (t.dataset.action === "create-part") createPartSheet("");
       if (t.dataset.action === "load-sample") {
         try {
           ST.upsertPart(MD.parse(ST.SAMPLE_CRITIC));

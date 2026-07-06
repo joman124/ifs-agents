@@ -200,7 +200,10 @@
   function parse(markdown) {
     var m = markdown.match(/^﻿?\s*---\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
     if (!m) throw new Error("No YAML frontmatter found. Expected a profile in the parts/<slug>.md format.");
-    var fm = parseFrontmatter(m[1]);
+    return buildPart(parseFrontmatter(m[1]), m[2]);
+  }
+
+  function buildPart(fm, body) {
     var part = S.blankPart(typeof fm.name === "string" ? fm.name : "");
     if (!part.name) throw new Error("Profile has no name field.");
     part.slug = S.slugify(part.name);
@@ -234,7 +237,7 @@
           };
         });
     }
-    part.narrative = parseNarrative(m[2]);
+    part.narrative = parseNarrative(body);
     return part;
   }
 
@@ -256,5 +259,52 @@
     return found;
   }
 
-  window.IFS.md = { serialize: serialize, parse: parse, extractProfiles: extractProfiles };
+  /* Friendly import analysis: never throws. Returns
+     { profiles: [...] }                              - clean import
+     { profiles: [], salvage: part, missing: [...] }  - readable but incomplete; best-effort part
+     { profiles: [], error: { title, hint } }         - nothing usable, with plain-English guidance */
+  function analyze(text) {
+    text = String(text == null ? "" : text).trim();
+    if (!text) {
+      return { profiles: [], error: {
+        title: "Nothing to import yet",
+        hint: "Paste the whole profile text (or the end-of-session output from your AI chat), or pick a .md file below."
+      } };
+    }
+    var profiles = extractProfiles(text);
+    if (profiles.length) return { profiles: profiles };
+
+    var hasFM = /^﻿?\s*---/.test(text) || /```[\s\S]*?---/.test(text);
+    var hasName = /^\s*name\s*:\s*\S/m.test(text);
+
+    // Salvage: the frontmatter parser is line-based, so running it over the
+    // whole text picks up any "key: value" profile lines wherever they are.
+    if (hasName) {
+      try {
+        var fm = parseFrontmatter(text);
+        if (typeof fm.name === "string" && fm.name.trim()) {
+          var part = buildPart(fm, text);
+          var missing = [];
+          if (!part.positive_intent) missing.push("its positive intent");
+          var touched = S.CATEGORIES.filter(function (c) { return part.coverage[c] !== "untouched"; });
+          if (!touched.length) missing.push("any coverage record (which sections have been explored)");
+          if (!part.narrative.in_its_own_words) missing.push("anything in its own words");
+          return { profiles: [], salvage: part, missing: missing };
+        }
+      } catch (e) { /* fall through to guidance */ }
+    }
+
+    if (hasFM && !hasName) {
+      return { profiles: [], error: {
+        title: "Found a profile block, but no name",
+        hint: "Every profile needs a 'name:' line in the block between the --- markers (for example: name: The Critic). Add one and try again, or create the part by hand below."
+      } };
+    }
+    return { profiles: [], error: {
+      title: "This doesn't look like a part profile yet",
+      hint: "Profiles are the markdown files this system saves: they start with --- and a 'name:' line. If your AI session just ended, ask it to \"output the complete updated profile in a fenced markdown block\" and paste that here. Or skip files entirely and create the part by hand below."
+    } };
+  }
+
+  window.IFS.md = { serialize: serialize, parse: parse, extractProfiles: extractProfiles, analyze: analyze };
 })();

@@ -69,7 +69,9 @@ part has a positive intent; there are no bad parts. Longer version:
 ## Quickstart A — the webapp (Inner Table)
 
 The [`app/`](app/) directory is **Inner Table**, a mobile-first installable
-webapp version of this whole flow — no install, no backend, no account:
+webapp version of this whole flow — no install, no backend, no account.
+**Live at [ifs-agents.vercel.app](https://ifs-agents.vercel.app)** (open it on
+your phone and Add to Home Screen):
 
 - **Parts library** with coverage rings, type badges, and compile-readiness
   indicators; **swarm map** as an interactive touch-draggable graph.

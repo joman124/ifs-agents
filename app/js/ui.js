@@ -510,19 +510,68 @@
       return;
     }
 
+    var s = ST.state.settings;
+    var aiReady = s.provider !== "manual" && LLM.configured(s);
     box.innerHTML =
       '<div class="readiness no" style="margin-top:14px">' + esc(res.error.title) + '</div>' +
-      '<p class="dim" style="margin:8px 2px">' + esc(res.error.hint) + '</p>';
+      '<p class="dim" style="margin:8px 2px">' + esc(res.error.hint) + '</p>' +
+      '<p class="dim" style="margin:8px 2px">Or skip the formatting entirely - paste anything (a journal entry, a stray thought, notes from a session elsewhere) and let AI sort it into a profile.</p>' +
+      '<div style="display:flex;gap:10px;margin-top:6px">' +
+      (aiReady
+        ? '<button class="btn btn-primary" id="importShapeAI" style="flex:1">Shape into a profile with AI</button>'
+        : '<button class="btn btn-primary" id="importCopyPrompt" style="flex:1">Copy an AI prompt for this</button>') +
+      '<button class="btn btn-soft" id="importSaveRaw" style="flex:1">Save as notes on a new part</button>' +
+      '</div>' +
+      '<div id="importShapeResult"></div>';
+    if (aiReady) {
+      $("#importShapeAI").addEventListener("click", function () { shapeNotesWithAI(text, this); });
+    } else {
+      $("#importCopyPrompt").addEventListener("click", function () { copyConvertPrompt(text); });
+    }
+    $("#importSaveRaw").addEventListener("click", function () { closeSheet(); createPartSheet("", text); });
+  }
+
+  /* Send raw pasted text through the LLM to be shaped into a profile, then
+     route the reply back through the same preview - nothing saves unseen. */
+  async function shapeNotesWithAI(text, btn) {
+    btn.disabled = true;
+    btn.textContent = "Reading your notes...";
+    var resultBox = $("#importShapeResult");
+    try {
+      var reply = await LLM.chat(ST.state.settings, T.convertNotes(), [{ role: "user", text: text }]);
+      var box = $("#importBox");
+      if (box) box.value = reply;
+      reviewImport(reply);
+    } catch (e) {
+      if (resultBox) resultBox.innerHTML = '<div class="readiness no" style="margin-top:10px">' + esc(e.message) + '</div>';
+      btn.disabled = false;
+      btn.textContent = "Shape into a profile with AI";
+    }
+  }
+
+  /* No-AI-configured fallback: hand over a copy-paste prompt (system
+     instructions + the person's own text bundled together) for any outside
+     AI chat, mirroring manual-mode sessions elsewhere in the app. */
+  function copyConvertPrompt(text) {
+    var full = T.convertNotes() + "\n\n## The notes to convert\n\n" + text;
+    navigator.clipboard.writeText(full).then(function () {
+      toast("Prompt copied - paste it into any AI chat, then bring the reply back here");
+      buzz();
+    }, function () {
+      toast("Copy failed - long-press to select the text instead");
+    });
   }
 
   /* Create a part with a simple form - no file, no interview required.
-     The profile starts thin on purpose; check-ins deepen it. */
-  function createPartSheet(prefillName) {
+     The profile starts thin on purpose; check-ins deepen it. rawNotes, if
+     given, is preserved verbatim in Session notes rather than lost. */
+  function createPartSheet(prefillName, rawNotes) {
     closeSheet();
     setTimeout(function () {
       openSheet(
         '<h2 class="sheet-title serif">Create a part by hand</h2>' +
         '<p class="dim">Just a name is enough &mdash; everything else can stay unknown and emerge in check-ins. Only write what you actually sense.</p>' +
+        (rawNotes ? '<p class="dim">Your pasted text will be kept as Session notes on the part, untouched &mdash; a check-in (or the AI shaping option) can sort it into categories later.</p>' : "") +
         '<label class="fieldlabel">Name</label>' +
         '<input id="cpName" autocomplete="off" placeholder="The Critic, The Night Owl, the knot in my chest..." value="' + esc(prefillName || "") + '">' +
         '<label class="fieldlabel">Type &mdash; only if it\'s told you</label>' +
@@ -569,7 +618,10 @@
         var cats = ["introduction"];
         p.coverage.introduction = "partial";
         if (p.positive_intent) { p.coverage.positive_intent = "partial"; cats.push("positive_intent"); }
-        p.sessions.push({ date: S.todayISO(), mode: "intake", categories: cats, note: "profile started by hand" });
+        if (rawNotes) {
+          p.narrative.session_notes = S.todayISO() + " - pasted notes, not yet sorted into categories:\n\n" + rawNotes;
+        }
+        p.sessions.push({ date: S.todayISO(), mode: "intake", categories: cats, note: rawNotes ? "profile started by hand, raw notes attached" : "profile started by hand" });
         ST.upsertPart(p);
         closeSheet(); renderParts(); buzz(12);
         toast("Welcome, " + p.name + " - deepen it with a check-in anytime");

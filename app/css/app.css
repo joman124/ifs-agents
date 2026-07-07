@@ -248,6 +248,9 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .menu-item .mi-main { flex: 1; }
 .menu-item .mi-sub { display: block; color: var(--ink-dim); font-size: .8rem; }
 .menu-item[disabled] { opacity: .4; }
+.menu-item .pk-check { color: var(--accent); opacity: 0; font-weight: 700; transition: opacity .12s; }
+.menu-item.on { background: var(--accent-soft); }
+.menu-item.on .pk-check { opacity: 1; }
 
 /* ================= panel (chat / profile) ================= */
 .panel {
@@ -335,6 +338,21 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .typing i:nth-child(3) { animation-delay: .4s; }
 @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
 
+/* meeting: each part's voice is its own bubble with a name chip */
+.msg .voice {
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--vc, var(--accent));
+  border-radius: 14px; border-bottom-left-radius: 5px;
+  padding: 9px 13px 10px; margin-bottom: 8px;
+  font-size: .96rem; white-space: pre-wrap; overflow-wrap: break-word;
+}
+.msg .voice:last-child { margin-bottom: 0; }
+.msg .voice .vname {
+  display: block; font-size: .7rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--vc, var(--accent)); margin-bottom: 3px;
+}
+.msg .voice.self-voice { background: var(--accent-soft); border-color: color-mix(in srgb, var(--self) 40%, transparent); }
+
 .chat-input {
   display: flex; gap: 8px; align-items: flex-end;
   padding: 10px 12px calc(10px + var(--sab));
@@ -398,6 +416,34 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .map-legend .lg { display: flex; align-items: center; gap: 8px; }
 .map-legend .lg i { width: 22px; height: 0; border-top: 2px solid; display: inline-block; }
 .map-empty { position: absolute; inset: 0; margin: auto; height: fit-content; }
+.map-card {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--tabbar-h) + var(--sab) + 12px);
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 16px; padding: 10px 12px 10px 16px;
+  box-shadow: var(--shadow); z-index: 4; max-width: 88vw;
+  animation: toastUp .2s ease;
+}
+.map-card .mc-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map-card .mc-sub { display: block; font-size: .72rem; color: var(--ink-dim); font-weight: 400; }
+.map-hint {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  font-size: .7rem; color: var(--ink-faint); background: color-mix(in srgb, var(--bg) 75%, transparent);
+  padding: 4px 12px; border-radius: 999px; pointer-events: none;
+}
+
+/* banners on the parts view (resume draft, backup nag) */
+.banner {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px;
+  animation: fadeUp .3s ease;
+}
+.banner.quiet { background: var(--surface); border-color: var(--line); }
+.banner .bn-main { flex: 1; font-size: .88rem; }
+.banner .bn-sub { display: block; font-size: .76rem; color: var(--ink-dim); }
+.banner .btn { padding: 8px 14px; font-size: .82rem; flex: none; }
 
 /* ================= settings ================= */
 .set-group { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }

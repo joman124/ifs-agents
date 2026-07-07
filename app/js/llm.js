@@ -38,7 +38,7 @@
       contents: messages.map(function (m) {
         return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] };
       }),
-      generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+      generationConfig: { temperature: 0.8, maxOutputTokens: 16384 }
     };
     return withRetry(async function () {
       var res = await fetch(url, {
@@ -64,7 +64,7 @@
   async function callAnthropic(settings, system, messages) {
     var body = {
       model: settings.anthropicModel,
-      max_tokens: 8192,
+      max_tokens: 16384,
       system: system,
       messages: messages.map(function (m) { return { role: m.role, content: m.text }; })
     };
@@ -104,5 +104,97 @@
     throw new Error("No AI provider configured. Set one up in Settings, or use copy-prompt mode.");
   }
 
-  window.IFS.llm = { chat: chat, configured: configured };
+  /* ---------------- streaming ---------------- */
+
+  /* Read an SSE body, calling onData with each parsed JSON "data:" payload. */
+  async function readSSE(res, onData) {
+    var reader = res.body.getReader();
+    var dec = new TextDecoder();
+    var buf = "";
+    for (;;) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buf += dec.decode(chunk.value, { stream: true });
+      var lines = buf.split(/\r?\n/);
+      buf = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.slice(0, 5) !== "data:") continue;
+        var payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try { onData(JSON.parse(payload)); } catch (e) { /* partial or keepalive */ }
+      }
+    }
+  }
+
+  async function streamGemini(settings, system, messages, onDelta) {
+    var url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+      encodeURIComponent(settings.geminiModel) + ":streamGenerateContent?alt=sse&key=" +
+      encodeURIComponent(settings.geminiKey);
+    var body = {
+      system_instruction: { parts: [{ text: system }] },
+      contents: messages.map(function (m) {
+        return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] };
+      }),
+      generationConfig: { temperature: 0.8, maxOutputTokens: 16384 }
+    };
+    var res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(friendly(res.status, await res.text(), "Gemini"));
+    var text = "";
+    await readSSE(res, function (data) {
+      var parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+      (parts || []).forEach(function (p) { if (p.text) { text += p.text; onDelta(text); } });
+    });
+    if (!text) throw new Error("Gemini returned an empty reply.");
+    return text;
+  }
+
+  async function streamAnthropic(settings, system, messages, onDelta) {
+    var body = {
+      model: settings.anthropicModel,
+      max_tokens: 16384,
+      stream: true,
+      system: system,
+      messages: messages.map(function (m) { return { role: m.role, content: m.text }; })
+    };
+    var res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": settings.anthropicKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(friendly(res.status, await res.text(), "Anthropic"));
+    var text = "";
+    await readSSE(res, function (data) {
+      if (data.type === "content_block_delta" && data.delta && data.delta.text) {
+        text += data.delta.text;
+        onDelta(text);
+      }
+      if (data.type === "error") throw new Error("Anthropic stream error.");
+    });
+    if (!text) throw new Error("Anthropic returned an empty reply.");
+    return text;
+  }
+
+  /* Stream when possible; if the stream setup or transport fails for any
+     reason, fall back to the plain call (which has retry-with-backoff). */
+  async function chatStream(settings, system, messages, onDelta) {
+    try {
+      if (settings.provider === "gemini") return await streamGemini(settings, system, messages, onDelta || function () {});
+      if (settings.provider === "anthropic") return await streamAnthropic(settings, system, messages, onDelta || function () {});
+    } catch (e) {
+      console.warn("stream failed, falling back to plain call:", e.message);
+    }
+    return chat(settings, system, messages);
+  }
+
+  window.IFS.llm = { chat: chat, chatStream: chatStream, configured: configured };
 })();

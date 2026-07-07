@@ -11,6 +11,7 @@
     return {
       parts: {},        // slug -> part object
       transcripts: [],  // {id, date, mode, title, parts:[slugs], text}
+      draft: null,      // in-progress session checkpoint {mode, slugs, material, messages, updated}
       settings: {
         onboarded: false,
         theme: "auto",           // auto | dark | light
@@ -19,31 +20,94 @@
         geminiModel: "gemini-2.5-flash",
         anthropicKey: "",
         anthropicModel: "claude-sonnet-5",
-        haptics: true
+        haptics: true,
+        lastBackup: "",          // ISO date of last full export
+        backupSnooze: ""         // ISO date the backup reminder was dismissed
       }
     };
+  }
+
+  function adopt(parsed) {
+    state = defaults();
+    if (parsed.parts) state.parts = parsed.parts;
+    if (parsed.transcripts) state.transcripts = parsed.transcripts;
+    if (parsed.draft) state.draft = parsed.draft;
+    if (parsed.settings) Object.assign(state.settings, parsed.settings);
   }
 
   function load() {
     try {
       var raw = localStorage.getItem(KEY);
-      if (raw) {
-        var parsed = JSON.parse(raw);
-        state = defaults();
-        if (parsed.parts) state.parts = parsed.parts;
-        if (parsed.transcripts) state.transcripts = parsed.transcripts;
-        if (parsed.settings) Object.assign(state.settings, parsed.settings);
-        return;
-      }
+      if (raw) { adopt(JSON.parse(raw)); return; }
     } catch (e) { /* corrupted store: start fresh but keep old blob for rescue */
       try { localStorage.setItem(KEY + ".rescue", localStorage.getItem(KEY) || ""); } catch (e2) {}
     }
     state = defaults();
   }
 
+  /* ---- IndexedDB mirror: a second copy of the state, restored from when
+     localStorage comes up empty (cleared data, some eviction paths). ---- */
+  var idb = null;
+  function idbOpen() {
+    return new Promise(function (res) {
+      try {
+        var rq = indexedDB.open("innertable", 1);
+        rq.onupgradeneeded = function () { rq.result.createObjectStore("kv"); };
+        rq.onsuccess = function () { res(rq.result); };
+        rq.onerror = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+  function idbWrite() {
+    if (!idb) return;
+    try { idb.transaction("kv", "readwrite").objectStore("kv").put(JSON.stringify(state), "state"); }
+    catch (e) { /* mirror is best-effort */ }
+  }
+  function idbRead() {
+    return new Promise(function (res) {
+      if (!idb) return res(null);
+      try {
+        var rq = idb.transaction("kv", "readonly").objectStore("kv").get("state");
+        rq.onsuccess = function () { res(rq.result || null); };
+        rq.onerror = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+  /* Call once at boot, after load(). If local state is empty but the mirror
+     has real data, restore from the mirror and invoke cb(true). */
+  function initMirror(cb) {
+    if (!("indexedDB" in window)) return;
+    idbOpen().then(function (db) {
+      idb = db;
+      var empty = !Object.keys(state.parts).length && !state.transcripts.length;
+      if (!empty) { idbWrite(); return; }
+      idbRead().then(function (raw) {
+        if (!raw) return;
+        try {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.parts && Object.keys(parsed.parts).length) {
+            adopt(parsed);
+            save();
+            if (cb) cb(true);
+          }
+        } catch (e) {}
+      });
+    });
+  }
+
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
     catch (e) { console.error("save failed", e); }
+    idbWrite();
+  }
+
+  /* ---- in-progress session checkpoint ---- */
+  function setDraft(d) { state.draft = d; save(); }
+  function clearDraft() { state.draft = null; save(); }
+
+  function markBackup() {
+    state.settings.lastBackup = S.todayISO();
+    save();
   }
 
   function listParts() {
@@ -215,6 +279,10 @@
   window.IFS.store = {
     load: load,
     save: save,
+    initMirror: initMirror,
+    setDraft: setDraft,
+    clearDraft: clearDraft,
+    markBackup: markBackup,
     get state() { return state; },
     listParts: listParts,
     getPart: getPart,

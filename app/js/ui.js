@@ -108,7 +108,52 @@
       '</svg><span class="ring-initial">' + esc(initial) + "</span></div>";
   }
 
+  function daysSince(iso) {
+    if (!iso) return 9999;
+    var t = Date.parse(iso);
+    return isNaN(t) ? 9999 : (Date.now() - t) / 86400000;
+  }
+
+  function doExportBackup() {
+    downloadBlob(new Blob([ST.exportAll()], { type: "application/json" }), "inner-table-backup-" + S.todayISO() + ".json");
+    ST.markBackup();
+    renderParts();
+    toast("Backup exported - store it somewhere private");
+  }
+
+  function renderBanners() {
+    var el = $("#partsBanner");
+    if (!el) return;
+    var html = "";
+    var d = ST.state.draft;
+    var s = ST.state.settings;
+    if (d && d.messages && d.messages.length) {
+      html +=
+        '<div class="banner"><span class="bn-main"><b>Unfinished ' + esc((d.title || "session").toLowerCase()) + "</b>" +
+        '<span class="bn-sub">from ' + esc(d.updated || "recently") + " &middot; pick up where you left off</span></span>" +
+        '<button class="btn btn-primary" id="bnResume">Resume</button>' +
+        '<button class="btn btn-ghost" id="bnDiscard" aria-label="Discard draft">&#10005;</button></div>';
+    } else if (ST.listParts().length && daysSince(s.lastBackup) >= 21 && daysSince(s.backupSnooze) >= 14) {
+      html +=
+        '<div class="banner quiet"><span class="bn-main"><b>Back up your parts</b>' +
+        '<span class="bn-sub">' + (s.lastBackup ? "last backup " + esc(s.lastBackup) : "never backed up") + " &middot; browsers can clear site data</span></span>" +
+        '<button class="btn btn-soft" id="bnBackup">Export</button>' +
+        '<button class="btn btn-ghost" id="bnSnooze" aria-label="Remind me later">&#10005;</button></div>';
+    }
+    el.innerHTML = html;
+    bind("#bnResume", resumeDraft);
+    bind("#bnDiscard", function () {
+      openSheet('<h2 class="sheet-title serif">Discard the draft?</h2><p class="dim">The unfinished conversation will be gone. Resuming instead keeps everything.</p>' +
+        '<button class="btn btn-danger btn-big" id="bnDelYes">Discard it</button><button class="btn btn-ghost btn-big" id="bnDelNo">Keep it</button>');
+      bind("#bnDelYes", function () { ST.clearDraft(); closeSheet(); renderParts(); toast("Draft discarded"); });
+      bind("#bnDelNo", closeSheet);
+    });
+    bind("#bnBackup", doExportBackup);
+    bind("#bnSnooze", function () { s.backupSnooze = S.todayISO(); ST.save(); renderParts(); });
+  }
+
   function renderParts() {
+    renderBanners();
     var parts = ST.listParts();
     var list = $("#partsList");
     $("#partsEmpty").classList.toggle("hidden", parts.length > 0);
@@ -280,9 +325,13 @@
     bind("#mi-intake", function () { closeSheet(); startSession("intake", []); });
     bind("#mi-create", function () { createPartSheet(""); });
     bind("#mi-checkin", function () { pickPart("Who do you want to check in with?", function (slug) { startSession("checkin", [slug]); }); });
-    bind("#mi-map", function () { closeSheet(); startSession("mapping", parts.map(function (p) { return p.slug; })); });
+    bind("#mi-map", function () {
+      pickParts("Which two parts should we map?", 2, 2, false, function (slugs) { startSession("mapping", slugs); });
+    });
     bind("#mi-embody", function () { pickPart("Which part should react?", function (slug) { askMaterial("embody", [slug]); }, true); });
-    bind("#mi-meeting", function () { closeSheet(); askMaterial("meeting", parts.map(function (p) { return p.slug; })); });
+    bind("#mi-meeting", function () {
+      pickParts("Who takes a seat at the table?", 2, 99, true, function (slugs) { askMaterial("meeting", slugs); });
+    });
     bind("#mi-import", importSheet);
   }
 
@@ -306,6 +355,42 @@
   function bind(sel, fn) {
     var el = $(sel);
     if (el && !el.disabled) el.addEventListener("click", fn);
+  }
+
+  /* Multi-select picker: choose between min and max parts, then confirm.
+     Only sends the chosen parts' profiles to the AI - no more than needed. */
+  function pickParts(title, min, max, mustBeReady, cb) {
+    var parts = ST.listParts().filter(function (p) { return !mustBeReady || S.readiness(p).ready; });
+    openSheet(
+      '<h2 class="sheet-title serif">' + esc(title) + "</h2>" +
+      (mustBeReady ? '<p class="dim">Only parts developed enough to speak for themselves are listed.</p>' : "") +
+      parts.map(function (p) {
+        return '<button class="menu-item pk" data-slug="' + esc(p.slug) + '"><span class="mi-icon">' +
+          esc(p.name.charAt(0).toUpperCase()) + '</span><span class="mi-main">' + esc(p.name) +
+          '<span class="mi-sub">' + esc(p.type) + '</span></span><span class="pk-check">&#10003;</span></button>';
+      }).join("") +
+      '<div style="height:12px"></div>' +
+      '<button class="btn btn-primary btn-big" id="pkGo" disabled>Choose ' + (min === max ? min : "at least " + min) + "</button>"
+    );
+    var chosen = [];
+    var go = $("#pkGo");
+    function refresh() {
+      var ok = chosen.length >= min && chosen.length <= max;
+      go.disabled = !ok;
+      go.textContent = ok ? "Begin with " + chosen.length + " part" + (chosen.length > 1 ? "s" : "")
+        : (chosen.length < min ? "Choose " + (min === max ? min : "at least " + min) : "Too many - at most " + max);
+    }
+    document.querySelectorAll("#sheetBody .pk").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var slug = el.dataset.slug;
+        var i = chosen.indexOf(slug);
+        if (i >= 0) { chosen.splice(i, 1); el.classList.remove("on"); }
+        else if (chosen.length < max) { chosen.push(slug); el.classList.add("on"); }
+        buzz();
+        refresh();
+      });
+    });
+    go.addEventListener("click", function () { closeSheet(); cb(chosen.slice()); });
   }
 
   function pickPart(title, cb, mustBeReady) {
@@ -522,14 +607,51 @@
       system: buildSystem(mode, slugs, material),
       messages: [], busy: false, closed: false
     };
-    var partNames = slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; }).join(", ");
+    openChatPanel(session, false);
+  }
+
+  /* Rebuild a checkpointed session (drafts survive tab death / app close). */
+  function resumeDraft() {
+    var d = ST.state.draft;
+    if (!d) return;
+    var s = ST.state.settings;
+    if (s.provider === "manual" || !LLM.configured(s)) {
+      toast("Set up an AI provider in Settings to resume this session");
+      return;
+    }
+    var slugs = (d.slugs || []).filter(function (sl) { return !!ST.getPart(sl); });
+    if (d.mode !== "intake" && !slugs.length) {
+      ST.clearDraft(); renderParts();
+      toast("That draft's part no longer exists - draft removed");
+      return;
+    }
+    session = {
+      mode: d.mode, slugs: slugs, material: d.material || "",
+      system: buildSystem(d.mode, d.mode === "intake" ? [] : slugs, d.material || ""),
+      messages: (d.messages || []).slice(), busy: false, closed: false
+    };
+    openChatPanel(session, true);
+  }
+
+  function saveDraft() {
+    if (!session || session.closed) return;
+    ST.setDraft({
+      mode: session.mode, slugs: session.slugs, material: session.material,
+      messages: session.messages, updated: S.todayISO(),
+      title: MODE_TITLES[session.mode]
+    });
+  }
+
+  function openChatPanel(sess, replay) {
+    var s = ST.state.settings;
+    var partNames = sess.slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; }).join(", ");
     openPanel(
-      MODE_TITLES[mode],
+      MODE_TITLES[sess.mode],
       partNames || "a new part",
       '<div class="chat">' +
       '<button class="groundbtn" id="groundBtn">&#9875; ground me</button>' +
       '<div class="chat-scroll" id="chatScroll">' +
-      '<div class="msg system-note">Private session · ' + esc(s.provider) + " · you can stop anytime</div>" +
+      '<div class="msg system-note">Private session · ' + esc(s.provider) + " · saved as you go · you can stop anytime</div>" +
       "</div>" +
       '<div class="chat-input">' +
       '<textarea id="chatBox" rows="1" placeholder="Speak as yourself or as the part..."></textarea>' +
@@ -538,9 +660,10 @@
       '<button class="btn btn-soft" id="endSession" style="padding:8px 14px;font-size:.8rem">End &amp; save</button>',
       function () {
         if (session && session.messages.length && !session.closed) {
-          if (!confirm("Leave without saving? The transcript and any profile updates will be lost.")) return false;
+          if (!confirm("Pause this session? It stays saved as a draft - resume it anytime from the Parts tab.")) return false;
         }
         session = null;
+        renderParts();
         return true;
       }
     );
@@ -558,8 +681,14 @@
     });
     $("#chatSend").addEventListener("click", sendChat);
 
-    // kick off: the model opens the session
-    pump("Please begin the session.", true);
+    if (replay) {
+      sess.messages.forEach(function (m) {
+        if (!m.hidden) addMsg(m.role, m.role === "assistant" ? stripFences(m.text) : m.text);
+      });
+    } else {
+      // kick off: the model opens the session
+      pump("Please begin the session.", true);
+    }
   }
 
   function addMsg(role, text) {
@@ -567,13 +696,70 @@
     if (!scroll) return null;
     var div = document.createElement("div");
     div.className = "msg " + role;
-    var b = document.createElement("div");
-    b.className = "bubble";
-    b.textContent = text;
-    div.appendChild(b);
     scroll.appendChild(div);
-    scroll.scrollTop = scroll.scrollHeight;
+    setMsgText(div, text);
     return div;
+  }
+
+  function setMsgText(div, text) {
+    var isAssistant = div.classList.contains("assistant");
+    if (isAssistant && session && session.mode === "meeting") {
+      div.innerHTML = renderVoices(text);
+    } else {
+      div.innerHTML = "";
+      var b = document.createElement("div");
+      b.className = "bubble";
+      b.textContent = text;
+      div.appendChild(b);
+    }
+    var scroll = $("#chatScroll");
+    if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  }
+
+  /* Table meetings: split an assistant turn into per-speaker voice bubbles
+     wherever the model wrote "**Name:**". Falls back to a plain bubble. */
+  var VOICE_PALETTE = ["#7c9ce8", "#e87c6a", "#b48ce8", "#7fc98b", "#e8b45a", "#6ac4c9"];
+  function voiceColor(name) {
+    if (/^self$/i.test(name)) return "var(--self)";
+    if (session) {
+      for (var i = 0; i < session.slugs.length; i++) {
+        var p = ST.getPart(session.slugs[i]);
+        if (p && p.name.toLowerCase() === name.toLowerCase()) return VOICE_PALETTE[i % VOICE_PALETTE.length];
+      }
+    }
+    var h = 0;
+    for (var j = 0; j < name.length; j++) h = (h * 31 + name.charCodeAt(j)) >>> 0;
+    return VOICE_PALETTE[h % VOICE_PALETTE.length];
+  }
+
+  function renderVoices(text) {
+    var re = /\*\*([^*\n]{1,48}?):?\*\*:?\s*/g;
+    var segs = [];
+    var current = null, last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      var chunk = text.slice(last, m.index);
+      if (current) current.text += chunk;
+      else if (chunk.trim()) segs.push({ name: null, text: chunk });
+      current = { name: m[1].replace(/:$/, "").trim(), text: "" };
+      segs.push(current);
+      last = re.lastIndex;
+    }
+    var tail = text.slice(last);
+    if (current) current.text += tail;
+    else if (tail.trim()) segs.push({ name: null, text: tail });
+
+    var hasVoices = segs.some(function (s) { return s.name; });
+    if (!hasVoices) {
+      var plain = document.createElement("div");
+      plain.textContent = text;
+      return '<div class="bubble">' + plain.innerHTML + "</div>";
+    }
+    return segs.filter(function (s) { return s.name || s.text.trim(); }).map(function (s) {
+      if (!s.name) return '<div class="bubble">' + esc(s.text.trim()) + "</div>";
+      var selfV = /^self$/i.test(s.name);
+      return '<div class="voice' + (selfV ? " self-voice" : "") + '" style="--vc:' + voiceColor(s.name) + '">' +
+        '<span class="vname">' + esc(s.name) + "</span>" + esc(s.text.trim()) + "</div>";
+    }).join("");
   }
 
   function typingEl() {
@@ -593,25 +779,46 @@
     if (send) send.disabled = b;
   }
 
+  /* Show streamed text as it arrives, but never stream a raw profile block
+     into view - cut at the first fence. */
+  function previewText(t) {
+    var i = t.indexOf("```");
+    return i < 0 ? t : t.slice(0, i).trim() + "\n… writing the profile …";
+  }
+
   async function pump(userText, hidden) {
-    if (!session || session.busy) return;
-    session.messages.push({ role: "user", text: userText, hidden: !!hidden });
-    if (!hidden) addMsg("user", userText);
+    if (!session || session.busy) return null;
+    var sess = session;
+    sess.messages.push({ role: "user", text: userText, hidden: !!hidden });
+    var userBubble = hidden ? null : addMsg("user", userText);
     setBusy(true);
     var tip = typingEl();
+    var live = null;
     try {
-      var reply = await LLM.chat(ST.state.settings, session.system,
-        session.messages.map(function (m) { return { role: m.role, text: m.text }; }));
-      session.messages.push({ role: "assistant", text: reply });
-      tip.remove();
-      if (session) {
-        addMsg("assistant", stripFences(reply));
+      var reply = await LLM.chatStream(ST.state.settings, sess.system,
+        sess.messages.map(function (m) { return { role: m.role, text: m.text }; }),
+        function (fullText) {
+          if (session !== sess) return;
+          if (!live) { tip.remove(); live = addMsg("assistant", ""); }
+          setMsgText(live, previewText(fullText));
+        });
+      sess.messages.push({ role: "assistant", text: reply });
+      if (session === sess) {
+        if (live) setMsgText(live, stripFences(reply));
+        else { tip.remove(); addMsg("assistant", stripFences(reply)); }
         buzz(6);
       }
+      saveDraft();
       return reply;
     } catch (e) {
-      tip.remove();
-      session.messages.pop(); // let them retry the same turn
+      if (tip.parentNode) tip.remove();
+      if (live) live.remove();
+      sess.messages.pop(); // let them retry the same turn
+      if (userBubble) userBubble.remove();
+      if (!hidden && session === sess) {
+        var box = $("#chatBox");
+        if (box) { box.value = userText; box.dispatchEvent(new Event("input")); }
+      }
       var note = document.createElement("div");
       note.className = "msg system-note";
       note.textContent = e.message;
@@ -619,7 +826,7 @@
       if (scroll) { scroll.appendChild(note); scroll.scrollTop = scroll.scrollHeight; }
       return null;
     } finally {
-      setBusy(false);
+      if (session === sess) setBusy(false);
     }
   }
 
@@ -645,9 +852,35 @@
     if (interviewish && sess.messages.length > 1) {
       toast("Closing gently and writing the profile...");
       reply = await pump(T.CLOSE_INSTRUCTION, true);
+      if (!session) return; // user navigated away mid-close
+      if (reply == null) { closeFailedSheet(); return; } // nothing lost - offer retry
     }
-    if (!session) return; // user navigated away mid-close
-    session.closed = true;
+    if (!session) return;
+    finalizeSession(sess, reply, interviewish);
+  }
+
+  /* The close call failed (rate limit, network). The conversation is intact
+     and checkpointed - give real choices instead of silently dropping work. */
+  function closeFailedSheet() {
+    openSheet(
+      '<h2 class="sheet-title serif">The profile didn\'t get written</h2>' +
+      '<p class="dim">The AI call failed while closing (the error is in the chat). Nothing is lost &mdash; the whole conversation is still here and saved as a draft.</p>' +
+      '<button class="btn btn-primary btn-big" id="closeRetry">Try closing again</button>' +
+      '<div style="height:8px"></div>' +
+      '<button class="btn btn-soft btn-big" id="closeSaveOnly">Save the transcript without a profile</button>' +
+      '<p class="dim" style="margin:8px 2px">You can extract the profile from a saved transcript later, from the Sessions tab.</p>' +
+      '<button class="btn btn-ghost btn-big" id="closeStay">Keep talking instead</button>'
+    );
+    bind("#closeRetry", function () { closeSheet(); endSession(); });
+    bind("#closeSaveOnly", function () {
+      closeSheet();
+      if (session) finalizeSession(session, null, true);
+    });
+    bind("#closeStay", closeSheet);
+  }
+
+  function finalizeSession(sess, reply, interviewish) {
+    sess.closed = true;
 
     var savedNames = [];
     if (reply) {
@@ -680,11 +913,13 @@
         parts: sess.slugs, text: text
       });
     }
+    ST.clearDraft();
     session = null;
     panelOnClose = null;
     closePanel();
     renderParts();
-    toast(savedNames.length ? "Profile saved: " + savedNames.join(", ") : "Session saved");
+    toast(savedNames.length ? "Profile saved: " + savedNames.join(", ")
+      : (interviewish ? "Transcript saved - extract the profile anytime from Sessions" : "Session saved"));
   }
 
   /* ---------- manual (copy-prompt) mode ---------- */
@@ -737,13 +972,30 @@
     var has = parts.length > 0;
     $("#mapEmpty").classList.toggle("hidden", has);
     $("#mapLegend").classList.toggle("hidden", !has);
+    $("#mapHint").classList.toggle("hidden", !has);
+    $("#mapCard").classList.add("hidden");
     if (has) {
       $("#mapLegend").innerHTML =
         '<div class="lg"><i style="color:var(--manager)"></i>protects</div>' +
         '<div class="lg"><i style="color:var(--firefighter);border-top-style:dashed"></i>polarized</div>' +
         '<div class="lg"><i style="color:var(--good)"></i>allied</div>' +
         '<div class="lg"><i style="color:var(--warn);border-top-style:dotted"></i>conflicts</div>';
-      requestAnimationFrame(function () { G.render(svg, parts); });
+      G.render(svg, parts, {
+        onSelect: function (node) {
+            var card = $("#mapCard");
+            if (!node || node.self) { card.classList.add("hidden"); return; }
+            var p = ST.getPart(node.id);
+            if (!p) { card.classList.add("hidden"); return; }
+            var edges = (p.relationships || []).length;
+            card.innerHTML =
+              '<span class="mc-name">' + esc(p.name) +
+              '<span class="mc-sub">' + esc(p.type) + " &middot; " + edges + " relationship" + (edges === 1 ? "" : "s") + "</span></span>" +
+              '<button class="btn btn-primary" id="mcOpen">Open profile</button>';
+            card.classList.remove("hidden");
+            $("#mcOpen").addEventListener("click", function () { openProfile(p.slug); });
+            buzz();
+        }
+      });
     } else {
       G.stop(); svg.innerHTML = "";
     }
@@ -763,14 +1015,50 @@
       el.addEventListener("click", function () {
         var t = ST.state.transcripts.filter(function (x) { return x.id === el.dataset.id; })[0];
         if (!t) return;
+        var interviewish = ["intake", "checkin", "mapping"].indexOf(t.mode) >= 0;
+        var canExtract = interviewish && LLM.configured(ST.state.settings);
         openPanel(t.title, t.date,
-          '<div class="transcript"><pre>' + esc(t.text) + "</pre>" +
+          '<div class="transcript">' +
+          (canExtract ? '<button class="btn btn-primary btn-big" id="extractT" style="margin-bottom:6px">Extract the profile from this transcript</button>' +
+            '<p class="dim" style="margin:0 0 14px">Rebuilds the part profile from what was said - useful if a session closed without saving one.</p>' : "") +
+          '<pre>' + esc(t.text) + "</pre>" +
           '<button class="btn btn-danger btn-big" id="delT">Delete transcript</button></div>');
         $("#delT").addEventListener("click", function () {
           ST.deleteTranscript(t.id); closePanel(); renderSessions(); toast("Deleted");
         });
+        var ex = $("#extractT");
+        if (ex) ex.addEventListener("click", function () { extractFromTranscript(t, ex); });
       });
     });
+  }
+
+  /* Rebuild profile(s) from a saved transcript, then hand the result to the
+     import review flow so nothing saves without the person seeing it. */
+  async function extractFromTranscript(t, btn) {
+    btn.disabled = true;
+    btn.textContent = "Reading the transcript...";
+    try {
+      var livedParts = (t.parts || []).map(ST.getPart).filter(Boolean);
+      var sys;
+      if (t.mode === "checkin" && livedParts.length) sys = T.checkin(livedParts[0]);
+      else if (t.mode === "mapping" && livedParts.length >= 2) sys = T.mapping(livedParts);
+      else sys = T.intake();
+      var reply = await LLM.chat(ST.state.settings, sys, [{
+        role: "user",
+        text: "Here is the transcript of a session we already had. Do not continue the interview.\n\n" +
+          t.text + "\n\n" + T.CLOSE_INSTRUCTION
+      }]);
+      closePanel();
+      importSheet();
+      setTimeout(function () {
+        var box = $("#importBox");
+        if (box) { box.value = reply; reviewImport(reply); }
+      }, 600);
+    } catch (e) {
+      toast(e.message);
+      btn.disabled = false;
+      btn.textContent = "Extract the profile from this transcript";
+    }
   }
 
   /* ================= settings ================= */
@@ -812,10 +1100,7 @@
       s.theme = b.dataset.val; ST.save(); applyTheme(); renderSettings(); buzz();
     });
     $("#hapt").addEventListener("change", function (e) { s.haptics = e.target.checked; ST.save(); buzz(); });
-    $("#expAll").addEventListener("click", function () {
-      downloadBlob(new Blob([ST.exportAll()], { type: "application/json" }), "inner-table-backup-" + S.todayISO() + ".json");
-      toast("Backup exported - store it somewhere private");
-    });
+    $("#expAll").addEventListener("click", doExportBackup);
     $("#impAll").addEventListener("click", function () {
       var inp = document.createElement("input");
       inp.type = "file"; inp.accept = ".json,application/json";
@@ -938,5 +1223,12 @@
     }
   }
 
-  window.IFS.ui = { init: init, toast: toast };
+  window.IFS.ui = {
+    init: init,
+    toast: toast,
+    refresh: function (msg) {
+      renderParts();
+      if (msg) toast(msg);
+    }
+  };
 })();

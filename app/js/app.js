@@ -20,5 +20,21 @@
         console.warn("sw registration failed", e);
       });
     });
+    // When a new version takes over, refresh once so updates appear right
+    // away instead of on the next visit. If a session panel is open, don't
+    // yank the page - just say the update is ready.
+    var hadController = !!navigator.serviceWorker.controller;
+    var swRefreshed = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (!hadController) { hadController = true; return; } // first install, page is already current
+      if (swRefreshed) return;
+      swRefreshed = true;
+      var panel = document.getElementById("panel");
+      if (panel && !panel.classList.contains("hidden")) {
+        window.IFS.ui.toast("Update downloaded - it applies next time you open the app");
+      } else {
+        location.reload();
+      }
+    });
   }
 })();

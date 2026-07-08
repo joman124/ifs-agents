@@ -210,6 +210,79 @@
     ].join("\n");
   }
 
+  /* Voice pacing for copy-prompt sessions run in a chat app's voice mode:
+     the model should slow down, leave real pauses, and never read files
+     aloud. Prompts can't add literal seconds of delay, but these rules make
+     voice assistants hold back instead of rushing the person. */
+  var PORTABLE_VOICE = [
+    "## If this is a voice conversation",
+    "",
+    "The person may run this session in your voice mode. In that case, pace is everything:",
+    "- Slow way down. One or two short sentences, then your single question, then stop talking completely.",
+    "- After you ask, wait. Silence means the person is feeling for an answer inside - it is part of the session, not a gap to fill. Never repeat the question, rephrase it, or move on because the pause feels long. Let pauses run as long as they need, even a minute or more.",
+    "- Leave a beat before you respond. Do not jump in the instant they stop speaking - they may be mid-thought. If what they said trails off, stay quiet and let them finish rather than answering the half-thought.",
+    "- Never interrupt or talk over the person.",
+    "- No lists, headings, or formatting in spoken replies - just short, plain, warm sentences.",
+    "- Do NOT read profile files aloud, ever. Only produce the written profile when the person says the session is over, and tell them to switch to the keyboard/transcript view to copy it."
+  ].join("\n");
+
+  /* Exact skeleton of parts/<slug>.md so an outside model's paste-back
+     imports into the app cleanly. Built from the schema so it never drifts. */
+  function portableFormatSpec() {
+    var cov = S.CATEGORIES.map(function (c) { return "  " + c + ": untouched"; }).join("\n");
+    var secs = S.NARRATIVE_SECTIONS.map(function (sec) { return "## " + sec.title; }).join("\n\n");
+    return [
+      "## Exact profile file format (critical - the app imports this text)",
+      "",
+      "When you output a profile, it must match this skeleton exactly: one fenced block, every frontmatter key present (empty values are fine - never omit a key), coverage listing ALL nine categories, the # heading matching the name, and the six ## section headings in exactly this wording and order:",
+      "",
+      "```markdown",
+      "---",
+      "name: The Part's Name",
+      "type: unknown",
+      'age: ""',
+      'location: ""',
+      'appearance: ""',
+      'origin: ""',
+      "emotions: []",
+      "fears: []",
+      "hopes_goals: []",
+      "behaviors: []",
+      "wants_needs: []",
+      'positive_intent: ""',
+      'unburdened_vision: ""',
+      "trust_in_self: unknown",
+      "relationships: []",
+      "coverage:",
+      cov,
+      "sessions:",
+      "  - date: " + S.todayISO(),
+      "    mode: intake",
+      "    categories: [introduction]",
+      "    note: one line about this session",
+      "---",
+      "",
+      "# The Part's Name",
+      "",
+      secs,
+      "```",
+      "",
+      "Formatting rules:",
+      "- type is exactly one of: manager, firefighter, exile, unknown. trust_in_self is exactly one of: unknown, none, low, growing, high. coverage values are exactly one of: untouched, partial, complete, declined.",
+      "- Lists are [] when empty, otherwise indented \"- item\" lines (two spaces, dash, space).",
+      "- Wrap any value that contains a colon, quote, or # in double quotes.",
+      "- A relationships entry looks like:",
+      "  relationships:",
+      "    - part: the-other-parts-name-lowercased-with-dashes",
+      "      type: protects",
+      "      notes: one line",
+      "  (type is one of: protects, protected-by, polarized-with, allied-with, conflicts-with)",
+      "- Dates are YYYY-MM-DD. Today is " + S.todayISO() + ".",
+      "- Keep all six ## headings even when a section is empty - write the narrative under its heading, or leave the heading with nothing under it.",
+      "- Nothing else goes inside the fenced block. Any commentary or warm closing goes outside it."
+    ].join("\n");
+  }
+
   /* Portable copy-paste prompt for manual mode: same content, but instructing
      the model in a normal chat instead of this app. */
   function portable(mode, parts, material) {
@@ -219,8 +292,12 @@
     else if (mode === "mapping") sys = mapping(parts);
     else if (mode === "embody") sys = embody(parts[0], material || "(paste the material here)");
     else sys = meeting(parts, material || "(paste the material here)");
-    return sys.replace(/The app will tell you the session is closing\. When it does, respond with:/,
+    sys = sys.replace(/The app will tell you the session is closing\. When it does, respond with:/,
       "When the person says the session is over, respond with:");
+    var writesProfiles = mode === "intake" || mode === "checkin" || mode === "mapping";
+    return sys + "\n\n" + PORTABLE_VOICE +
+      (writesProfiles ? "\n\n" + portableFormatSpec() : "") +
+      "\n\nAll the rules above apply from the very first message. Begin now as instructed earlier.";
   }
 
   window.IFS.templates = {

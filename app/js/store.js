@@ -23,6 +23,9 @@
         openaiKey: "",
         openaiModel: "gpt-5.1",
         voiceOn: false,          // speak replies + hands-free mic in sessions
+        elevenKey: "",           // optional: ElevenLabs TTS for a personal voice
+        elevenVoiceId: "",
+        elevenModel: "eleven_flash_v2_5",
         haptics: true,
         lastBackup: "",          // ISO date of last full export
         backupSnooze: ""         // ISO date the backup reminder was dismissed

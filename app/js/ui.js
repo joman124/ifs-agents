@@ -186,6 +186,23 @@
     return v ? '<div class="prose">' + esc(v) + "</div>" : '<div class="prose none">unknown</div>';
   }
 
+  /* Quick-editable fields: label + how the edit sheet should treat them. */
+  var PROFILE_FIELDS = {
+    positive_intent: { kind: "prose", label: "Positive intent", hint: "What is this part trying to protect you from, or move you toward?" },
+    unburdened_vision: { kind: "prose", label: "If it no longer had this role", hint: "What would it rather do, if it trusted things were safe?" },
+    emotions: { kind: "list", label: "Emotions" },
+    fears: { kind: "list", label: "Fears" },
+    hopes_goals: { kind: "list", label: "Hopes & goals" },
+    behaviors: { kind: "list", label: "Behaviors" },
+    wants_needs: { kind: "list", label: "Wants & needs" }
+  };
+
+  function editCard(title, bodyHTML, editKey) {
+    return '<div class="card"><h3>' + esc(title) +
+      '<button class="cardedit" data-edit="' + esc(editKey) + '" aria-label="Edit ' + esc(title) + '">&#9998;</button></h3>' +
+      bodyHTML + "</div>";
+  }
+
   function openProfile(slug) {
     var p = ST.getPart(slug);
     if (!p) return;
@@ -197,7 +214,7 @@
 
     var covHTML = S.CATEGORIES.map(function (c) {
       var st = p.coverage[c];
-      return '<div class="covitem cov-' + st + '" title="' + st + '"><i></i>' + esc(S.CATEGORY_LABELS[c]) + "</div>";
+      return '<div class="covitem cov-' + st + '" data-cov="' + c + '" title="' + st + ' - tap to adjust"><i></i>' + esc(S.CATEGORY_LABELS[c]) + "</div>";
     }).join("");
 
     var relHTML = (p.relationships && p.relationships.length)
@@ -206,7 +223,7 @@
           return '<div class="sessionrow"><span class="sr-mode">' + esc(r.type.replace(/-/g, " ")) + "</span><span>" +
             esc(other ? other.name : r.part) + (r.notes ? ' <span class="dim">' + esc(r.notes) + "</span>" : "") + "</span></div>";
         }).join("")
-      : '<div class="prose none">no mapped relationships yet</div>';
+      : '<div class="prose none">no mapped relationships yet - draw one on the Map tab</div>';
 
     var sessHTML = p.sessions.length
       ? p.sessions.slice().reverse().map(function (s) {
@@ -216,7 +233,7 @@
 
     var narrHTML = S.NARRATIVE_SECTIONS.filter(function (sec) { return sec.key !== "session_notes"; })
       .map(function (sec) {
-        return '<div class="card"><h3>' + esc(sec.title) + "</h3>" + prose(p.narrative[sec.key]) + "</div>";
+        return editCard(sec.title, prose(p.narrative[sec.key]), "narr:" + sec.key);
       }).join("");
 
     var body =
@@ -225,23 +242,24 @@
       '<div class="avatar">' + esc((p.name || "?").charAt(0).toUpperCase()) + "</div>" +
       '<h1 class="serif">' + esc(p.name) + "</h1>" +
       '<div class="sub"><span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
-      (facts.length ? '<div class="chips">' + facts.map(function (f) { return '<span class="chip">' + f + "</span>"; }).join("") + "</div>" : "") +
+      '<div class="chips">' + facts.map(function (f) { return '<span class="chip">' + f + "</span>"; }).join("") +
+      '<button class="chip chip-btn" id="pfAbout">&#9998; edit details</button></div>' +
       "</div>" +
       '<div class="readiness ' + (rd.ready ? "ok" : "no") + '">' +
       (rd.ready ? "&#10003; Developed enough to speak at table meetings"
                 : "Needs " + esc(rd.missing.join(", ")) + " before it can speak for itself") +
       "</div>" +
-      '<div class="card"><h3>Positive intent</h3>' + prose(p.positive_intent) + "</div>" +
-      '<div class="card"><h3>Coverage</h3><div class="covgrid">' + covHTML + "</div></div>" +
-      '<div class="card"><h3>Fears</h3>' + tagList(p.fears) + "</div>" +
-      '<div class="card"><h3>Hopes &amp; goals</h3>' + tagList(p.hopes_goals) + "</div>" +
-      '<div class="card"><h3>Behaviors</h3>' + tagList(p.behaviors) + "</div>" +
-      '<div class="card"><h3>Wants &amp; needs</h3>' + tagList(p.wants_needs) + "</div>" +
-      '<div class="card"><h3>Emotions</h3>' + tagList(p.emotions) + "</div>" +
-      (p.unburdened_vision ? '<div class="card"><h3>If it no longer had this role</h3>' + prose(p.unburdened_vision) + "</div>" : "") +
+      editCard("Positive intent", prose(p.positive_intent), "positive_intent") +
+      '<div class="card"><h3>Coverage <span class="covhint">tap to adjust</span></h3><div class="covgrid">' + covHTML + "</div></div>" +
+      editCard("Fears", tagList(p.fears), "fears") +
+      editCard("Hopes & goals", tagList(p.hopes_goals), "hopes_goals") +
+      editCard("Behaviors", tagList(p.behaviors), "behaviors") +
+      editCard("Wants & needs", tagList(p.wants_needs), "wants_needs") +
+      editCard("Emotions", tagList(p.emotions), "emotions") +
+      editCard("If it no longer had this role", prose(p.unburdened_vision), "unburdened_vision") +
       '<div class="card"><h3>Relationships</h3>' + relHTML + "</div>" +
       narrHTML +
-      '<div class="card"><h3>Session notes</h3>' + prose(p.narrative.session_notes) + "</div>" +
+      editCard("Session notes", prose(p.narrative.session_notes), "narr:session_notes") +
       '<div class="card"><h3>Session log</h3>' + sessHTML + "</div>" +
       '<div class="profile-cta">' +
       '<button class="btn btn-primary btn-big" id="pfCheckin">Check in with ' + esc(p.name) + "</button>" +
@@ -252,6 +270,30 @@
       "</div></div>";
 
     openPanel(p.name, p.type + " · " + Math.round(S.coverageScore(p) * 100) + "% developed", body);
+
+    // pencil on each card -> simple edit sheet; edits save straight into the
+    // stored profile, which is exactly what exports and prompts read
+    document.querySelectorAll("#panelBody .cardedit").forEach(function (btn) {
+      btn.addEventListener("click", function () { editFieldSheet(p.slug, btn.dataset.edit); });
+    });
+    $("#pfAbout").addEventListener("click", function () { aboutSheet(p.slug); });
+
+    // coverage: tap an item to cycle untouched -> partial -> complete -> declined
+    document.querySelectorAll("#panelBody .covitem").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var c = el.dataset.cov;
+        var order = S.COVERAGE_STATUSES;
+        var next = order[(order.indexOf(p.coverage[c]) + 1) % order.length];
+        p.coverage[c] = next;
+        ST.upsertPart(p);
+        el.className = "covitem cov-" + next;
+        el.title = next + " - tap to adjust";
+        $("#panelTitle").innerHTML = esc(p.name) +
+          "<small>" + esc(p.type + " · " + Math.round(S.coverageScore(p) * 100) + "% developed") + "</small>";
+        buzz();
+        toast(S.CATEGORY_LABELS[c] + ": " + next);
+      });
+    });
 
     $("#pfCheckin").addEventListener("click", function () { startSession("checkin", [p.slug]); });
     var em = $("#pfEmbody");
@@ -269,6 +311,95 @@
         ST.deletePart(p.slug); closeSheet(); closePanel(); renderParts(); toast(p.name + " deleted");
       });
       $("#delNo").addEventListener("click", closeSheet);
+    });
+  }
+
+  /* One-field edit sheet: prose fields get a textarea, list fields get
+     one-item-per-line. Saving updates the stored profile immediately - the
+     exported .md, raw editor, and session prompts all read the same data. */
+  function editFieldSheet(slug, key) {
+    var p = ST.getPart(slug);
+    if (!p) return;
+    var isNarr = key.indexOf("narr:") === 0;
+    var def, current;
+    if (isNarr) {
+      var nk = key.slice(5);
+      var sec = S.NARRATIVE_SECTIONS.filter(function (x) { return x.key === nk; })[0];
+      if (!sec) return;
+      def = { kind: "prose", label: sec.title };
+      current = p.narrative[nk] || "";
+    } else {
+      def = PROFILE_FIELDS[key];
+      if (!def) return;
+      current = p[key];
+    }
+    var value = def.kind === "list" ? (current || []).join("\n") : (current || "");
+    openSheet(
+      '<h2 class="sheet-title serif">' + esc(def.label) + "</h2>" +
+      '<p class="dim">' + (def.kind === "list"
+        ? "One per line - clearing a line removes it."
+        : esc(def.hint || "Write it the way the part would recognize it.")) +
+      " Saving updates " + esc(p.name) + "'s profile right away.</p>" +
+      '<textarea id="efBox" style="min-height:' + (def.kind === "list" ? "120" : "150") + 'px">' + esc(value) + "</textarea>" +
+      '<div style="height:12px"></div>' +
+      '<button class="btn btn-primary btn-big" id="efSave">Save</button>'
+    );
+    $("#efSave").addEventListener("click", function () {
+      var v = $("#efBox").value;
+      if (isNarr) p.narrative[key.slice(5)] = v.trim();
+      else if (def.kind === "list") p[key] = v.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+      else p[key] = v.trim();
+      ST.upsertPart(p);
+      closeSheet(); buzz(10);
+      openProfile(slug);
+      toast("Saved to " + p.name + "'s profile");
+    });
+  }
+
+  /* The hero facts: type, felt age, body location, appearance, origin,
+     trust in Self - all in one sheet. */
+  function aboutSheet(slug) {
+    var p = ST.getPart(slug);
+    if (!p) return;
+    openSheet(
+      '<h2 class="sheet-title serif">About ' + esc(p.name) + "</h2>" +
+      '<label class="fieldlabel">Type</label>' +
+      '<div class="seg" id="abType">' +
+      S.PART_TYPES.map(function (t) { return segBtn(t, t.charAt(0).toUpperCase() + t.slice(1), p.type); }).join("") +
+      "</div>" +
+      '<label class="fieldlabel">Felt age</label>' +
+      '<input id="abAge" autocomplete="off" placeholder="about 7, teenage, ageless..." value="' + esc(p.age) + '">' +
+      '<label class="fieldlabel">Where it lives in or around the body</label>' +
+      '<input id="abLoc" autocomplete="off" placeholder="chest, behind the eyes..." value="' + esc(p.location) + '">' +
+      '<label class="fieldlabel">What it looks like</label>' +
+      '<input id="abApp" autocomplete="off" placeholder="a color, a figure, a shape..." value="' + esc(p.appearance) + '">' +
+      '<label class="fieldlabel">Origin (headline only)</label>' +
+      '<input id="abOrigin" autocomplete="off" placeholder="when and why it first showed up" value="' + esc(p.origin) + '">' +
+      '<label class="fieldlabel">Trust in Self</label>' +
+      '<div class="seg" id="abTrust">' +
+      S.TRUST_LEVELS.map(function (t) { return segBtn(t, t, p.trust_in_self); }).join("") +
+      "</div>" +
+      '<div style="height:14px"></div>' +
+      '<button class="btn btn-primary btn-big" id="abSave">Save</button>'
+    );
+    ["#abType", "#abTrust"].forEach(function (sel) {
+      $(sel).addEventListener("click", function (e) {
+        var b = e.target.closest("button"); if (!b) return;
+        document.querySelectorAll(sel + " button").forEach(function (x) { x.classList.remove("on"); });
+        b.classList.add("on"); buzz();
+      });
+    });
+    $("#abSave").addEventListener("click", function () {
+      p.type = ($("#abType button.on") || { dataset: { val: p.type } }).dataset.val;
+      p.trust_in_self = ($("#abTrust button.on") || { dataset: { val: p.trust_in_self } }).dataset.val;
+      p.age = $("#abAge").value.trim();
+      p.location = $("#abLoc").value.trim();
+      p.appearance = $("#abApp").value.trim();
+      p.origin = $("#abOrigin").value.trim();
+      ST.upsertPart(p);
+      closeSheet(); buzz(10);
+      openProfile(slug);
+      toast("Saved to " + p.name + "'s profile");
     });
   }
 
@@ -1370,6 +1501,18 @@
       '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent directly to the provider. Anything you share in a session is subject to that provider’s data policies.</p>' +
       "</div></div>" +
 
+      '<div class="set-group"><h3>Voice</h3>' +
+      '<div class="set-pad">' +
+      '<label class="fieldlabel">ElevenLabs API key (optional)</label>' +
+      '<input type="password" id="elKey" autocomplete="off" placeholder="sk_..." value="' + esc(s.elevenKey) + '">' +
+      '<label class="fieldlabel">Voice ID</label>' +
+      '<input id="elVoice" autocomplete="off" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" value="' + esc(s.elevenVoiceId) + '">' +
+      '<label class="fieldlabel">Model</label>' +
+      '<input id="elModel" autocomplete="off" value="' + esc(s.elevenModel) + '">' +
+      '<button class="btn btn-soft" id="elTest" style="margin-top:12px">Hear a sample</button>' +
+      '<p class="dim" style="margin:12px 2px 2px">With a key and voice ID, voice mode speaks in that ElevenLabs voice &mdash; e.g. your own cloned voice &mdash; instead of the built-in one. The voice ID is under <b>Voices</b> in ElevenLabs (My Voices &rarr; ID). Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
+      "</div></div>" +
+
       '<div class="set-group"><h3>Appearance</h3>' +
       '<div class="set-pad"><div class="seg" id="themeSeg">' +
       segBtn("auto", "Auto", s.theme) + segBtn("dark", "Dark", s.theme) + segBtn("light", "Light", s.theme) +
@@ -1395,6 +1538,14 @@
     $("#themeSeg").addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
       s.theme = b.dataset.val; ST.save(); applyTheme(); renderSettings(); buzz();
+    });
+    $("#elKey").addEventListener("input", function (e) { s.elevenKey = e.target.value.trim(); ST.save(); });
+    $("#elVoice").addEventListener("input", function (e) { s.elevenVoiceId = e.target.value.trim(); ST.save(); });
+    $("#elModel").addEventListener("input", function (e) { s.elevenModel = e.target.value.trim(); ST.save(); });
+    $("#elTest").addEventListener("click", function () {
+      buzz();
+      toast(s.elevenKey && s.elevenVoiceId ? "Generating a sample in your voice..." : "No ElevenLabs key set - this is the browser voice");
+      V.speak("Hi, this is how your sessions will sound. Take all the time you need.", null);
     });
     $("#hapt").addEventListener("change", function (e) { s.haptics = e.target.checked; ST.save(); buzz(); });
     $("#expAll").addEventListener("click", doExportBackup);

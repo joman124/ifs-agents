@@ -290,7 +290,19 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .chip b { color: var(--ink); }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
-.card h3 { margin: 0 0 10px; font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-dim); }
+.card h3 {
+  margin: 0 0 10px; font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-dim);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.cardedit {
+  background: none; border: none; color: var(--ink-faint);
+  font-size: .95rem; line-height: 1; padding: 4px 6px; margin: -4px -6px;
+  cursor: pointer; border-radius: 8px;
+}
+.cardedit:active { background: var(--surface2); color: var(--ink); }
+.covhint { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink-faint); font-size: .7rem; }
+.chip-btn { cursor: pointer; }
+.covitem { cursor: pointer; }
 .card .prose { white-space: pre-wrap; font-size: .95rem; }
 .card .prose:empty::before, .prose.none { color: var(--ink-faint); font-style: italic; }
 .taglist { display: flex; flex-wrap: wrap; gap: 6px; }

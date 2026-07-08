@@ -1,9 +1,11 @@
 /* Inner Table - voice mode.
-   Dictation via the Web Speech API (SpeechRecognition) and spoken replies via
-   speechSynthesis. Both run through the browser, so voice works identically
-   for every provider (Gemini, ChatGPT, Claude) with no extra API key or cost.
-   Note: on most browsers SpeechRecognition sends audio to the browser
-   vendor's speech service; the LLM provider never receives audio. */
+   Dictation via the Web Speech API (SpeechRecognition). Spoken replies use
+   ElevenLabs text-to-speech when a key + voice ID are set (a personal or
+   cloned voice), and fall back to the browser's speechSynthesis otherwise -
+   so voice works identically for every provider (Gemini, ChatGPT, Claude).
+   Note: dictation audio goes to the browser vendor's speech service, and
+   with ElevenLabs configured the reply TEXT goes to ElevenLabs; the LLM
+   provider never receives audio. */
 (function () {
   "use strict";
 
@@ -69,12 +71,33 @@
       .trim();
   }
 
+  /* Interrupt safety: stopSpeaking() bumps `gen`, so a speak() that was cut
+     off (person sent a message, closed the session) never fires its onEnd -
+     otherwise the hands-free mic would pop open after a manual interrupt. */
+  var gen = 0;
+  var audioEl = null; // current ElevenLabs playback
+
+  function elevenConfig() {
+    try {
+      var s = window.IFS.store.state.settings;
+      if (s && s.elevenKey && s.elevenVoiceId) return s;
+    } catch (e) {}
+    return null;
+  }
+
   function speak(text, onEnd) {
-    var done = onEnd || function () {};
-    if (!canSpeak()) { done(); return; }
     stopSpeaking();
+    var myGen = gen;
+    var done = function () { if (gen === myGen && onEnd) onEnd(); };
     var clean = speakable(text);
     if (!clean) { done(); return; }
+    var cfg = elevenConfig();
+    if (cfg) elevenSpeak(clean, cfg, myGen, done);
+    else if (canSpeak()) browserSpeak(clean, myGen, done);
+    else done();
+  }
+
+  function browserSpeak(clean, myGen, done) {
     var u = new SpeechSynthesisUtterance(clean);
     u.rate = 1.02;
     var fired = false;
@@ -84,12 +107,62 @@
     try { speechSynthesis.speak(u); } catch (e) { finish(); return; }
     // some browsers never fire onend after cancel(); poll as a safety net
     var poll = setInterval(function () {
-      if (fired) { clearInterval(poll); return; }
+      if (fired || gen !== myGen) { clearInterval(poll); finish(); return; }
       if (!speechSynthesis.speaking && !speechSynthesis.pending) { clearInterval(poll); finish(); }
     }, 600);
   }
 
+  /* Personal voice via the ElevenLabs TTS API. Any failure (bad key, quota,
+     autoplay policy) falls back to the browser voice so voice mode never
+     goes silent. */
+  async function elevenSpeak(clean, s, myGen, done) {
+    var apiProblem = "";
+    try {
+      var res = await fetch("https://api.elevenlabs.io/v1/text-to-speech/" +
+        encodeURIComponent(s.elevenVoiceId) + "?output_format=mp3_44100_128", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "xi-api-key": s.elevenKey },
+        body: JSON.stringify({ text: clean, model_id: s.elevenModel || "eleven_flash_v2_5" })
+      });
+      if (!res.ok) {
+        apiProblem = res.status === 401 ? "ElevenLabs rejected the API key - check it in Settings."
+          : res.status === 404 ? "That ElevenLabs voice ID wasn't found - check it in Settings."
+          : res.status === 429 ? "ElevenLabs quota or rate limit reached."
+          : "ElevenLabs error " + res.status + ".";
+        throw new Error(apiProblem);
+      }
+      var blob = await res.blob();
+      if (gen !== myGen) { done(); return; } // interrupted while generating
+      var url = URL.createObjectURL(blob);
+      var a = new Audio(url);
+      audioEl = a;
+      var handled = false;
+      var cleanup = function () {
+        if (handled) return false;
+        handled = true;
+        URL.revokeObjectURL(url);
+        if (audioEl === a) audioEl = null;
+        return true;
+      };
+      a.onended = function () { if (cleanup()) done(); };
+      a.onerror = function () { // playback failed (autoplay policy etc.) - use the browser voice
+        if (!cleanup()) return;
+        if (gen === myGen && canSpeak()) browserSpeak(clean, myGen, done);
+        else done();
+      };
+      a.play().catch(function () { a.onerror(); });
+    } catch (e) {
+      if (apiProblem && window.IFS.ui && window.IFS.ui.toast) {
+        window.IFS.ui.toast(apiProblem + " Using the browser voice.");
+      }
+      if (gen === myGen && canSpeak()) browserSpeak(clean, myGen, done);
+      else done();
+    }
+  }
+
   function stopSpeaking() {
+    gen++;
+    if (audioEl) { try { audioEl.pause(); } catch (e) {} audioEl = null; }
     if (canSpeak()) { try { speechSynthesis.cancel(); } catch (e) {} }
   }
 

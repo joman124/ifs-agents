@@ -7,6 +7,7 @@
   var T = window.IFS.templates;
   var LLM = window.IFS.llm;
   var G = window.IFS.graph;
+  var V = window.IFS.voice;
 
   var $ = function (sel) { return document.querySelector(sel); };
   var esc = function (s) {
@@ -432,15 +433,15 @@
     setTimeout(function () {
       openSheet(
         '<h2 class="sheet-title serif">Add a part</h2>' +
-        '<p class="dim">Paste a saved profile, or the end-of-session output from any AI chat &mdash; prose around it is fine, I\'ll find the profile.</p>' +
-        '<textarea id="importBox" placeholder="---&#10;name: ..."></textarea>' +
+        '<p class="dim">Paste <b>anything</b> &mdash; freeform journaling, notes about a part, a chat excerpt, or a saved profile. Raw text gets organized into the profile\'s fields automatically.</p>' +
+        '<textarea id="importBox" placeholder="There\'s this voice that shows up whenever I..."></textarea>' +
         '<div style="height:10px"></div>' +
         '<div style="display:flex;gap:10px">' +
         '<button class="btn btn-soft" id="importFile" style="flex:1">Pick a .md file</button>' +
-        '<button class="btn btn-primary" id="importGo" style="flex:1">Import</button>' +
+        '<button class="btn btn-primary" id="importGo" style="flex:1">Add part</button>' +
         '</div>' +
         '<div id="importResult"></div>' +
-        '<p class="dim" style="text-align:center;margin:14px 0 6px">no file? no problem</p>' +
+        '<p class="dim" style="text-align:center;margin:14px 0 6px">prefer a blank form?</p>' +
         '<button class="btn btn-soft btn-big" id="importByHand">Create the part by hand instead</button>'
       );
       $("#importGo").addEventListener("click", function () { reviewImport($("#importBox").value); });
@@ -460,15 +461,57 @@
     }, 240);
   }
 
-  /* Analyze pasted/loaded text and render a preview (or friendly diagnosis)
-     into the import sheet. Nothing is saved until the person confirms. */
-  function reviewImport(text) {
+  /* Field-by-field preview of one organized profile: what landed where, and
+     an honest development % that reflects only what the text covered. */
+  function previewFieldsHTML(p) {
+    var rows = [];
+    var row = function (label, val) {
+      if (val == null || val === "" || (Array.isArray(val) && !val.length)) return;
+      var body = Array.isArray(val)
+        ? '<div class="taglist">' + val.map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + "</div>"
+        : esc(val);
+      rows.push('<div class="prevrow"><b>' + label + "</b>" + body + "</div>");
+    };
+    row("Age", p.age);
+    row("Where it lives", p.location);
+    row("Origin", p.origin);
+    row("Positive intent", p.positive_intent);
+    row("Emotions", p.emotions);
+    row("Fears", p.fears);
+    row("Hopes & goals", p.hopes_goals);
+    row("Behaviors", p.behaviors);
+    row("Wants & needs", p.wants_needs);
+    S.NARRATIVE_SECTIONS.forEach(function (sec) {
+      var v = p.narrative[sec.key];
+      if (v) row(sec.title, v.length > 220 ? v.slice(0, 220) + "…" : v);
+    });
+    var touched = S.CATEGORIES.filter(function (c) {
+      return p.coverage[c] === "partial" || p.coverage[c] === "complete";
+    });
+    var covLine = touched.length
+      ? "Covers: " + touched.map(function (c) { return S.CATEGORY_LABELS[c].toLowerCase(); }).join(", ")
+      : "No categories covered yet";
+    var exists = !!ST.getPart(p.slug);
+    return '<div class="part-card" style="cursor:default;margin-top:12px">' +
+      ringSVG(S.coverageScore(p), (p.name || "?").charAt(0).toUpperCase()) +
+      '<div class="part-card-main"><div class="part-card-name">' + esc(p.name) +
+      ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
+      '<div class="part-card-sub">' + (exists ? "updates your existing " + esc(p.name) : "new part") +
+      " &middot; " + Math.round(S.coverageScore(p) * 100) + "% developed</div></div></div>" +
+      '<div class="prevrows">' + rows.join("") + "</div>" +
+      '<p class="dim" style="margin:10px 2px 0">' + esc(covLine) + ". Everything else stays unknown until a check-in &mdash; nothing was invented.</p>";
+  }
+
+  /* Show organized profile(s) ready to save. One profile gets the full
+     field-by-field breakdown; several get compact cards. */
+  function renderImportPreview(profiles, headline) {
     var box = $("#importResult");
     if (!box) return;
-    var res = MD.analyze(text);
-
-    if (res.profiles.length) {
-      var cards = res.profiles.map(function (p) {
+    var bodyHTML;
+    if (profiles.length === 1) {
+      bodyHTML = previewFieldsHTML(profiles[0]);
+    } else {
+      bodyHTML = profiles.map(function (p) {
         var exists = !!ST.getPart(p.slug);
         return '<div class="part-card" style="cursor:default">' +
           '<div class="part-card-main"><div class="part-card-name">' + esc(p.name) +
@@ -476,16 +519,32 @@
           '<div class="part-card-sub">' + (exists ? "updates your existing " + esc(p.name) : "new part") +
           ' &middot; ' + Math.round(S.coverageScore(p) * 100) + '% developed</div></div></div>';
       }).join("");
-      box.innerHTML =
-        '<div class="readiness ok" style="margin-top:14px">&#10003; Found ' + res.profiles.length + ' profile' + (res.profiles.length > 1 ? "s" : "") + '</div>' +
-        cards +
-        '<button class="btn btn-primary btn-big" id="importConfirm">Add to library</button>';
-      $("#importConfirm").addEventListener("click", function () {
-        res.profiles.forEach(ST.upsertPart);
-        closeSheet(); renderParts(); buzz(12);
-        toast("Welcomed: " + res.profiles.map(function (p) { return p.name; }).join(", "));
-        if (res.profiles.length === 1) openProfile(res.profiles[0].slug);
-      });
+    }
+    box.innerHTML =
+      '<div class="readiness ok" style="margin-top:14px">&#10003; ' + esc(headline) + '</div>' +
+      bodyHTML +
+      '<button class="btn btn-primary btn-big" id="importConfirm">' +
+      (profiles.length === 1 ? "Add " + esc(profiles[0].name) + " to the library" : "Add all to library") + '</button>';
+    $("#importConfirm").addEventListener("click", function () {
+      profiles.forEach(ST.upsertPart);
+      closeSheet(); renderParts(); buzz(12);
+      toast("Welcomed: " + profiles.map(function (p) { return p.name; }).join(", "));
+      if (profiles.length === 1) openProfile(profiles[0].slug);
+    });
+    box.scrollIntoView({ block: "nearest" });
+  }
+
+  /* Analyze pasted/loaded text and render a preview into the import sheet.
+     A formatted profile imports directly; anything else goes straight to AI
+     organizing (no dead end). Nothing is saved until the person confirms. */
+  function reviewImport(text) {
+    var box = $("#importResult");
+    if (!box) return;
+    var res = MD.analyze(text);
+
+    if (res.profiles.length) {
+      renderImportPreview(res.profiles,
+        res.profiles.length === 1 ? "Here's how that reads as a profile" : "Found " + res.profiles.length + " profiles");
       return;
     }
 
@@ -510,42 +569,63 @@
       return;
     }
 
+    // Raw, unstructured text - the normal case. Organize it automatically.
+    if (!text || !String(text).trim()) {
+      box.innerHTML =
+        '<div class="readiness no" style="margin-top:14px">Nothing to read yet</div>' +
+        '<p class="dim" style="margin:8px 2px">Write or paste anything about the part first &mdash; even two sentences is plenty.</p>';
+      return;
+    }
     var s = ST.state.settings;
-    var aiReady = s.provider !== "manual" && LLM.configured(s);
+    if (s.provider !== "manual" && LLM.configured(s)) {
+      shapeNotesWithAI(text);
+      return;
+    }
+    rawFallbackOptions(text,
+      "Reading freeform notes needs an AI provider (Settings &rarr; Live sessions), or use one of these:");
+  }
+
+  /* Manual mode / AI failure: real choices for raw text, never a dead end. */
+  function rawFallbackOptions(text, leadHTML) {
+    var box = $("#importResult");
+    if (!box) return;
     box.innerHTML =
-      '<div class="readiness no" style="margin-top:14px">' + esc(res.error.title) + '</div>' +
-      '<p class="dim" style="margin:8px 2px">' + esc(res.error.hint) + '</p>' +
-      '<p class="dim" style="margin:8px 2px">Or skip the formatting entirely - paste anything (a journal entry, a stray thought, notes from a session elsewhere) and let AI sort it into a profile.</p>' +
+      '<p class="dim" style="margin:14px 2px 8px">' + leadHTML + '</p>' +
       '<div style="display:flex;gap:10px;margin-top:6px">' +
-      (aiReady
-        ? '<button class="btn btn-primary" id="importShapeAI" style="flex:1">Shape into a profile with AI</button>'
-        : '<button class="btn btn-primary" id="importCopyPrompt" style="flex:1">Copy an AI prompt for this</button>') +
+      '<button class="btn btn-primary" id="importCopyPrompt" style="flex:1">Copy an AI prompt for this</button>' +
       '<button class="btn btn-soft" id="importSaveRaw" style="flex:1">Save as notes on a new part</button>' +
       '</div>' +
-      '<div id="importShapeResult"></div>';
-    if (aiReady) {
-      $("#importShapeAI").addEventListener("click", function () { shapeNotesWithAI(text, this); });
-    } else {
-      $("#importCopyPrompt").addEventListener("click", function () { copyConvertPrompt(text); });
-    }
+      '<p class="dim" style="margin:8px 2px">The prompt bundles your text with organizing instructions &mdash; paste it into any AI chat, then paste the reply back here.</p>';
+    $("#importCopyPrompt").addEventListener("click", function () { copyConvertPrompt(text); });
     $("#importSaveRaw").addEventListener("click", function () { closeSheet(); createPartSheet("", text); });
   }
 
-  /* Send raw pasted text through the LLM to be shaped into a profile, then
-     route the reply back through the same preview - nothing saves unseen. */
-  async function shapeNotesWithAI(text, btn) {
-    btn.disabled = true;
-    btn.textContent = "Reading your notes...";
-    var resultBox = $("#importShapeResult");
+  /* Organize raw text into profile fields via the LLM, then show the
+     field-by-field preview - nothing saves unseen. */
+  async function shapeNotesWithAI(text) {
+    var box = $("#importResult");
+    if (!box) return;
+    var go = $("#importGo");
+    if (go) { go.disabled = true; go.textContent = "Organizing…"; }
+    box.innerHTML =
+      '<div class="readiness ok" style="margin-top:14px">Organizing your notes into a profile&hellip;</div>' +
+      '<p class="dim" style="margin:8px 2px">Only what your text actually says goes in. The development % will reflect just the ground it covers.</p>';
     try {
       var reply = await LLM.chat(ST.state.settings, T.convertNotes(), [{ role: "user", text: text }]);
-      var box = $("#importBox");
-      if (box) box.value = reply;
-      reviewImport(reply);
+      if (!$("#importResult")) return; // sheet closed while waiting
+      var res = MD.analyze(reply);
+      if (res.profiles.length) {
+        renderImportPreview(res.profiles, "Organized into a profile - check it over");
+      } else {
+        rawFallbackOptions(text, "The AI reply didn't come back as a usable profile. Try Add part again, or:");
+      }
     } catch (e) {
-      if (resultBox) resultBox.innerHTML = '<div class="readiness no" style="margin-top:10px">' + esc(e.message) + '</div>';
-      btn.disabled = false;
-      btn.textContent = "Shape into a profile with AI";
+      if ($("#importResult")) {
+        rawFallbackOptions(text, esc(e.message) + " Try Add part again in a moment, or:");
+      }
+    } finally {
+      var go2 = $("#importGo");
+      if (go2) { go2.disabled = false; go2.textContent = "Add part"; }
     }
   }
 
@@ -697,6 +777,7 @@
   function openChatPanel(sess, replay) {
     var s = ST.state.settings;
     var partNames = sess.slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; }).join(", ");
+    var voiceCapable = V.canSpeak() || V.canListen();
     openPanel(
       MODE_TITLES[sess.mode],
       partNames || "a new part",
@@ -706,14 +787,17 @@
       '<div class="msg system-note">Private session · ' + esc(s.provider) + " · saved as you go · you can stop anytime</div>" +
       "</div>" +
       '<div class="chat-input">' +
+      (V.canListen() ? '<button class="micbtn" id="chatMic" aria-label="Dictate">&#127908;</button>' : "") +
       '<textarea id="chatBox" rows="1" placeholder="Speak as yourself or as the part..."></textarea>' +
       '<button class="sendbtn" id="chatSend" aria-label="Send">&#8593;</button>' +
       "</div></div>",
+      (voiceCapable ? '<button class="btn btn-soft' + (s.voiceOn ? " voice-on" : "") + '" id="voiceToggle" style="padding:8px 14px;font-size:.8rem">&#128266; Voice</button>' : "") +
       '<button class="btn btn-soft" id="endSession" style="padding:8px 14px;font-size:.8rem">End &amp; save</button>',
       function () {
         if (session && session.messages.length && !session.closed) {
           if (!confirm("Pause this session? It stays saved as a draft - resume it anytime from the Parts tab.")) return false;
         }
+        V.stopSpeaking(); V.stopListening();
         session = null;
         renderParts();
         return true;
@@ -732,6 +816,25 @@
       }
     });
     $("#chatSend").addEventListener("click", sendChat);
+    var mic = $("#chatMic");
+    if (mic) mic.addEventListener("click", function () {
+      if (V.isListening()) { V.stopListening(); micState(false); }
+      else startDictation(false);
+    });
+    var vt = $("#voiceToggle");
+    if (vt) vt.addEventListener("click", function () {
+      s.voiceOn = !s.voiceOn; ST.save();
+      vt.classList.toggle("voice-on", s.voiceOn);
+      buzz();
+      if (s.voiceOn) {
+        toast(V.canListen() ? "Voice mode: replies are spoken, mic opens after each one"
+                            : "Voice mode: replies are spoken aloud (no mic support in this browser)");
+        if (V.canListen() && !session.busy) startDictation(true);
+      } else {
+        V.stopSpeaking(); V.stopListening(); micState(false);
+        toast("Voice mode off");
+      }
+    });
 
     if (replay) {
       sess.messages.forEach(function (m) {
@@ -814,6 +917,45 @@
     }).join("");
   }
 
+  /* ---------- voice mode ---------- */
+  function micState(on) {
+    var mic = $("#chatMic");
+    if (mic) mic.classList.toggle("listening", !!on);
+  }
+
+  /* One dictation turn. autoSend: hands-free voice mode sends the final
+     transcript itself; manual mic taps leave it in the box to review. */
+  function startDictation(autoSend) {
+    if (!session || V.isListening()) return;
+    var sess = session;
+    micState(true);
+    var ok = V.listen({
+      onInterim: function (t) {
+        var box = $("#chatBox");
+        if (box && session === sess) { box.value = t; box.dispatchEvent(new Event("input")); }
+      },
+      onEnd: function (finalText) {
+        micState(false);
+        if (session !== sess) return;
+        var box = $("#chatBox");
+        if (box && finalText) { box.value = finalText; box.dispatchEvent(new Event("input")); }
+        if (autoSend && finalText && ST.state.settings.voiceOn && !sess.busy) sendChat();
+      },
+      onError: function (msg) { micState(false); toast(msg); }
+    });
+    if (!ok) micState(false);
+  }
+
+  /* After an assistant reply in voice mode: speak it, then open the mic. */
+  function voiceAfterReply(sess, reply) {
+    if (!ST.state.settings.voiceOn || session !== sess) return;
+    V.speak(stripFences(reply), function () {
+      if (session === sess && ST.state.settings.voiceOn && !sess.closed && V.canListen()) {
+        startDictation(true);
+      }
+    });
+  }
+
   function typingEl() {
     var scroll = $("#chatScroll");
     var div = document.createElement("div");
@@ -859,6 +1001,7 @@
         if (live) setMsgText(live, stripFences(reply));
         else { tip.remove(); addMsg("assistant", stripFences(reply)); }
         buzz(6);
+        if (!hidden || sess.messages.length <= 2) voiceAfterReply(sess, reply);
       }
       saveDraft();
       return reply;
@@ -891,6 +1034,7 @@
     var box = $("#chatBox");
     var v = box.value.trim();
     if (!v || !session || session.busy) return;
+    V.stopSpeaking(); V.stopListening(); micState(false);
     box.value = ""; box.style.height = "auto";
     buzz();
     pump(v);
@@ -898,6 +1042,7 @@
 
   async function endSession() {
     if (!session || session.busy) return;
+    V.stopSpeaking(); V.stopListening(); micState(false);
     var sess = session;
     var interviewish = ["intake", "checkin", "mapping"].indexOf(sess.mode) >= 0;
     var reply = null;
@@ -1018,14 +1163,35 @@
   }
 
   /* ================= map ================= */
+  var mapLinkMode = false;
+
+  function setMapHint() {
+    $("#mapHint").textContent = mapLinkMode
+      ? "tap one part, then the other, to draw their relationship"
+      : "tap a part · drag to move · pinch to zoom";
+  }
+
   function renderMap() {
     var parts = ST.listParts();
     var svg = $("#swarmSvg");
     var has = parts.length > 0;
+    mapLinkMode = false;
     $("#mapEmpty").classList.toggle("hidden", has);
     $("#mapLegend").classList.toggle("hidden", !has);
     $("#mapHint").classList.toggle("hidden", !has);
     $("#mapCard").classList.add("hidden");
+    var linkBtn = $("#mapLinkBtn");
+    linkBtn.classList.toggle("hidden", parts.length < 2);
+    linkBtn.classList.remove("on");
+    setMapHint();
+    linkBtn.onclick = function () {
+      mapLinkMode = !mapLinkMode;
+      linkBtn.classList.toggle("on", mapLinkMode);
+      if (!mapLinkMode) G.clearLink();
+      setMapHint();
+      $("#mapCard").classList.add("hidden");
+      buzz();
+    };
     if (has) {
       $("#mapLegend").innerHTML =
         '<div class="lg"><i style="color:var(--manager)"></i>protects</div>' +
@@ -1033,6 +1199,9 @@
         '<div class="lg"><i style="color:var(--good)"></i>allied</div>' +
         '<div class="lg"><i style="color:var(--warn);border-top-style:dotted"></i>conflicts</div>';
       G.render(svg, parts, {
+        linkMode: function () { return mapLinkMode; },
+        onLink: function (fromSlug, toSlug) { relationshipSheet(fromSlug, toSlug); },
+        onLinkHint: toast,
         onSelect: function (node) {
             var card = $("#mapCard");
             if (!node || node.self) { card.classList.add("hidden"); return; }
@@ -1051,6 +1220,82 @@
     } else {
       G.stop(); svg.innerHTML = "";
     }
+  }
+
+  /* A link was drawn between two parts: ask how they relate, then write the
+     mirrored edge and the person's description to BOTH profiles. */
+  function relationshipSheet(aSlug, bSlug) {
+    var a = ST.getPart(aSlug), b = ST.getPart(bSlug);
+    if (!a || !b) return;
+    var existing = (a.relationships || []).filter(function (r) { return r.part === bSlug; })[0];
+    var options = [
+      { val: "protects", label: a.name + " protects " + b.name },
+      { val: "protected-by", label: b.name + " protects " + a.name },
+      { val: "allied-with", label: "Allied — they work together" },
+      { val: "polarized-with", label: "Polarized — locked in a tug-of-war" },
+      { val: "conflicts-with", label: "In conflict — they clash" }
+    ];
+    openSheet(
+      '<h2 class="sheet-title serif">' + esc(a.name) + " &amp; " + esc(b.name) + "</h2>" +
+      '<p class="dim">' + (existing
+        ? "They already have a mapped relationship (" + esc(existing.type.replace(/-/g, " ")) + ") — saving replaces it on both profiles."
+        : "How do these two relate? What you choose and write here is added to both profiles.") + "</p>" +
+      '<div class="seg" id="relType" style="flex-direction:column;gap:3px">' +
+      options.map(function (o) {
+        return '<button data-val="' + o.val + '"' + (existing && existing.type === o.val ? ' class="on"' : "") +
+          ' style="text-align:left;padding:11px 12px">' + esc(o.label) + "</button>";
+      }).join("") +
+      "</div>" +
+      '<label class="fieldlabel">Describe the relationship</label>' +
+      '<textarea id="relNote" placeholder="What happens between them? e.g. when one pushes to publish, the other floods me with doubt...">' + esc((existing && existing.notes) || "") + "</textarea>" +
+      '<div style="height:14px"></div>' +
+      '<button class="btn btn-primary btn-big" id="relSave">Add to both profiles</button>' +
+      '<div id="relMsg"></div>'
+    );
+    $("#relType").addEventListener("click", function (e) {
+      var btn = e.target.closest("button"); if (!btn) return;
+      document.querySelectorAll("#relType button").forEach(function (x) { x.classList.remove("on"); });
+      btn.classList.add("on"); buzz();
+    });
+    $("#relSave").addEventListener("click", function () {
+      var sel = document.querySelector("#relType button.on");
+      if (!sel) {
+        $("#relMsg").innerHTML = '<div class="readiness no" style="margin-top:12px">Pick how they relate first.</div>';
+        return;
+      }
+      drawEdge(aSlug, bSlug, sel.dataset.val, $("#relNote").value.trim());
+      closeSheet(); buzz(12);
+      renderMap();
+      toast("Mapped: " + a.name + " & " + b.name + " — saved to both profiles");
+    });
+  }
+
+  /* Write one mapped relationship to both parts: mirrored edges, honest
+     coverage, a mapping entry in each session log, and the description woven
+     into each part's "How it relates to other parts". */
+  function drawEdge(aSlug, bSlug, type, note) {
+    var a = ST.getPart(aSlug), b = ST.getPart(bSlug);
+    if (!a || !b) return;
+    var mirror = S.EDGE_MIRROR[type];
+    a.relationships = (a.relationships || []).filter(function (r) { return r.part !== bSlug; });
+    b.relationships = (b.relationships || []).filter(function (r) { return r.part !== aSlug; });
+    a.relationships.push({ part: bSlug, type: type, notes: note });
+    b.relationships.push({ part: aSlug, type: mirror, notes: note });
+    [a, b].forEach(function (p) {
+      if (p.coverage.relationships === "untouched") p.coverage.relationships = "partial";
+    });
+    var addNarrative = function (p, other, t) {
+      var line = S.todayISO() + " - " + other.name + " (" + t.replace(/-/g, " ") + ")" + (note ? ": " + note : "");
+      p.narrative.relates_to_others = (p.narrative.relates_to_others ? p.narrative.relates_to_others + "\n\n" : "") + line;
+      p.sessions.push({
+        date: S.todayISO(), mode: "mapping", categories: ["relationships"],
+        note: "relationship with " + other.name + " drawn on the map"
+      });
+    };
+    addNarrative(a, b, type);
+    addNarrative(b, a, mirror);
+    ST.upsertPart(a);
+    ST.upsertPart(b);
   }
 
   /* ================= sessions ================= */
@@ -1119,7 +1364,7 @@
     $("#settingsPane").innerHTML =
       '<div class="set-group"><h3>Live sessions</h3>' +
       '<div class="set-pad"><div class="seg" id="provSeg">' +
-      segBtn("manual", "Copy-prompt", s.provider) + segBtn("gemini", "Gemini", s.provider) + segBtn("anthropic", "Claude", s.provider) +
+      segBtn("manual", "Copy-prompt", s.provider) + segBtn("gemini", "Gemini", s.provider) + segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) +
       "</div>" +
       '<div id="provFields"></div>' +
       '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent directly to the provider. Anything you share in a session is subject to that provider’s data policies.</p>' +
@@ -1177,6 +1422,15 @@
     return '<button data-val="' + val + '"' + (cur === val ? ' class="on"' : "") + ">" + label + "</button>";
   }
 
+  var PROVIDERS = {
+    gemini: { label: "Gemini", key: "geminiKey", model: "geminiModel", ph: "AIza...",
+      hint: 'Free keys at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a>.' },
+    anthropic: { label: "Anthropic", key: "anthropicKey", model: "anthropicModel", ph: "sk-ant-...",
+      hint: 'Keys at <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.' },
+    openai: { label: "OpenAI", key: "openaiKey", model: "openaiModel", ph: "sk-...",
+      hint: 'Keys at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>.' }
+  };
+
   function renderProviderFields() {
     var s = ST.state.settings;
     var el = $("#provFields");
@@ -1184,22 +1438,19 @@
       el.innerHTML = '<p class="dim" style="margin:12px 2px 0">No key needed. Sessions generate a portable prompt you paste into any AI chat, then paste the updated profile back.</p>';
       return;
     }
-    var isG = s.provider === "gemini";
+    var cfg = PROVIDERS[s.provider];
+    if (!cfg) return;
     el.innerHTML =
-      '<label class="fieldlabel">' + (isG ? "Gemini" : "Anthropic") + ' API key</label>' +
-      '<input type="password" id="provKey" autocomplete="off" placeholder="' + (isG ? "AIza..." : "sk-ant-...") + '" value="' + esc(isG ? s.geminiKey : s.anthropicKey) + '">' +
+      '<label class="fieldlabel">' + cfg.label + ' API key</label>' +
+      '<input type="password" id="provKey" autocomplete="off" placeholder="' + cfg.ph + '" value="' + esc(s[cfg.key]) + '">' +
       '<label class="fieldlabel">Model</label>' +
-      '<input type="text" id="provModel" value="' + esc(isG ? s.geminiModel : s.anthropicModel) + '">' +
-      '<p class="dim" style="margin:10px 2px 0">' + (isG
-        ? 'Free keys at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a>.'
-        : 'Keys at <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.') + "</p>";
+      '<input type="text" id="provModel" value="' + esc(s[cfg.model]) + '">' +
+      '<p class="dim" style="margin:10px 2px 0">' + cfg.hint + "</p>";
     $("#provKey").addEventListener("input", function (e) {
-      if (isG) s.geminiKey = e.target.value.trim(); else s.anthropicKey = e.target.value.trim();
-      ST.save();
+      s[cfg.key] = e.target.value.trim(); ST.save();
     });
     $("#provModel").addEventListener("input", function (e) {
-      if (isG) s.geminiModel = e.target.value.trim(); else s.anthropicModel = e.target.value.trim();
-      ST.save();
+      s[cfg.model] = e.target.value.trim(); ST.save();
     });
   }
 

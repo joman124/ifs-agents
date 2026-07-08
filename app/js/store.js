@@ -15,11 +15,14 @@
       settings: {
         onboarded: false,
         theme: "auto",           // auto | dark | light
-        provider: "manual",      // manual | gemini | anthropic
+        provider: "manual",      // manual | gemini | anthropic | openai
         geminiKey: "",
         geminiModel: "gemini-2.5-flash",
         anthropicKey: "",
         anthropicModel: "claude-sonnet-5",
+        openaiKey: "",
+        openaiModel: "gpt-5.1",
+        voiceOn: false,          // speak replies + hands-free mic in sessions
         haptics: true,
         lastBackup: "",          // ISO date of last full export
         backupSnooze: ""         // ISO date the backup reminder was dismissed

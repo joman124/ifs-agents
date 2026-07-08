@@ -1,6 +1,7 @@
 /* Inner Table - browser-side LLM clients (bring your own key).
    Keys live in localStorage on this device only; calls go straight from the
-   browser to the provider. Supports Google Gemini and Anthropic Claude. */
+   browser to the provider. Supports Google Gemini, Anthropic Claude, and
+   OpenAI ChatGPT. */
 (function () {
   "use strict";
 
@@ -92,15 +93,47 @@
     });
   }
 
+  async function callOpenAI(settings, system, messages) {
+    var body = {
+      model: settings.openaiModel,
+      max_completion_tokens: 16384,
+      messages: [{ role: "system", content: system }].concat(
+        messages.map(function (m) { return { role: m.role, content: m.text }; }))
+    };
+    return withRetry(async function () {
+      var res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + settings.openaiKey
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        var txt = await res.text();
+        var err = new Error(friendly(res.status, txt, "OpenAI"));
+        err.retryable = res.status >= 500 || res.status === 429;
+        throw err;
+      }
+      var data = await res.json();
+      var msg = data.choices && data.choices[0] && data.choices[0].message;
+      var text = (msg && msg.content) || "";
+      if (!text) throw new Error("OpenAI returned an empty reply.");
+      return text;
+    });
+  }
+
   function configured(settings) {
     if (settings.provider === "gemini") return !!settings.geminiKey;
     if (settings.provider === "anthropic") return !!settings.anthropicKey;
+    if (settings.provider === "openai") return !!settings.openaiKey;
     return false;
   }
 
   async function chat(settings, system, messages) {
     if (settings.provider === "gemini") return callGemini(settings, system, messages);
     if (settings.provider === "anthropic") return callAnthropic(settings, system, messages);
+    if (settings.provider === "openai") return callOpenAI(settings, system, messages);
     throw new Error("No AI provider configured. Set one up in Settings, or use copy-prompt mode.");
   }
 
@@ -184,12 +217,39 @@
     return text;
   }
 
+  async function streamOpenAI(settings, system, messages, onDelta) {
+    var body = {
+      model: settings.openaiModel,
+      max_completion_tokens: 16384,
+      stream: true,
+      messages: [{ role: "system", content: system }].concat(
+        messages.map(function (m) { return { role: m.role, content: m.text }; }))
+    };
+    var res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + settings.openaiKey
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(friendly(res.status, await res.text(), "OpenAI"));
+    var text = "";
+    await readSSE(res, function (data) {
+      var delta = data.choices && data.choices[0] && data.choices[0].delta;
+      if (delta && delta.content) { text += delta.content; onDelta(text); }
+    });
+    if (!text) throw new Error("OpenAI returned an empty reply.");
+    return text;
+  }
+
   /* Stream when possible; if the stream setup or transport fails for any
      reason, fall back to the plain call (which has retry-with-backoff). */
   async function chatStream(settings, system, messages, onDelta) {
     try {
       if (settings.provider === "gemini") return await streamGemini(settings, system, messages, onDelta || function () {});
       if (settings.provider === "anthropic") return await streamAnthropic(settings, system, messages, onDelta || function () {});
+      if (settings.provider === "openai") return await streamOpenAI(settings, system, messages, onDelta || function () {});
     } catch (e) {
       console.warn("stream failed, falling back to plain call:", e.message);
     }

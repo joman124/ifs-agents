@@ -1,5 +1,5 @@
 /* Inner Table - service worker: cache-first app shell for offline use. */
-var CACHE = "inner-table-v4";
+var CACHE = "inner-table-v5";
 var SHELL = [
   "./",
   "index.html",
@@ -9,6 +9,7 @@ var SHELL = [
   "js/store.js",
   "js/templates.js",
   "js/llm.js",
+  "js/voice.js",
   "js/graph.js",
   "js/ui.js",
   "js/app.js",

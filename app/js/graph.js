@@ -8,6 +8,7 @@
   "use strict";
 
   var sim = null;
+  var clearLinkFn = null; // set by the active render; lets the UI cancel a half-drawn link
 
   function buildGraph(parts) {
     var nodes = [{ id: "self", label: "Self", self: true }];
@@ -79,7 +80,38 @@
       n.vx = 0; n.vy = 0;
     });
 
-    var selected = null; // node index or null
+    var selected = null;   // node index or null
+    var linkSource = null; // node index of the first tapped part in link mode
+
+    function clearLinkSource() {
+      if (linkSource != null && nodeEls[linkSource]) nodeEls[linkSource].classList.remove("linksrc");
+      linkSource = null;
+    }
+    clearLinkFn = clearLinkSource;
+
+    /* In link mode a tap picks the two endpoints instead of selecting. */
+    function tapNode(ni) {
+      var n = g.nodes[ni];
+      if (opts.linkMode && opts.linkMode()) {
+        if (n.self) {
+          if (opts.onLinkHint) opts.onLinkHint("Draw links between parts - Self holds the whole map");
+          return;
+        }
+        if (linkSource == null) {
+          linkSource = ni;
+          nodeEls[ni].classList.add("linksrc");
+          if (opts.onLinkHint) opts.onLinkHint("Now tap the other part");
+        } else if (linkSource === ni) {
+          clearLinkSource();
+        } else {
+          var fromId = g.nodes[linkSource].id;
+          clearLinkSource();
+          if (opts.onLink) opts.onLink(fromId, n.id);
+        }
+        return;
+      }
+      select(ni);
+    }
 
     var edgeEls = g.edges.map(function (e) {
       var line = document.createElementNS(NS, "line");
@@ -158,7 +190,7 @@
           grp.removeEventListener("pointermove", move);
           grp.removeEventListener("pointerup", up);
           grp.removeEventListener("pointercancel", up);
-          if (!moved) select(ni);
+          if (!moved) tapNode(ni);
         };
         grp.addEventListener("pointermove", move);
         grp.addEventListener("pointerup", up);
@@ -211,6 +243,7 @@
       if (p && Math.abs(ev.clientX - p.sx) + Math.abs(ev.clientY - p.sy) < 6 && Object.keys(pointers).length === 1) {
         selected = null;
         applySelection();
+        clearLinkSource(); // background tap cancels a half-drawn link
       }
       delete pointers[ev.pointerId];
       if (Object.keys(pointers).length < 2) pinchStart = null;
@@ -293,5 +326,9 @@
     if (sim) { cancelAnimationFrame(sim.raf); sim = null; }
   }
 
-  window.IFS.graph = { render: render, stop: stop };
+  function clearLink() {
+    if (clearLinkFn) clearLinkFn();
+  }
+
+  window.IFS.graph = { render: render, stop: stop, clearLink: clearLink };
 })();

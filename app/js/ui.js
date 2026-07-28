@@ -8,6 +8,7 @@
   var LLM = window.IFS.llm;
   var G = window.IFS.graph;
   var V = window.IFS.voice;
+  var Q = window.IFS.questions;
 
   var $ = function (sel) { return document.querySelector(sel); };
   var esc = function (s) {
@@ -43,8 +44,14 @@
     toast("Theme: " + s.theme);
   }
 
-  /* ================= sheet ================= */
+  /* ================= sheet =================
+     Closing animates for 210ms before the element is really hidden. A flow
+     that closes one sheet and opens the next straight away would otherwise
+     have the old timer hide the new sheet - so every open/close takes a
+     ticket, and a stale timer does nothing. */
+  var sheetSeq = 0;
   function openSheet(html) {
+    sheetSeq++;
     $("#sheetBody").innerHTML = html;
     $("#sheetBackdrop").classList.remove("hidden");
     var sh = $("#sheet");
@@ -54,8 +61,10 @@
   function closeSheet() {
     var sh = $("#sheet");
     if (sh.classList.contains("hidden")) return;
+    var mine = ++sheetSeq;
     sh.classList.add("closing");
     setTimeout(function () {
+      if (sheetSeq !== mine) return; // a newer sheet took over
       sh.classList.add("hidden"); sh.classList.remove("closing");
       $("#sheetBackdrop").classList.add("hidden");
     }, 210);
@@ -63,7 +72,9 @@
 
   /* ================= panel ================= */
   var panelOnClose = null;
+  var panelSeq = 0;
   function openPanel(title, sub, bodyHTML, actionsHTML, onClose) {
+    panelSeq++;
     $("#panelTitle").innerHTML = esc(title) + (sub ? "<small>" + esc(sub) + "</small>" : "");
     $("#panelBody").innerHTML = bodyHTML;
     $("#panelActions").innerHTML = actionsHTML || "";
@@ -76,8 +87,12 @@
     var p = $("#panel");
     if (p.classList.contains("hidden")) return;
     if (panelOnClose && panelOnClose() === false) return; // veto (confirm dialogs)
+    var mine = ++panelSeq;
     p.classList.add("closing");
-    setTimeout(function () { p.classList.add("hidden"); p.classList.remove("closing"); $("#panelBody").innerHTML = ""; }, 190);
+    setTimeout(function () {
+      if (panelSeq !== mine) return; // a newer panel took over mid-animation
+      p.classList.add("hidden"); p.classList.remove("closing"); $("#panelBody").innerHTML = "";
+    }, 190);
   }
 
   /* ================= tabs / views ================= */
@@ -214,16 +229,30 @@
 
     var covHTML = S.CATEGORIES.map(function (c) {
       var st = p.coverage[c];
-      return '<div class="covitem cov-' + st + '" data-cov="' + c + '" title="' + st + ' - tap to adjust"><i></i>' + esc(S.CATEGORY_LABELS[c]) + "</div>";
+      return '<div class="covitem cov-' + st + '" data-cov="' + c + '" title="' + st + ' - tap to ask these questions"><i></i>' + esc(S.CATEGORY_LABELS[c]) + "</div>";
     }).join("");
+
+    // one obvious next move, rather than a wall of equal buttons
+    var next = Q.nextCategory(p);
+    var others = ST.listParts().filter(function (x) { return x.slug !== p.slug; });
+    var unconnected = others.length && !(p.relationships || []).length;
+    var nextCTA = next
+      ? '<button class="btn btn-primary btn-big" id="pfAsk">Ask ' + esc(p.name) + " about " + esc(S.CATEGORY_LABELS[next].toLowerCase()) + "</button>"
+      : (unconnected ? '<button class="btn btn-primary btn-big" id="pfLink">Connect ' + esc(p.name) + " to another part</button>" : "");
 
     var relHTML = (p.relationships && p.relationships.length)
       ? p.relationships.map(function (r) {
           var other = ST.getPart(r.part);
+          // an edge naming a part that isn't here can't be drawn on the map -
+          // say so rather than showing a bare slug that looks like a name
           return '<div class="sessionrow"><span class="sr-mode">' + esc(r.type.replace(/-/g, " ")) + "</span><span>" +
-            esc(other ? other.name : r.part) + (r.notes ? ' <span class="dim">' + esc(r.notes) + "</span>" : "") + "</span></div>";
+            esc(other ? other.name : r.part) +
+            (other ? "" : ' <span class="dim">— not in your library yet</span>') +
+            (r.notes ? ' <span class="dim">' + esc(r.notes) + "</span>" : "") + "</span></div>";
         }).join("")
-      : '<div class="prose none">no mapped relationships yet - draw one on the Map tab</div>';
+      : '<div class="prose none">' + (others.length
+          ? "no mapped relationships yet - use Connect to another part below"
+          : "no mapped relationships yet - they appear once you have a second part") + "</div>";
 
     var sessHTML = p.sessions.length
       ? p.sessions.slice().reverse().map(function (s) {
@@ -250,7 +279,7 @@
                 : "Needs " + esc(rd.missing.join(", ")) + " before it can speak for itself") +
       "</div>" +
       editCard("Positive intent", prose(p.positive_intent), "positive_intent") +
-      '<div class="card"><h3>Coverage <span class="covhint">tap to adjust</span></h3><div class="covgrid">' + covHTML + "</div></div>" +
+      '<div class="card"><h3>Coverage <span class="covhint">tap one to ask its questions</span></h3><div class="covgrid">' + covHTML + "</div></div>" +
       editCard("Fears", tagList(p.fears), "fears") +
       editCard("Hopes & goals", tagList(p.hopes_goals), "hopes_goals") +
       editCard("Behaviors", tagList(p.behaviors), "behaviors") +
@@ -262,7 +291,9 @@
       editCard("Session notes", prose(p.narrative.session_notes), "narr:session_notes") +
       '<div class="card"><h3>Session log</h3>' + sessHTML + "</div>" +
       '<div class="profile-cta">' +
-      '<button class="btn btn-primary btn-big" id="pfCheckin">Check in with ' + esc(p.name) + "</button>" +
+      nextCTA +
+      '<button class="btn btn-soft btn-big" id="pfCheckin">Check in with ' + esc(p.name) + " (AI session)</button>" +
+      (others.length ? '<button class="btn btn-soft btn-big" id="pfConnect">Connect to another part</button>' : "") +
       '<button class="btn btn-soft btn-big" id="pfEmbody"' + (rd.ready ? "" : " disabled") + ">React to material (embody)</button>" +
       '<button class="btn btn-soft btn-big" id="pfExport">Export profile (.md)</button>' +
       '<button class="btn btn-soft btn-big" id="pfEdit">Edit raw markdown</button>' +
@@ -278,23 +309,27 @@
     });
     $("#pfAbout").addEventListener("click", function () { aboutSheet(p.slug); });
 
-    // coverage: tap an item to cycle untouched -> partial -> complete -> declined
+    // coverage: tap a category to work through its questions
     document.querySelectorAll("#panelBody .covitem").forEach(function (el) {
       el.addEventListener("click", function () {
         var c = el.dataset.cov;
-        var order = S.COVERAGE_STATUSES;
-        var next = order[(order.indexOf(p.coverage[c]) + 1) % order.length];
-        p.coverage[c] = next;
-        ST.upsertPart(p);
-        el.className = "covitem cov-" + next;
-        el.title = next + " - tap to adjust";
-        $("#panelTitle").innerHTML = esc(p.name) +
-          "<small>" + esc(p.type + " · " + Math.round(S.coverageScore(p) * 100) + "% developed") + "</small>";
+        if (p.coverage[c] === "declined") {
+          openSheet('<h2 class="sheet-title serif">' + esc(S.CATEGORY_LABELS[c]) + " was declined</h2>" +
+            '<p class="dim">' + esc(p.name) + " chose not to go here. Reopen it only if the part brings it up.</p>" +
+            '<button class="btn btn-soft btn-big" id="cvReopen">' + esc(p.name) + " brought it up — reopen</button>" +
+            '<button class="btn btn-ghost btn-big" id="cvKeep">Leave it closed</button>');
+          bind("#cvReopen", function () { closeSheet(); askCategory(p.slug, c); });
+          bind("#cvKeep", closeSheet);
+          return;
+        }
         buzz();
-        toast(S.CATEGORY_LABELS[c] + ": " + next);
+        askCategory(p.slug, c);
       });
     });
 
+    bind("#pfAsk", function () { askCategory(p.slug, next); });
+    bind("#pfLink", function () { connectPart(p.slug); });
+    bind("#pfConnect", function () { connectPart(p.slug); });
     $("#pfCheckin").addEventListener("click", function () { startSession("checkin", [p.slug]); });
     var em = $("#pfEmbody");
     if (em) em.addEventListener("click", function () { askMaterial("embody", [p.slug]); });
@@ -446,17 +481,36 @@
     var ready = parts.filter(function (p) { return S.readiness(p).ready; });
     openSheet(
       '<h2 class="sheet-title serif">Start something</h2>' +
-      menuItem("", "Meet a new part", "intake interview · 10-20 min", "mi-intake") +
-      menuItem("", "Create a part by hand", "just a name is enough to start", "mi-create") +
-      menuItem("", "Check in with a part", parts.length ? "deepen an existing profile" : "you need a part first", "mi-checkin", !parts.length) +
-      menuItem("", "Map two parts", parts.length >= 2 ? "who protects, who conflicts" : "you need two parts first", "mi-map", parts.length < 2) +
+      '<div class="mi-head">Add a part</div>' +
+      menuItem("", "Upload or paste", "one .md file, a whole parts folder, or raw notes", "mi-import") +
+      menuItem("", "Meet a new part", "guided intake interview · 10-20 min", "mi-intake") +
+      menuItem("", "Create by hand", "just a name is enough to start", "mi-create") +
+      '<div class="mi-head">Get to know one</div>' +
+      menuItem("", "Answer the IFS questions", parts.length ? "work through a category yourself · no AI needed" : "you need a part first", "mi-ask", !parts.length) +
+      menuItem("", "Check in with a part", parts.length ? "AI session · deepens the profile" : "you need a part first", "mi-checkin", !parts.length) +
+      '<div class="mi-head">Connect them</div>' +
+      menuItem("", "Connect two parts", parts.length >= 2 ? "record how they relate · no AI needed" : "you need two parts first", "mi-link", parts.length < 2) +
+      menuItem("", "Map two parts", parts.length >= 2 ? "AI session · who protects, who conflicts" : "you need two parts first", "mi-map", parts.length < 2) +
+      '<div class="mi-head">Put them to work</div>' +
       menuItem("", "A part reacts to material", ready.length ? "embody one part over a document or decision" : "no part is developed enough yet", "mi-embody", !ready.length) +
-      menuItem("", "Table meeting", ready.length >= 2 ? "all developed parts respond; Self synthesizes" : "needs two developed parts", "mi-meeting", ready.length < 2) +
-      menuItem("", "Import a profile", "paste text or pick a .md file", "mi-import")
+      menuItem("", "Table meeting", ready.length >= 2 ? "all developed parts respond; Self synthesizes" : "needs two developed parts", "mi-meeting", ready.length < 2)
     );
     bind("#mi-intake", function () { closeSheet(); startSession("intake", []); });
     bind("#mi-create", function () { createPartSheet(""); });
+    bind("#mi-ask", function () {
+      pickPart("Which part are you asking?", function (slug) {
+        var p = ST.getPart(slug);
+        var next = Q.nextCategory(p);
+        if (!next) { openProfile(slug); toast("Every category is covered or declined - tap one to revisit"); return; }
+        askCategory(slug, next);
+      });
+    });
     bind("#mi-checkin", function () { pickPart("Who do you want to check in with?", function (slug) { startSession("checkin", [slug]); }); });
+    bind("#mi-link", function () {
+      pickParts("Which two parts relate?", 2, 2, false, function (slugs) {
+        relationshipSheet(slugs[0], slugs[1], function () { if (currentView === "map") renderMap(); });
+      });
+    });
     bind("#mi-map", function () {
       pickParts("Which two parts should we map?", 2, 2, false, function (slugs) { startSession("mapping", slugs); });
     });
@@ -474,7 +528,9 @@
     "mi-embody": "📄",      // document
     "mi-meeting": "🕯",     // candle
     "mi-import": "⤓",            // down arrow
-    "mi-create": "✎"             // pencil
+    "mi-create": "✎",            // pencil
+    "mi-ask": "?",
+    "mi-link": "⇄"
   };
 
   function menuItem(icon, title, sub, id, disabled) {
@@ -525,8 +581,10 @@
     go.addEventListener("click", function () { closeSheet(); cb(chosen.slice()); });
   }
 
-  function pickPart(title, cb, mustBeReady) {
-    var parts = ST.listParts().filter(function (p) { return !mustBeReady || S.readiness(p).ready; });
+  function pickPart(title, cb, mustBeReady, excludeSlug) {
+    var parts = ST.listParts().filter(function (p) {
+      return (!mustBeReady || S.readiness(p).ready) && p.slug !== excludeSlug;
+    });
     openSheet(
       '<h2 class="sheet-title serif">' + esc(title) + "</h2>" +
       parts.map(function (p) {
@@ -568,7 +626,7 @@
         '<textarea id="importBox" placeholder="There\'s this voice that shows up whenever I..."></textarea>' +
         '<div style="height:10px"></div>' +
         '<div style="display:flex;gap:10px">' +
-        '<button class="btn btn-soft" id="importFile" style="flex:1">Pick a .md file</button>' +
+        '<button class="btn btn-soft" id="importFile" style="flex:1">Pick .md files</button>' +
         '<button class="btn btn-primary" id="importGo" style="flex:1">Add part</button>' +
         '</div>' +
         '<div id="importResult"></div>' +
@@ -579,10 +637,15 @@
       $("#importByHand").addEventListener("click", function () { createPartSheet(""); });
       $("#importFile").addEventListener("click", function () {
         var inp = document.createElement("input");
-        inp.type = "file"; inp.accept = ".md,.txt,text/markdown,text/plain";
+        inp.type = "file"; inp.multiple = true;
+        inp.accept = ".md,.txt,text/markdown,text/plain";
         inp.addEventListener("change", function () {
-          var f = inp.files[0]; if (!f) return;
-          f.text().then(function (txt) {
+          var files = Array.prototype.slice.call(inp.files);
+          if (!files.length) return;
+          // analyze() already reads many profiles out of one blob - so a whole
+          // parts/ folder imports by concatenating the files
+          Promise.all(files.map(function (f) { return f.text(); })).then(function (texts) {
+            var txt = texts.join("\n\n");
             var box = $("#importBox");
             if (box) { box.value = txt; reviewImport(txt); }
           });
@@ -657,7 +720,7 @@
       '<button class="btn btn-primary btn-big" id="importConfirm">' +
       (profiles.length === 1 ? "Add " + esc(profiles[0].name) + " to the library" : "Add all to library") + '</button>';
     $("#importConfirm").addEventListener("click", function () {
-      profiles.forEach(ST.upsertPart);
+      profiles.forEach(function (p) { ST.mergePart(p); });
       closeSheet(); renderParts(); buzz(12);
       toast("Welcomed: " + profiles.map(function (p) { return p.name; }).join(", "));
       if (profiles.length === 1) openProfile(profiles[0].slug);
@@ -692,7 +755,7 @@
         missingHTML +
         '<button class="btn btn-primary btn-big" id="importSalvage">Import what was found</button>';
       $("#importSalvage").addEventListener("click", function () {
-        ST.upsertPart(p);
+        ST.mergePart(p);
         closeSheet(); renderParts(); buzz(12);
         toast("Welcomed: " + p.name);
         openProfile(p.slug);
@@ -713,7 +776,7 @@
       return;
     }
     rawFallbackOptions(text,
-      "Reading freeform notes needs an AI provider (Settings &rarr; Live sessions), or use one of these:");
+      "Sorting freeform notes automatically needs an AI provider (Settings &rarr; Live sessions). Without one:");
   }
 
   /* Manual mode / AI failure: real choices for raw text, never a dead end. */
@@ -722,11 +785,14 @@
     if (!box) return;
     box.innerHTML =
       '<p class="dim" style="margin:14px 2px 8px">' + leadHTML + '</p>' +
-      '<div style="display:flex;gap:10px;margin-top:6px">' +
-      '<button class="btn btn-primary" id="importCopyPrompt" style="flex:1">Copy an AI prompt for this</button>' +
-      '<button class="btn btn-soft" id="importSaveRaw" style="flex:1">Save as notes on a new part</button>' +
+      '<button class="btn btn-primary btn-big" id="importGuided" style="margin-top:6px">Keep the notes and answer the questions yourself</button>' +
+      '<p class="dim" style="margin:8px 2px">Creates the part with your text attached, then walks you through the IFS questions one at a time. No AI needed.</p>' +
+      '<div style="display:flex;gap:10px;margin-top:12px">' +
+      '<button class="btn btn-soft" id="importCopyPrompt" style="flex:1">Copy an AI prompt for this</button>' +
+      '<button class="btn btn-soft" id="importSaveRaw" style="flex:1">Just save as notes</button>' +
       '</div>' +
       '<p class="dim" style="margin:8px 2px">The prompt bundles your text with organizing instructions &mdash; paste it into any AI chat, then paste the reply back here.</p>';
+    $("#importGuided").addEventListener("click", function () { closeSheet(); createPartSheet("", text, true); });
     $("#importCopyPrompt").addEventListener("click", function () { copyConvertPrompt(text); });
     $("#importSaveRaw").addEventListener("click", function () { closeSheet(); createPartSheet("", text); });
   }
@@ -776,7 +842,7 @@
   /* Create a part with a simple form - no file, no interview required.
      The profile starts thin on purpose; check-ins deepen it. rawNotes, if
      given, is preserved verbatim in Session notes rather than lost. */
-  function createPartSheet(prefillName, rawNotes) {
+  function createPartSheet(prefillName, rawNotes, thenAsk) {
     closeSheet();
     setTimeout(function () {
       openSheet(
@@ -835,10 +901,124 @@
         p.sessions.push({ date: S.todayISO(), mode: "intake", categories: cats, note: rawNotes ? "profile started by hand, raw notes attached" : "profile started by hand" });
         ST.upsertPart(p);
         closeSheet(); renderParts(); buzz(12);
-        toast("Welcome, " + p.name + " - deepen it with a check-in anytime");
-        openProfile(slug);
+        toast("Welcome, " + p.name);
+        if (thenAsk) askCategory(slug, Q.nextCategory(p));
+        else openProfile(slug);
       });
     }, 240);
+  }
+
+  /* ================= guided questionnaire =================
+     The no-AI path through the question bank: one question per screen, skip
+     anything, decline the whole category. Answers write straight into the
+     profile - the same fields a session would have filled. */
+  function askCategory(slug, cat) {
+    var p = ST.getPart(slug);
+    if (!p) return;
+    var qs = Q.forCategory(cat);
+    if (!qs.length) return;
+    var answers = [];
+    var i = 0;
+    var done = false;
+
+    function finish(declined) {
+      // closePanel() fires the panel's close handler, which lands back here -
+      // one pass only, or the two call each other forever
+      if (done) return;
+      done = true;
+      if (declined) {
+        p.coverage[cat] = "declined";
+        p.sessions.push({ date: S.todayISO(), mode: "checkin", categories: [cat],
+          note: S.CATEGORY_LABELS[cat] + " declined - not to be re-asked" });
+        ST.upsertPart(p);
+        closePanel(); renderParts();
+        toast(S.CATEGORY_LABELS[cat] + " closed - it won't be raised again");
+        return;
+      }
+      if (!answers.length) { closePanel(); return; }
+
+      var answered = Q.applyAnswers(p, cat, answers);
+      // the introduction can rename the part; keep the slug in step
+      if (p.slug !== S.slugify(p.name)) p.slug = S.slugify(p.name);
+      p.narrative.session_notes = S.todayISO() + " - answered " + answered + " of " +
+        qs.length + " " + S.CATEGORY_LABELS[cat].toLowerCase() + " questions.\n\n" +
+        (p.narrative.session_notes || "");
+      p.sessions.push({ date: S.todayISO(), mode: "checkin", categories: [cat],
+        note: "guided questions: " + S.CATEGORY_LABELS[cat].toLowerCase() });
+
+      var oldSlug = slug;
+      if (p.slug !== oldSlug) ST.deletePart(oldSlug);
+      ST.upsertPart(p);
+      closePanel(); renderParts(); buzz(12);
+      afterGathering(p.slug, cat);
+    }
+
+    function step() {
+      if (i >= qs.length) { finish(false); return; }
+      var def = qs[i];
+      openPanel(p.name, S.CATEGORY_LABELS[cat] + " · " + (i + 1) + " of " + qs.length,
+        '<div class="profile">' +
+        '<div class="qprogress"><i style="width:' + Math.round((i / qs.length) * 100) + '%"></i></div>' +
+        '<div class="card"><h3>Ask ' + esc(p.name) + '</h3>' +
+        '<div class="qtext serif">' + esc(def.q) + "</div></div>" +
+        '<textarea id="qBox" placeholder="Write what it answers, in its words if you can. Blank is fine."></textarea>' +
+        (def.list ? '<p class="dim" style="margin:6px 2px">One per line - each becomes its own entry.</p>' : "") +
+        '<div class="profile-cta">' +
+        '<button class="btn btn-primary btn-big" id="qNext">' + (i === qs.length - 1 ? "Save answers" : "Next question") + "</button>" +
+        '<button class="btn btn-soft btn-big" id="qSkip">Skip this one</button>' +
+        '<button class="btn btn-ghost btn-big" id="qDecline">It doesn\'t want to go here</button>' +
+        "</div></div>",
+        "",
+        function () { if (answers.length) finish(false); return true; });
+
+      $("#qNext").addEventListener("click", function () {
+        var v = $("#qBox").value.trim();
+        if (v) answers.push({ def: def, text: v });
+        i++; buzz(); step();
+      });
+      $("#qSkip").addEventListener("click", function () { i++; buzz(); step(); });
+      $("#qDecline").addEventListener("click", function () {
+        openSheet(
+          '<h2 class="sheet-title serif">Close ' + esc(S.CATEGORY_LABELS[cat].toLowerCase()) + "?</h2>" +
+          '<p class="dim">Protectors set the pace. This category gets marked <b>declined</b> and nothing here will be asked again unless ' +
+          esc(p.name) + " brings it up.</p>" +
+          '<button class="btn btn-primary btn-big" id="qdYes">Yes, respect that</button>' +
+          '<button class="btn btn-ghost btn-big" id="qdNo">Keep going</button>');
+        bind("#qdYes", function () { closeSheet(); finish(true); });
+        bind("#qdNo", closeSheet);
+      });
+    }
+    step();
+  }
+
+  function splitLines(v) {
+    return v.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+
+  /* The step after gathering: connect the part up, or keep gathering. */
+  function afterGathering(slug, justDid) {
+    var p = ST.getPart(slug);
+    var next = Q.nextCategory(p);
+    var others = ST.listParts().filter(function (x) { return x.slug !== slug; });
+    var unconnected = others.length && !(p.relationships || []).length;
+    openSheet(
+      '<h2 class="sheet-title serif">Saved to ' + esc(p.name) + "</h2>" +
+      '<p class="dim">' + (justDid ? esc(S.CATEGORY_LABELS[justDid]) + " is recorded &middot; " : "") +
+      Math.round(S.coverageScore(p) * 100) + "% developed</p>" +
+      (unconnected ? menuItem("", "Connect " + p.name + " to another part", "how they protect, clash, or ally", "agLink") : "") +
+      (next ? menuItem("", "Keep going: " + S.CATEGORY_LABELS[next], "the thinnest part of the profile", "agNext") : "") +
+      menuItem("", "Open the profile", "see everything gathered so far", "agOpen")
+    );
+    bind("#agLink", function () { closeSheet(); connectPart(slug); });
+    bind("#agNext", function () { closeSheet(); askCategory(slug, next); });
+    bind("#agOpen", function () { closeSheet(); openProfile(slug); });
+  }
+
+  /* Pick another part, then reuse the map's relationship sheet. */
+  function connectPart(slug) {
+    pickPart("Connect " + ST.getPart(slug).name + " to which part?", function (other) {
+      relationshipSheet(slug, other, function () { openProfile(slug); });
+    }, false, slug);
   }
 
   /* ================= chat sessions ================= */
@@ -1207,17 +1387,38 @@
     bind("#closeStay", closeSheet);
   }
 
+  /* What the model wrote, merged onto what's already stored, shown before it
+     saves. Anything the model left out is kept, so a thin closing reply can
+     never quietly delete a field. */
+  function reviewMerge(incoming, done) {
+    var merged = incoming.map(function (p) { return S.mergeParts(ST.getPart(p.slug), p); });
+    openSheet(
+      '<h2 class="sheet-title serif">' + (merged.length === 1 ? "Update " + esc(merged[0].name) + "?" : "Update " + merged.length + " profiles?") + "</h2>" +
+      '<p class="dim">Merged onto what you already had &mdash; nothing the session skipped gets erased.</p>' +
+      (merged.length === 1 ? previewFieldsHTML(merged[0])
+        : merged.map(function (p) {
+            return '<div class="part-card" style="cursor:default"><div class="part-card-main">' +
+              '<div class="part-card-name">' + esc(p.name) + '</div><div class="part-card-sub">' +
+              Math.round(S.coverageScore(p) * 100) + "% developed</div></div></div>";
+          }).join("")) +
+      '<div style="height:12px"></div>' +
+      '<button class="btn btn-primary btn-big" id="rmSave">Save to ' + (merged.length === 1 ? esc(merged[0].name) + "'s profile" : "all profiles") + "</button>" +
+      '<button class="btn btn-ghost btn-big" id="rmSkip">Keep the transcript only</button>'
+    );
+    bind("#rmSave", function () {
+      merged.forEach(function (p) { ST.upsertPart(p); });
+      closeSheet(); renderParts(); buzz(12);
+      done(merged);
+    });
+    bind("#rmSkip", function () { closeSheet(); done([]); });
+  }
+
   function finalizeSession(sess, reply, interviewish) {
     sess.closed = true;
 
-    var savedNames = [];
+    var incoming = [];
     if (reply) {
-      try {
-        MD.extractProfiles(reply).forEach(function (p) {
-          ST.upsertPart(p);
-          savedNames.push(p.name);
-        });
-      } catch (e) { console.error(e); }
+      try { incoming = MD.extractProfiles(reply); } catch (e) { console.error(e); }
     }
     // log meeting/embody sessions on the parts without profile rewrite
     if (!interviewish) {
@@ -1246,8 +1447,20 @@
     panelOnClose = null;
     closePanel();
     renderParts();
-    toast(savedNames.length ? "Profile saved: " + savedNames.join(", ")
-      : (interviewish ? "Transcript saved - extract the profile anytime from Sessions" : "Session saved"));
+
+    if (!incoming.length) {
+      toast(interviewish ? "Transcript saved - extract the profile anytime from Sessions" : "Session saved");
+      return;
+    }
+    reviewMerge(incoming, function (saved) {
+      if (!saved.length) { toast("Transcript kept - profiles unchanged"); return; }
+      toast("Profile saved: " + saved.map(function (p) { return p.name; }).join(", "));
+      // one part, freshly deepened, still floating alone -> offer to connect it
+      var p = saved.length === 1 ? ST.getPart(saved[0].slug) : null;
+      if (p && !(p.relationships || []).length && ST.listParts().length > 1) {
+        setTimeout(function () { afterGathering(p.slug, null); }, 400);
+      }
+    });
   }
 
   /* ---------- manual (copy-prompt) mode ---------- */
@@ -1355,7 +1568,7 @@
 
   /* A link was drawn between two parts: ask how they relate, then write the
      mirrored edge and the person's description to BOTH profiles. */
-  function relationshipSheet(aSlug, bSlug) {
+  function relationshipSheet(aSlug, bSlug, after) {
     var a = ST.getPart(aSlug), b = ST.getPart(bSlug);
     if (!a || !b) return;
     var existing = (a.relationships || []).filter(function (r) { return r.part === bSlug; })[0];
@@ -1396,7 +1609,8 @@
       }
       drawEdge(aSlug, bSlug, sel.dataset.val, $("#relNote").value.trim());
       closeSheet(); buzz(12);
-      renderMap();
+      if (currentView === "map") renderMap();
+      if (after) after();
       toast("Mapped: " + a.name + " & " + b.name + " — saved to both profiles");
     });
   }
@@ -1661,6 +1875,7 @@
       if (!t) return;
       if (t.dataset.action === "new-intake") startSession("intake", []);
       if (t.dataset.action === "create-part") createPartSheet("");
+      if (t.dataset.action === "import-part") importSheet();
       if (t.dataset.action === "load-sample") {
         try {
           ST.upsertPart(MD.parse(ST.SAMPLE_CRITIC));

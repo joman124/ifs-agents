@@ -120,6 +120,54 @@
     return denom ? pts / denom : 0;
   }
 
+  /* Merge an incoming profile (from an LLM or an import) onto a stored one.
+     An omitted field means "the model didn't mention it", never "delete it" -
+     so empties never overwrite, lists union, and coverage only ever climbs.
+     Direct edits in the app bypass this and write straight through. */
+  var COV_RANK = { untouched: 0, partial: 1, complete: 2 };
+
+  function unionList(a, b) {
+    var out = (a || []).slice();
+    var seen = {};
+    out.forEach(function (x) { seen[String(x).toLowerCase().trim()] = 1; });
+    (b || []).forEach(function (x) {
+      var k = String(x).toLowerCase().trim();
+      if (k && !seen[k]) { seen[k] = 1; out.push(x); }
+    });
+    return out;
+  }
+
+  function mergeParts(base, incoming) {
+    if (!base) return incoming;
+    var out = JSON.parse(JSON.stringify(incoming));
+
+    ["name", "age", "location", "appearance", "origin", "positive_intent", "unburdened_vision"]
+      .forEach(function (k) { if (!out[k]) out[k] = base[k]; });
+    if (out.type === "unknown") out.type = base.type;
+    if (out.trust_in_self === "unknown") out.trust_in_self = base.trust_in_self;
+
+    ["emotions", "fears", "hopes_goals", "behaviors", "wants_needs"]
+      .forEach(function (k) { out[k] = unionList(base[k], out[k]); });
+
+    CATEGORIES.forEach(function (c) {
+      var b = base.coverage[c], i = out.coverage[c];
+      if (b === "declined" && i !== "complete") out.coverage[c] = "declined";
+      else if (COV_RANK[i] < COV_RANK[b]) out.coverage[c] = b;
+    });
+
+    // edges: keep every mapped relationship, incoming wins where both name one
+    var edges = (out.relationships || []).slice();
+    var have = {};
+    edges.forEach(function (r) { have[r.part] = 1; });
+    (base.relationships || []).forEach(function (r) { if (!have[r.part]) edges.push(r); });
+    out.relationships = edges;
+
+    NARRATIVE_SECTIONS.forEach(function (sec) {
+      if (!out.narrative[sec.key]) out.narrative[sec.key] = base.narrative[sec.key] || "";
+    });
+    return out;
+  }
+
   function todayISO() {
     var d = new Date();
     var m = String(d.getMonth() + 1).padStart(2, "0");
@@ -141,6 +189,7 @@
     blankPart: blankPart,
     readiness: readiness,
     coverageScore: coverageScore,
+    mergeParts: mergeParts,
     todayISO: todayISO
   };
 })();

@@ -6,6 +6,18 @@
   "use strict";
   var S = window.IFS.schema;
   var MD = window.IFS.md;
+  var Q = window.IFS.questions;
+
+  /* The question bank, rendered for a prompt. Named categories only, so a
+     check-in ships just the questions it's actually heading for. */
+  function questionBank(cats) {
+    return (cats || S.CATEGORIES).map(function (c) {
+      var qs = Q.forCategory(c);
+      if (!qs.length) return "";
+      return "**" + S.CATEGORY_LABELS[c] + "** (" + c + ")\n" +
+        qs.map(function (x) { return '- "' + x.q + '"'; }).join("\n");
+    }).filter(Boolean).join("\n\n");
+  }
 
   var SAFETY = [
     "## Non-negotiable rules (from IFS practice)",
@@ -54,9 +66,15 @@
       "## Session flow",
       "",
       "1. Setup: explain in two sentences what you'll do (ask questions to get to know one part, build a written profile, stop whenever they want). Ask which part they'd like to get to know today. If unsure: 'Is there a feeling, urge, or inner voice that's been showing up lately that you're curious about?' Ask permission to begin.",
-      "2. Introduction (always first): name / how it's doing / does it need anything / its role or purpose / age / where it lives in or around the body / what it looks like. One at a time.",
-      "3. Two or three more categories, as tolerated, from: History & Origin (headlines only), Emotions & Feelings (including 'what are you afraid would happen if you stepped outside your role?'), Beliefs & Motivations, Relationship with Other Parts, Communication & Needs, Positive Intent, Changes & Healing ('if you didn't have to play that role anymore, what would you do instead?'), Integration & Harmony. Ask permission at each category boundary. Depth over coverage.",
+      "2. Introduction (always first), then two or three more categories as tolerated. Ask permission at each category boundary. Depth over coverage - three categories explored well beats nine skimmed.",
+      "3. Work from the question bank below. Use its wording where it fits naturally; follow the part when it takes you somewhere the bank doesn't go. Never run it as a checklist, and never ask two at once.",
       "4. Closing reflection: thank the part by name; 'anything you want written down?'; note anything for next time.",
+      "",
+      "## The question bank",
+      "",
+      questionBank(),
+      "",
+      "History & Origin stays at headline level - when and what, never the details of what happened. Do not ask about traumatic memories.",
       "",
       PROFILE_OUTPUT,
       "",
@@ -65,6 +83,12 @@
   }
 
   function checkin(part) {
+    // the app already knows where this profile is thinnest - hand the model
+    // that category's questions rather than the whole bank
+    var target = Q.nextCategory(part);
+    var aim = S.CATEGORIES.filter(function (c) {
+      return c === target || (part.coverage[c] === "untouched" && c !== target);
+    }).slice(0, 2);
     return [
       "You are the same gentle interviewer from the intake session, returning for an ongoing check-in with a part the person already knows. Sessions are short (10-20 minutes) and the profile deepens across many of them. There is no finish line.",
       "",
@@ -76,10 +100,15 @@
       "",
       "## Session flow",
       "",
-      "1. From the profile: honor previously stated wants/needs before asking anything new. Identify the 1-2 lowest-coverage categories that are NOT declined (untouched beats partial). If the last Session note flagged something for next time, that takes priority. Never raise declined topics unless the part does.",
+      "1. From the profile: honor previously stated wants/needs before asking anything new. This profile is thinnest on **" +
+        (target ? S.CATEGORY_LABELS[target] : "nothing - every category has been covered or declined") +
+        "**, so aim there unless the last Session note flagged something for next time, or the part wants elsewhere. Never raise declined topics unless the part does.",
       "2. Greet the part by name. 'How are you doing?' 'Do you need anything?' 'Has anything changed since we last talked?' If the part wants to talk about something else entirely, follow the part.",
       "3. Deepen 1-2 categories with permission - 3 to 5 questions total, one at a time, reflecting back. Useful: 'Last time you said <quote> - is that still true?' and 'Is there anything you've wanted the person to know that hasn't come up yet?'",
       "4. Closing: thank the part by name; 'anything you want written down from today?'; 'anything for next time?'",
+      "",
+      aim.length ? "## Questions for where this profile is thin\n\n" + questionBank(aim) +
+        "\n\nUse this wording where it fits; follow the part when it goes elsewhere." : "",
       "",
       PROFILE_OUTPUT,
       "",

@@ -73,12 +73,27 @@ webapp version of this whole flow — no install, no backend, no account.
 **Live at [ifs-agents.vercel.app](https://ifs-agents.vercel.app)** (open it on
 your phone and Add to Home Screen):
 
+It follows one spine — **add a part → gather → integrate → connect**:
+
+- **Add** — upload a whole `parts/` folder at once, paste raw journaling, or
+  create by hand with just a name.
+- **Gather** — the question bank from
+  [`docs/source/`](docs/source/) ships in the app. Tap any coverage category to
+  work through its real IFS questions one per screen, answering, skipping, or
+  declining — **no API key needed**. The same bank feeds the AI prompts, and
+  check-ins target whichever category the profile is thinnest on.
+- **Integrate** — answers write straight into the profile's fields. When an AI
+  session closes, its profile is **merged, not overwritten**, and shown for
+  confirmation first: a thin closing reply can never erase what you already had.
+- **Connect** — every part gets a "connect to another part" step; edges are
+  written to both profiles, mirrored, with no AI required.
+
 - **Parts library** with coverage rings, type badges, and compile-readiness
   indicators; **swarm map** as an interactive touch-draggable graph.
 - **Live guided sessions** (intake, check-in, mapping, embody, table meeting)
-  as a chat, powered by your own Gemini or Anthropic API key — the key and all
-  profiles stay on your device. No key? A **copy-prompt mode** generates the
-  portable prompt for any chat you already use, and imports the result back.
+  as a chat, powered by your own Gemini, Anthropic, or OpenAI API key — the key
+  and all profiles stay on your device. No key? A **copy-prompt mode** generates
+  the portable prompt for any chat you already use, and imports the result back.
 - **Round-trip markdown**: profiles import/export in the exact
   `parts/<slug>.md` format, so the webapp and the Claude Code skills below
   interoperate on the same files.
@@ -124,6 +139,7 @@ The `templates/` files are self-contained prompts:
 | Path | What it is |
 |---|---|
 | `app/` | Inner Table — the installable mobile webapp (PWA, zero backend) |
+| `app/js/questions.js` | The IFS question bank as data — drives both the in-app questionnaire and the AI prompts |
 | `templates/` | The portable prompts — the heart of the system |
 | `schema/part-schema.md` | Canonical profile schema, edge types, coverage model, compile-readiness bar |
 | `skills/` | Claude Code slash-command wrappers around the templates |

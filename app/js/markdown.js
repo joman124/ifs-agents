@@ -5,6 +5,7 @@
 (function () {
   "use strict";
   var S = window.IFS.schema;
+  var UNNAMED = "(unnamed part)";
 
   /* ---------------- serialize ---------------- */
 
@@ -80,6 +81,21 @@
 
   /* ---------------- parse ---------------- */
 
+  /* Drop a trailing YAML comment - but a # inside a quoted string is content,
+     not a comment. "Captain — #10" must survive the round trip. */
+  function stripComment(v) {
+    var q = v.charAt(0);
+    if (q === '"' || q === "'") {
+      for (var i = 1; i < v.length; i++) {
+        if (q === '"' && v.charAt(i) === "\\") { i++; continue; }
+        if (v.charAt(i) === q) return v.slice(0, i + 1);
+      }
+      return v; // unterminated quote: leave it be rather than truncate
+    }
+    // ^ as well as \s: a value that is nothing but a comment is an empty value
+    return v.replace(/(^|\s)#.*$/, "");
+  }
+
   function unquote(v) {
     v = v.trim();
     if (v.length >= 2 && v[0] === '"' && v[v.length - 1] === '"') {
@@ -103,10 +119,12 @@
       var m = line.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/);
       if (!m) { i++; continue; }
       var key = m[1];
-      var rest = m[2].replace(/\s+#.*$/, "").trim();
+      var rest = stripComment(m[2].trim()).trim();
       i++;
       if (rest === "[]") { out[key] = []; continue; }
-      if (rest !== "") { out[key] = unquote(rest); continue; }
+      // coerce, not unquote: an inline flow list (emotions: [a, b]) is a list,
+      // not the literal string "[a, b]"
+      if (rest !== "") { out[key] = coerce(rest); continue; }
       // block value: list or map, by inspecting next indented lines
       var items = [];
       var map = {};
@@ -155,7 +173,7 @@
   }
 
   function coerce(v) {
-    v = v.replace(/\s+#.*$/, "").trim();
+    v = stripComment(v.trim()).trim();
     var fl = v.match(/^\[(.*)\]$/); // flow list
     if (fl) {
       if (!fl[1].trim()) return [];
@@ -204,8 +222,17 @@
   }
 
   function buildPart(fm, body) {
-    var part = S.blankPart(typeof fm.name === "string" ? fm.name : "");
-    if (!part.name) throw new Error("Profile has no name field.");
+    var name = typeof fm.name === "string" ? fm.name.trim() : "";
+    if (!name) {
+      // A part that hasn't given a name yet is a real IFS state, not a broken
+      // file - keep it if the block is otherwise clearly a profile, so an
+      // import never silently drops one. The intro question can name it later.
+      if (!fm.coverage && !fm.type && !fm.positive_intent) {
+        throw new Error("Profile has no name field.");
+      }
+      name = UNNAMED;
+    }
+    var part = S.blankPart(name);
     part.slug = S.slugify(part.name);
     ["type", "age", "location", "appearance", "origin", "positive_intent", "unburdened_vision", "trust_in_self"]
       .forEach(function (k) { if (typeof fm[k] === "string") part[k] = fm[k]; });
@@ -241,8 +268,30 @@
     return part;
   }
 
+  /* Cut a run of concatenated bare profiles into one string each. A document
+     ends where the next one's opening --- begins; tracking whether we are
+     inside frontmatter keeps the closing --- from being mistaken for it.
+     Without this, picking a whole parts/ folder parses as a single part whose
+     body has swallowed every other file. */
+  function splitDocs(text) {
+    var lines = text.split(/\r?\n/);
+    var docs = [], cur = [], inFM = false, closedFM = false;
+    lines.forEach(function (line) {
+      var marker = /^---\s*$/.test(line);
+      if (marker && !inFM && closedFM) {   // a fresh document starts here
+        docs.push(cur.join("\n"));
+        cur = []; closedFM = false;
+      }
+      if (marker) { if (inFM) { inFM = false; closedFM = true; } else inFM = true; }
+      cur.push(line);
+    });
+    docs.push(cur.join("\n"));
+    return docs.filter(function (d) { return d.trim(); });
+  }
+
   /* Extract fenced profile blocks from an LLM reply that may contain prose
-     around one or more ```markdown ...``` blocks each holding a profile. */
+     around one or more ```markdown ...``` blocks each holding a profile.
+     Falls back to bare profile text - one file, or a folder's worth. */
   function extractProfiles(text) {
     var found = [];
     var fence = /```(?:markdown|md|yaml)?\s*\n([\s\S]*?)```/g;
@@ -254,7 +303,9 @@
       }
     }
     if (!found.length && /^﻿?\s*---/.test(text)) {
-      try { found.push(parse(text)); } catch (e) { /* not a bare profile */ }
+      splitDocs(text).forEach(function (doc) {
+        try { found.push(parse(doc)); } catch (e) { /* not a bare profile */ }
+      });
     }
     return found;
   }

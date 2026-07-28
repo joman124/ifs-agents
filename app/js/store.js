@@ -139,6 +139,15 @@
     save();
   }
 
+  /* Same as upsertPart, but for profiles that came back from a model or an
+     import: fields it left out are kept rather than wiped. */
+  function mergePart(part) {
+    if (!part || !part.slug) return part;
+    var merged = S.mergeParts(state.parts[part.slug], part);
+    upsertPart(merged);
+    return merged;
+  }
+
   function deletePart(slug) {
     delete state.parts[slug];
     // drop dangling edges pointing at the deleted part
@@ -178,7 +187,7 @@
     var count = 0;
     Object.keys(data.parts).forEach(function (k) {
       var p = data.parts[k];
-      if (p && p.slug && p.name) { upsertPart(p); count++; }
+      if (p && p.slug && p.name) { mergePart(p); count++; }
     });
     if (Array.isArray(data.transcripts)) {
       var have = {};
@@ -293,6 +302,7 @@
     listParts: listParts,
     getPart: getPart,
     upsertPart: upsertPart,
+    mergePart: mergePart,
     deletePart: deletePart,
     addTranscript: addTranscript,
     deleteTranscript: deleteTranscript,

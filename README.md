@@ -85,8 +85,12 @@ It follows one spine — **add a part → gather → integrate → connect**:
 - **Integrate** — answers write straight into the profile's fields. When an AI
   session closes, its profile is **merged, not overwritten**, and shown for
   confirmation first: a thin closing reply can never erase what you already had.
-- **Connect** — every part gets a "connect to another part" step; edges are
-  written to both profiles, mirrored, with no AI required.
+- **Connect** — the **swarm map is the editing surface**. Every pair of parts is
+  already drawn as a faint thread, because parts sharing a system always relate
+  — you just haven't named it yet. Tap a thread to name it, tap a part to focus
+  its threads, and use the three-tone legend (supportive / in tension / not
+  mapped yet) to filter. Edges are written to both profiles, mirrored, with no
+  AI required.
 
 - **Parts library** with coverage rings, type badges, and compile-readiness
   indicators; **swarm map** as an interactive touch-draggable graph.

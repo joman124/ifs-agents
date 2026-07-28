@@ -179,7 +179,7 @@
       var last = p.sessions.length ? p.sessions[p.sessions.length - 1] : null;
       var sub = p.positive_intent || (last ? "last session " + last.date : "not yet interviewed");
       return '<div class="part-card" data-slug="' + esc(p.slug) + '">' +
-        ringSVG(score, (p.name || "?").charAt(0).toUpperCase()) +
+        ringSVG(score, S.initial(p.name)) +
         '<div class="part-card-main">' +
         '<div class="part-card-name">' + esc(p.name) +
         ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
@@ -268,7 +268,7 @@
     var body =
       '<div class="profile">' +
       '<div class="profile-hero">' +
-      '<div class="avatar">' + esc((p.name || "?").charAt(0).toUpperCase()) + "</div>" +
+      '<div class="avatar">' + esc(S.initial(p.name)) + "</div>" +
       '<h1 class="serif">' + esc(p.name) + "</h1>" +
       '<div class="sub"><span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
       '<div class="chips">' + facts.map(function (f) { return '<span class="chip">' + f + "</span>"; }).join("") +
@@ -508,7 +508,7 @@
     bind("#mi-checkin", function () { pickPart("Who do you want to check in with?", function (slug) { startSession("checkin", [slug]); }); });
     bind("#mi-link", function () {
       pickParts("Which two parts relate?", 2, 2, false, function (slugs) {
-        relationshipSheet(slugs[0], slugs[1], function () { if (currentView === "map") renderMap(); });
+        relationshipSheet(slugs[0], slugs[1]);
       });
     });
     bind("#mi-map", function () {
@@ -554,7 +554,7 @@
       (mustBeReady ? '<p class="dim">Only parts developed enough to speak for themselves are listed.</p>' : "") +
       parts.map(function (p) {
         return '<button class="menu-item pk" data-slug="' + esc(p.slug) + '"><span class="mi-icon">' +
-          esc(p.name.charAt(0).toUpperCase()) + '</span><span class="mi-main">' + esc(p.name) +
+          esc(S.initial(p.name)) + '</span><span class="mi-main">' + esc(p.name) +
           '<span class="mi-sub">' + esc(p.type) + '</span></span><span class="pk-check">&#10003;</span></button>';
       }).join("") +
       '<div style="height:12px"></div>' +
@@ -589,7 +589,7 @@
       '<h2 class="sheet-title serif">' + esc(title) + "</h2>" +
       parts.map(function (p) {
         return '<button class="menu-item" data-slug="' + esc(p.slug) + '"><span class="mi-icon">' +
-          esc(p.name.charAt(0).toUpperCase()) + '</span><span class="mi-main">' + esc(p.name) +
+          esc(S.initial(p.name)) + '</span><span class="mi-main">' + esc(p.name) +
           '<span class="mi-sub">' + esc(p.type) + "</span></span></button>";
       }).join("")
     );
@@ -687,7 +687,7 @@
       : "No categories covered yet";
     var exists = !!ST.getPart(p.slug);
     return '<div class="part-card" style="cursor:default;margin-top:12px">' +
-      ringSVG(S.coverageScore(p), (p.name || "?").charAt(0).toUpperCase()) +
+      ringSVG(S.coverageScore(p), S.initial(p.name)) +
       '<div class="part-card-main"><div class="part-card-name">' + esc(p.name) +
       ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
       '<div class="part-card-sub">' + (exists ? "updates your existing " + esc(p.name) : "new part") +
@@ -1507,56 +1507,83 @@
   }
 
   /* ================= map ================= */
-  var mapLinkMode = false;
+  var mapTone = null; // null = show everything, else "positive"|"negative"|"unknown"
 
-  function setMapHint() {
-    $("#mapHint").textContent = mapLinkMode
-      ? "tap one part, then the other, to draw their relationship"
-      : "tap a part · drag to move · pinch to zoom";
+  /* Three tones, each a filter. Counts come from the parts themselves so the
+     legend doubles as a read on how much of the system is still unmapped. */
+  function renderLegend(parts) {
+    var counts = { positive: 0, negative: 0, unknown: 0 };
+    var seen = {};
+    parts.forEach(function (p) {
+      (p.relationships || []).forEach(function (r) {
+        if (!ST.getPart(r.part)) return;
+        var k = [p.slug, r.part].sort().join("|");
+        if (seen[k]) return;
+        seen[k] = 1;
+        counts[S.EDGE_TONE[r.type] || "unknown"]++;
+      });
+    });
+    var pairs = (parts.length * (parts.length - 1)) / 2;
+    counts.unknown = Math.max(0, pairs - Object.keys(seen).length);
+
+    var row = function (tone, swatch) {
+      return '<button class="lg' + (mapTone === tone ? " on" : "") + '" data-tone="' + tone + '">' +
+        swatch + '<span>' + esc(S.TONE_LABELS[tone]) + "</span>" +
+        '<b>' + counts[tone] + "</b></button>";
+    };
+    $("#mapLegend").innerHTML =
+      row("positive", '<i style="color:var(--good)"></i>') +
+      row("negative", '<i style="color:var(--warn);border-top-style:dashed"></i>') +
+      row("unknown", '<i class="faint"></i>') +
+      '<div class="lg-hint">' + (mapTone ? "tap again to show all" : "tap a line to name it") + "</div>";
+
+    document.querySelectorAll("#mapLegend .lg").forEach(function (el) {
+      el.addEventListener("click", function () {
+        mapTone = mapTone === el.dataset.tone ? null : el.dataset.tone;
+        buzz();
+        G.refresh();
+        renderLegend(ST.listParts());
+      });
+    });
   }
 
   function renderMap() {
     var parts = ST.listParts();
     var svg = $("#swarmSvg");
     var has = parts.length > 0;
-    mapLinkMode = false;
+    mapTone = null;
     $("#mapEmpty").classList.toggle("hidden", has);
     $("#mapLegend").classList.toggle("hidden", !has);
     $("#mapHint").classList.toggle("hidden", !has);
     $("#mapCard").classList.add("hidden");
-    var linkBtn = $("#mapLinkBtn");
-    linkBtn.classList.toggle("hidden", parts.length < 2);
-    linkBtn.classList.remove("on");
-    setMapHint();
-    linkBtn.onclick = function () {
-      mapLinkMode = !mapLinkMode;
-      linkBtn.classList.toggle("on", mapLinkMode);
-      if (!mapLinkMode) G.clearLink();
-      setMapHint();
-      $("#mapCard").classList.add("hidden");
-      buzz();
-    };
+    $("#mapHint").textContent = parts.length > 1
+      ? "tap a part to focus it · tap a line to name that relationship"
+      : "tap a part · drag to move · pinch to zoom";
     if (has) {
-      $("#mapLegend").innerHTML =
-        '<div class="lg"><i style="color:var(--manager)"></i>protects</div>' +
-        '<div class="lg"><i style="color:var(--firefighter);border-top-style:dashed"></i>polarized</div>' +
-        '<div class="lg"><i style="color:var(--good)"></i>allied</div>' +
-        '<div class="lg"><i style="color:var(--warn);border-top-style:dotted"></i>conflicts</div>';
+      renderLegend(parts);
       G.render(svg, parts, {
-        linkMode: function () { return mapLinkMode; },
-        onLink: function (fromSlug, toSlug) { relationshipSheet(fromSlug, toSlug); },
-        onLinkHint: toast,
+        tone: function () { return mapTone; },
+        onEdge: function (aSlug, bSlug) { relationshipSheet(aSlug, bSlug); },
         onSelect: function (node) {
             var card = $("#mapCard");
-            if (!node || node.self) { card.classList.add("hidden"); return; }
+            // the card and the legend share the bottom of the screen: while a
+            // part is focused the card is what matters
+            var show = function (on) { $("#mapLegend").classList.toggle("hidden", on); };
+            if (!node || node.self) { card.classList.add("hidden"); show(false); return; }
             var p = ST.getPart(node.id);
-            if (!p) { card.classList.add("hidden"); return; }
+            if (!p) { card.classList.add("hidden"); show(false); return; }
             var edges = (p.relationships || []).length;
+            var open = parts.length - 1 - edges;
+            var sub = edges && open ? edges + " mapped, " + open + " open"
+                    : edges ? edges + " mapped"
+                    : open ? open + " to name"
+                    : "the only part so far";
             card.innerHTML =
               '<span class="mc-name">' + esc(p.name) +
-              '<span class="mc-sub">' + esc(p.type) + " &middot; " + edges + " relationship" + (edges === 1 ? "" : "s") + "</span></span>" +
-              '<button class="btn btn-primary" id="mcOpen">Open profile</button>';
+              '<span class="mc-sub">' + esc(p.type) + " &middot; " + sub + "</span></span>" +
+              '<button class="btn btn-primary" id="mcOpen">Open</button>';
             card.classList.remove("hidden");
+            show(true);
             $("#mcOpen").addEventListener("click", function () { openProfile(p.slug); });
             buzz();
         }
@@ -1572,30 +1599,50 @@
     var a = ST.getPart(aSlug), b = ST.getPart(bSlug);
     if (!a || !b) return;
     var existing = (a.relationships || []).filter(function (r) { return r.part === bSlug; })[0];
-    var options = [
-      { val: "protects", label: a.name + " protects " + b.name },
-      { val: "protected-by", label: b.name + " protects " + a.name },
-      { val: "allied-with", label: "Allied — they work together" },
-      { val: "polarized-with", label: "Polarized — locked in a tug-of-war" },
-      { val: "conflicts-with", label: "In conflict — they clash" }
+    // grouped by tone, so the choice reads as supportive / in tension first
+    // and the exact IFS edge type second
+    var groups = [
+      { tone: "positive", options: [
+        { val: "allied-with", label: "Allied — they work together" },
+        { val: "protects", label: a.name + " protects " + b.name },
+        { val: "protected-by", label: b.name + " protects " + a.name }
+      ] },
+      { tone: "negative", options: [
+        { val: "conflicts-with", label: "In conflict — they clash" },
+        { val: "polarized-with", label: "Polarized — locked in a tug-of-war" }
+      ] }
     ];
     openSheet(
       '<h2 class="sheet-title serif">' + esc(a.name) + " &amp; " + esc(b.name) + "</h2>" +
       '<p class="dim">' + (existing
-        ? "They already have a mapped relationship (" + esc(existing.type.replace(/-/g, " ")) + ") — saving replaces it on both profiles."
-        : "How do these two relate? What you choose and write here is added to both profiles.") + "</p>" +
+        ? "Mapped as <b>" + esc(existing.type.replace(/-/g, " ")) + "</b> — saving replaces it on both profiles."
+        : "These two share a system, so something already passes between them. Name it, and it is written to both profiles.") + "</p>" +
       '<div class="seg" id="relType" style="flex-direction:column;gap:3px">' +
-      options.map(function (o) {
-        return '<button data-val="' + o.val + '"' + (existing && existing.type === o.val ? ' class="on"' : "") +
-          ' style="text-align:left;padding:11px 12px">' + esc(o.label) + "</button>";
+      groups.map(function (grp) {
+        return '<div class="rel-tone ' + grp.tone + '">' + esc(S.TONE_LABELS[grp.tone]) + "</div>" +
+          grp.options.map(function (o) {
+            return '<button data-val="' + o.val + '"' + (existing && existing.type === o.val ? ' class="on"' : "") +
+              ' style="text-align:left;padding:11px 12px">' + esc(o.label) + "</button>";
+          }).join("");
       }).join("") +
       "</div>" +
       '<label class="fieldlabel">Describe the relationship</label>' +
       '<textarea id="relNote" placeholder="What happens between them? e.g. when one pushes to publish, the other floods me with doubt...">' + esc((existing && existing.notes) || "") + "</textarea>" +
       '<div style="height:14px"></div>' +
-      '<button class="btn btn-primary btn-big" id="relSave">Add to both profiles</button>' +
+      '<button class="btn btn-primary btn-big" id="relSave">' + (existing ? "Update both profiles" : "Add to both profiles") + "</button>" +
+      (existing
+        ? '<button class="btn btn-ghost btn-big" id="relClear">Unmap — put it back to unknown</button>'
+        : '<button class="btn btn-ghost btn-big" id="relSkip">Leave it unmapped for now</button>') +
       '<div id="relMsg"></div>'
     );
+    bind("#relSkip", closeSheet);
+    bind("#relClear", function () {
+      clearEdge(aSlug, bSlug);
+      closeSheet(); buzz(12);
+      if (currentView === "map") renderMap();
+      if (after) after();
+      toast("Unmapped — " + a.name + " and " + b.name + " are back to an open question");
+    });
     $("#relType").addEventListener("click", function (e) {
       var btn = e.target.closest("button"); if (!btn) return;
       document.querySelectorAll("#relType button").forEach(function (x) { x.classList.remove("on"); });
@@ -1641,6 +1688,20 @@
     addNarrative(b, a, mirror);
     ST.upsertPart(a);
     ST.upsertPart(b);
+  }
+
+  /* Drop a mapped edge from both sides, back to the honest "we haven't asked"
+     state. The narrative lines stay - they are a record of what was said. */
+  function clearEdge(aSlug, bSlug) {
+    [[aSlug, bSlug], [bSlug, aSlug]].forEach(function (pair) {
+      var p = ST.getPart(pair[0]);
+      if (!p) return;
+      p.relationships = (p.relationships || []).filter(function (r) { return r.part !== pair[1]; });
+      if (!p.relationships.length && p.coverage.relationships === "partial") {
+        p.coverage.relationships = "untouched";
+      }
+      ST.upsertPart(p);
+    });
   }
 
   /* ================= sessions ================= */

@@ -436,11 +436,15 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 /* ================= swarm map ================= */
 .map-wrap { position: absolute; inset: 0; overflow: hidden; }
 .swarm { width: 100%; height: 100%; touch-action: none; display: block; }
-.swarm .edge { stroke-width: 2; fill: none; }
-.swarm .edge.protects { stroke: var(--manager); marker-end: url(#arrow); }
-.swarm .edge.polarized-with { stroke: var(--firefighter); stroke-dasharray: 7 5; }
+.swarm .edge { stroke-width: 2; fill: none; transition: opacity .2s; }
+.swarm .edge.protects { stroke: var(--good); marker-end: url(#arrow); }
 .swarm .edge.allied-with { stroke: var(--good); }
+.swarm .edge.polarized-with { stroke: var(--warn); stroke-dasharray: 7 5; }
 .swarm .edge.conflicts-with { stroke: var(--warn); stroke-dasharray: 2 5; }
+/* the unasked question: every pair of parts already relates somehow */
+.swarm .edge.implicit { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 1 6; }
+/* invisible, fat, and the only thing a finger has to hit */
+.swarm .edge-hit { stroke: transparent; stroke-width: 18; fill: none; cursor: pointer; }
 .swarm .edgelabel { font-size: 9px; fill: var(--ink-faint); text-anchor: middle; }
 .swarm .node circle { stroke-width: 2.5; }
 .swarm .node text { fill: var(--ink); font-size: 12px; font-weight: 600; text-anchor: middle; }
@@ -453,8 +457,24 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   backdrop-filter: blur(8px); border: 1px solid var(--line);
   padding: 10px 12px; border-radius: 12px; font-size: .68rem; color: var(--ink-dim);
 }
-.map-legend .lg { display: flex; align-items: center; gap: 8px; }
-.map-legend .lg i { width: 22px; height: 0; border-top: 2px solid; display: inline-block; }
+.map-legend .lg {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  font-size: .68rem; color: var(--ink-dim); text-align: left;
+  padding: 5px 7px; border-radius: 8px; border: 1px solid transparent;
+}
+.map-legend .lg:active { background: var(--surface2); }
+.map-legend .lg.on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.map-legend .lg i { width: 22px; height: 0; border-top: 2px solid; display: inline-block; flex: none; }
+.map-legend .lg i.faint { border-top: 1px dotted var(--ink-faint); }
+.map-legend .lg span { flex: 1; }
+.map-legend .lg b { font-variant-numeric: tabular-nums; color: var(--ink); }
+.map-legend .lg-hint { font-size: .62rem; color: var(--ink-faint); padding: 2px 7px 0; }
+.rel-tone {
+  font-size: .66rem; text-transform: uppercase; letter-spacing: .11em;
+  color: var(--ink-faint); padding: 10px 2px 4px;
+}
+.rel-tone.positive { color: var(--good); }
+.rel-tone.negative { color: var(--warn); }
 .map-empty { position: absolute; inset: 0; margin: auto; height: fit-content; }
 .map-card {
   position: absolute; left: 50%; transform: translateX(-50%);
@@ -471,17 +491,6 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
   font-size: .7rem; color: var(--ink-faint); background: color-mix(in srgb, var(--bg) 75%, transparent);
   padding: 4px 12px; border-radius: 999px; pointer-events: none;
-}
-.map-linkbtn {
-  position: absolute; right: 12px; top: 44px; z-index: 4;
-  font-size: .76rem; font-weight: 700; color: var(--ink-dim);
-  background: var(--surface); border: 1px solid var(--line);
-  padding: 8px 14px; border-radius: 999px; box-shadow: var(--shadow);
-}
-.map-linkbtn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.swarm .node.linksrc circle {
-  stroke: var(--accent); stroke-width: 4;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 60%, transparent));
 }
 
 /* banners on the parts view (resume draft, backup nag) */

@@ -8,7 +8,7 @@
   "use strict";
 
   var sim = null;
-  var clearLinkFn = null; // set by the active render; lets the UI cancel a half-drawn link
+  var refreshFn = null; // set by the active render; lets the UI re-apply the legend filter
 
   function buildGraph(parts) {
     var nodes = [{ id: "self", label: "Self", self: true }];
@@ -19,19 +19,41 @@
     });
     var edges = [];
     var seen = {};
+    var mapped = {};                       // "slugA|slugB" (sorted) -> true
+    var pairKey = function (x, y) { return [x, y].sort().join("|"); };
     parts.forEach(function (p) {
       (p.relationships || []).forEach(function (r) {
         if (!(r.part in idx)) return;
         var t = r.type;
         var a = p.slug, b = r.part;
         if (t === "protected-by") { t = "protects"; a = r.part; b = p.slug; }
+        mapped[pairKey(p.slug, r.part)] = true;
         var key = t === "protects" ? "protects|" + a + "|" + b
                                    : t + "|" + [a, b].sort().join("|");
         if (seen[key]) return;
         seen[key] = 1;
-        edges.push({ a: idx[a], b: idx[b], type: t });
+        edges.push({ a: idx[a], b: idx[b], type: t, from: a, to: b });
       });
     });
+
+    /* Parts that share an inner system already relate somehow - we just have
+       not asked yet. Draw every unmapped pair as a faint "unknown" thread so
+       the relationship is visible as a question, and tappable to answer.
+       ponytail: every pair is O(n^2); past the cap the map would be a hairball
+       and the per-frame cost real, so above it only mapped edges are drawn. */
+    var IMPLICIT_CAP = 240;
+    if ((parts.length * (parts.length - 1)) / 2 <= IMPLICIT_CAP) {
+      for (var i = 0; i < parts.length; i++) {
+        for (var j = i + 1; j < parts.length; j++) {
+          if (mapped[pairKey(parts[i].slug, parts[j].slug)]) continue;
+          edges.push({
+            a: idx[parts[i].slug], b: idx[parts[j].slug],
+            type: "unknown", implicit: true,
+            from: parts[i].slug, to: parts[j].slug
+          });
+        }
+      }
+    }
     return { nodes: nodes, edges: edges };
   }
 
@@ -80,58 +102,56 @@
       n.vx = 0; n.vy = 0;
     });
 
-    var selected = null;   // node index or null
-    var linkSource = null; // node index of the first tapped part in link mode
+    var selected = null; // node index or null
 
-    function clearLinkSource() {
-      if (linkSource != null && nodeEls[linkSource]) nodeEls[linkSource].classList.remove("linksrc");
-      linkSource = null;
-    }
-    clearLinkFn = clearLinkSource;
-
-    /* In link mode a tap picks the two endpoints instead of selecting. */
+    /* Tapping a part focuses it: its threads to every other part light up,
+       mapped or not, so the next tap can name any of them. */
     function tapNode(ni) {
-      var n = g.nodes[ni];
-      if (opts.linkMode && opts.linkMode()) {
-        if (n.self) {
-          if (opts.onLinkHint) opts.onLinkHint("Draw links between parts - Self holds the whole map");
-          return;
-        }
-        if (linkSource == null) {
-          linkSource = ni;
-          nodeEls[ni].classList.add("linksrc");
-          if (opts.onLinkHint) opts.onLinkHint("Now tap the other part");
-        } else if (linkSource === ni) {
-          clearLinkSource();
-        } else {
-          var fromId = g.nodes[linkSource].id;
-          clearLinkSource();
-          if (opts.onLink) opts.onLink(fromId, n.id);
-        }
-        return;
-      }
       select(ni);
     }
 
-    var edgeEls = g.edges.map(function (e) {
+    var TONE = window.IFS.schema.EDGE_TONE;
+    var toneOf = function (e) { return e.implicit ? "unknown" : (TONE[e.type] || "unknown"); };
+
+    var edgeEls = g.edges.map(function (e, ei) {
       var line = document.createElementNS(NS, "line");
-      line.setAttribute("class", "edge " + e.type);
+      line.setAttribute("class", "edge " + e.type + (e.implicit ? " implicit" : ""));
       line.style.color = "var(--manager)";
       edgeLayer.appendChild(line);
+      // a fat invisible line under the thin one: a 2px stroke is not a touch target
+      var hit = document.createElementNS(NS, "line");
+      hit.setAttribute("class", "edge-hit");
+      edgeLayer.appendChild(hit);
+      hit.addEventListener("pointerdown", function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        if (opts.onEdge) opts.onEdge(e.from, e.to, e.implicit ? "" : e.type);
+      });
       var label = document.createElementNS(NS, "text");
       label.setAttribute("class", "edgelabel");
       label.textContent = e.type.replace(/-/g, " ");
       label.style.display = "none"; // labels only for the selected part's edges
       edgeLayer.appendChild(label);
-      return { line: line, label: label };
+      return { line: line, hit: hit, label: label };
     });
 
+    /* Visibility is two filters at once: which part is selected, and which
+       legend tone is switched on. An edge shows only if it passes both. */
     function applySelection() {
+      var tone = opts.tone && opts.tone();
       g.edges.forEach(function (e, i) {
-        var on = selected == null || e.a === selected || e.b === selected;
-        edgeEls[i].line.style.opacity = on ? "1" : ".12";
-        edgeEls[i].label.style.display =
-          (selected != null && (e.a === selected || e.b === selected)) ? "" : "none";
+        var touches = selected != null && (e.a === selected || e.b === selected);
+        var inTone = !tone || toneOf(e) === tone;
+        var el = edgeEls[i];
+        var op;
+        if (!inTone) op = 0;
+        else if (selected == null) op = e.implicit ? .3 : 1;
+        else if (touches) op = 1;
+        else op = e.implicit ? 0 : .12;
+        el.line.style.opacity = op;
+        el.hit.style.pointerEvents = op ? "stroke" : "none";
+        // only mapped edges get a label - "not mapped yet" on ten threads at
+        // once is noise, and the sheet names both parts anyway
+        el.label.style.display = touches && inTone && !e.implicit ? "" : "none";
       });
       g.nodes.forEach(function (n, i) {
         var neighbor = selected == null || i === selected || g.edges.some(function (e) {
@@ -141,6 +161,7 @@
       });
       if (opts.onSelect) opts.onSelect(selected == null ? null : g.nodes[selected]);
     }
+    refreshFn = applySelection;
 
     function select(i) {
       selected = (selected === i) ? null : i;
@@ -161,11 +182,13 @@
       var initial = document.createElementNS(NS, "text");
       initial.setAttribute("dy", "5");
       initial.setAttribute("font-size", n.self ? "13" : "15");
-      initial.textContent = n.self ? "Self" : (n.label || "?").trim().charAt(0).toUpperCase();
+      initial.textContent = n.self ? "Self" : window.IFS.schema.initial(n.label);
       var name = document.createElementNS(NS, "text");
       name.setAttribute("dy", r + 16);
       name.setAttribute("font-size", "11");
-      name.textContent = n.self ? "" : n.label;
+      // long names run off a phone screen; the full one is on the tap card
+      name.textContent = n.self ? ""
+        : (n.label.length > 18 ? n.label.slice(0, 17).trim() + "…" : n.label);
       grp.appendChild(c); grp.appendChild(initial); grp.appendChild(name);
       nodeLayer.appendChild(grp);
 
@@ -243,7 +266,6 @@
       if (p && Math.abs(ev.clientX - p.sx) + Math.abs(ev.clientY - p.sy) < 6 && Object.keys(pointers).length === 1) {
         selected = null;
         applySelection();
-        clearLinkSource(); // background tap cancels a half-drawn link
       }
       delete pointers[ev.pointerId];
       if (Object.keys(pointers).length < 2) pinchStart = null;
@@ -282,6 +304,8 @@
         }
       }
       g.edges.forEach(function (e) {
+        if (e.implicit) return; // unmapped threads are drawn, not sprung -
+                                // otherwise every pair pulls and the map balls up
         var a = g.nodes[e.a], b = g.nodes[e.b];
         var dx = b.x - a.x, dy = b.y - a.y;
         var d = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -297,18 +321,24 @@
         n.vy += (H * .52 - n.y) * 0.0015;
         n.vx *= 0.82; n.vy *= 0.82;
         n.x += n.vx * heat; n.y += n.vy * heat;
-        n.x = Math.max(34, Math.min(W - 34, n.x));
-        n.y = Math.max(40, Math.min(H - 60, n.y));
+        // keep the name under the circle on screen, not just the circle
+        n.x = Math.max(52, Math.min(W - 52, n.x));
+        n.y = Math.max(40, Math.min(H - 70, n.y));
       });
       heat *= 0.985;
 
       g.edges.forEach(function (e, i) {
         var a = g.nodes[e.a], b = g.nodes[e.b];
         var el = edgeEls[i];
+        if (el.line.style.opacity === "0") return; // filtered out: skip the work
         el.line.setAttribute("x1", a.x); el.line.setAttribute("y1", a.y);
         el.line.setAttribute("x2", b.x); el.line.setAttribute("y2", b.y);
-        el.label.setAttribute("x", (a.x + b.x) / 2);
-        el.label.setAttribute("y", (a.y + b.y) / 2 - 5);
+        el.hit.setAttribute("x1", a.x); el.hit.setAttribute("y1", a.y);
+        el.hit.setAttribute("x2", b.x); el.hit.setAttribute("y2", b.y);
+        if (el.label.style.display === "") {
+          el.label.setAttribute("x", (a.x + b.x) / 2);
+          el.label.setAttribute("y", (a.y + b.y) / 2 - 5);
+        }
       });
       g.nodes.forEach(function (n, i) {
         nodeEls[i].setAttribute("transform", "translate(" + n.x + "," + n.y + ")");
@@ -326,9 +356,10 @@
     if (sim) { cancelAnimationFrame(sim.raf); sim = null; }
   }
 
-  function clearLink() {
-    if (clearLinkFn) clearLinkFn();
+  /* Re-apply the current selection and legend filter without rebuilding. */
+  function refresh() {
+    if (refreshFn) refreshFn();
   }
 
-  window.IFS.graph = { render: render, stop: stop, clearLink: clearLink };
+  window.IFS.graph = { render: render, stop: stop, refresh: refresh };
 })();

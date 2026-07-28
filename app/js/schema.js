@@ -39,6 +39,18 @@
     "conflicts-with": "conflicts-with"
   };
 
+  /* The five schema edge types read as three tones on the map and in the
+     relationship sheet. The schema stays the source of truth - this is only
+     how they are grouped for a person choosing between them. */
+  var EDGE_TONE = {
+    "protects": "positive",
+    "protected-by": "positive",
+    "allied-with": "positive",
+    "polarized-with": "negative",
+    "conflicts-with": "negative"
+  };
+  var TONE_LABELS = { positive: "Supportive", negative: "In tension", unknown: "Not mapped yet" };
+
   var NARRATIVE_SECTIONS = [
     { key: "in_its_own_words", title: "In its own words" },
     { key: "origin_story", title: "Origin story" },
@@ -47,6 +59,13 @@
     { key: "what_it_needs", title: "What it needs" },
     { key: "session_notes", title: "Session notes" }
   ];
+
+  /* The letter shown in a part's circle. Skips a leading article and any
+     punctuation, so "The Final Boss" is F rather than yet another T. */
+  function initial(name) {
+    var s = String(name || "").replace(/^\s*(the|a|an)\s+/i, "").replace(/[^A-Za-z0-9]/g, "");
+    return (s.charAt(0) || "?").toUpperCase();
+  }
 
   function slugify(name) {
     return String(name || "").toLowerCase().trim()
@@ -184,8 +203,11 @@
     TRUST_LEVELS: TRUST_LEVELS,
     EDGE_TYPES: EDGE_TYPES,
     EDGE_MIRROR: EDGE_MIRROR,
+    EDGE_TONE: EDGE_TONE,
+    TONE_LABELS: TONE_LABELS,
     NARRATIVE_SECTIONS: NARRATIVE_SECTIONS,
     slugify: slugify,
+    initial: initial,
     blankPart: blankPart,
     readiness: readiness,
     coverageScore: coverageScore,

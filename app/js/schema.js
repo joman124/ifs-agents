@@ -187,6 +187,37 @@
     return out;
   }
 
+  /* Fold two profiles of the same part into one.
+     Different from applying a model's rewrite: there both sides describe the
+     same session and the newer text supersedes, so mergeParts lets the
+     incoming narrative win. Here both sides are real history that happened to
+     get recorded twice, so nothing may be dropped - narrative sections are
+     joined and both session logs are kept.
+     `keep` supplies the surviving name, slug and type; `absorb` fills gaps. */
+  function mergeDuplicate(keep, absorb) {
+    var out = mergeParts(absorb, keep);
+
+    NARRATIVE_SECTIONS.forEach(function (sec) {
+      var a = (keep.narrative[sec.key] || "").trim();
+      var b = (absorb.narrative[sec.key] || "").trim();
+      out.narrative[sec.key] = (a && b && a !== b) ? a + "\n\n" + b : (a || b);
+    });
+
+    var seen = {}, sessions = [];
+    (absorb.sessions || []).concat(keep.sessions || []).forEach(function (s) {
+      var k = s.date + "|" + s.mode + "|" + (s.note || "");
+      if (!seen[k]) { seen[k] = 1; sessions.push(s); }
+    });
+    sessions.sort(function (x, y) { return String(x.date).localeCompare(String(y.date)); });
+    out.sessions = sessions;
+
+    // an edge between the two halves would now point at the merged part itself
+    out.relationships = (out.relationships || []).filter(function (r) {
+      return r.part !== absorb.slug && r.part !== keep.slug;
+    });
+    return out;
+  }
+
   function todayISO() {
     var d = new Date();
     var m = String(d.getMonth() + 1).padStart(2, "0");
@@ -212,6 +243,7 @@
     readiness: readiness,
     coverageScore: coverageScore,
     mergeParts: mergeParts,
+    mergeDuplicate: mergeDuplicate,
     todayISO: todayISO
   };
 })();

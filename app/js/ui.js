@@ -130,11 +130,12 @@
     return isNaN(t) ? 9999 : (Date.now() - t) / 86400000;
   }
 
+  /* markBackup only on a real success - otherwise a cancelled share would
+     silence the "back up your parts" reminder without a backup existing. */
   function doExportBackup() {
-    downloadBlob(new Blob([ST.exportAll()], { type: "application/json" }), "inner-table-backup-" + S.todayISO() + ".json");
-    ST.markBackup();
-    renderParts();
-    toast("Backup exported - store it somewhere private");
+    exportText(ST.exportAll(), "inner-table-backup-" + S.todayISO() + ".json",
+      showTextToCopy,
+      function () { ST.markBackup(); renderParts(); });
   }
 
   function renderBanners() {
@@ -294,6 +295,7 @@
       nextCTA +
       '<button class="btn btn-soft btn-big" id="pfCheckin">Check in with ' + esc(p.name) + " (AI session)</button>" +
       (others.length ? '<button class="btn btn-soft btn-big" id="pfConnect">Connect to another part</button>' : "") +
+      (others.length ? '<button class="btn btn-soft btn-big" id="pfMerge">Merge with a duplicate</button>' : "") +
       '<button class="btn btn-soft btn-big" id="pfEmbody"' + (rd.ready ? "" : " disabled") + ">React to material (embody)</button>" +
       '<button class="btn btn-soft btn-big" id="pfExport">Export profile (.md)</button>' +
       '<button class="btn btn-soft btn-big" id="pfEdit">Edit raw markdown</button>' +
@@ -330,6 +332,7 @@
     bind("#pfAsk", function () { askCategory(p.slug, next); });
     bind("#pfLink", function () { connectPart(p.slug); });
     bind("#pfConnect", function () { connectPart(p.slug); });
+    bind("#pfMerge", function () { mergePartSheet(p.slug); });
     $("#pfCheckin").addEventListener("click", function () { startSession("checkin", [p.slug]); });
     var em = $("#pfEmbody");
     if (em) em.addEventListener("click", function () { askMaterial("embody", [p.slug]); });
@@ -438,24 +441,89 @@
     });
   }
 
-  function exportPartMd(p) {
-    var md = MD.serialize(p);
-    var file = new Blob([md], { type: "text/markdown" });
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([file], p.slug + ".md")] })) {
-      navigator.share({ files: [new File([file], p.slug + ".md", { type: "text/markdown" })], title: p.name })
-        .catch(function () {});
-    } else {
-      downloadBlob(file, p.slug + ".md");
+  /* Getting text off the device, in the order of what actually works.
+
+     An installed PWA on iOS ignores <a download> entirely, and the old code
+     called it, then reported success either way - so "export" looked like it
+     had worked while producing nothing. It also declared the file as
+     text/markdown, which iOS will not accept in a share sheet.
+
+     So: share sheet first (text/plain, which iOS accepts, with the .md name
+     preserved), then a real download, then the clipboard, and if all three
+     fail, put the text on screen to select by hand. Every branch reports what
+     truly happened. */
+  function exportText(text, filename, onFallback, onSuccess) {
+    var done = function (msg) { toast(msg); if (onSuccess) onSuccess(); };
+    var blob = new Blob([text], { type: "text/plain" });
+    var file = null;
+    try { file = new File([blob], filename, { type: "text/plain" }); } catch (e) {}
+
+    if (file && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+      navigator.share({ files: [file] }).then(function () {
+        done("Shared - keep it private");
+      }, function (err) {
+        // AbortError is the person tapping Cancel: not a failure, say nothing
+        if (!err || err.name !== "AbortError") tryDownload(text, filename, blob, onFallback, done);
+      });
+      return;
     }
-    toast("Profile exported - keep it private");
+    tryDownload(text, filename, blob, onFallback, done);
   }
 
+  function tryDownload(text, filename, blob, onFallback, done) {
+    // a standalone PWA is exactly where <a download> silently does nothing
+    var standalone = window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+    if (!standalone && downloadBlob(blob, filename)) {
+      done("Downloaded " + filename + " - keep it private");
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        done("Copied to the clipboard - paste it somewhere safe");
+      }, function () { if (onFallback) onFallback(text, filename); });
+      return;
+    }
+    if (onFallback) onFallback(text, filename);
+  }
+
+  /* Last resort: the text on screen, selectable, with nothing between the
+     person and their own data. */
+  function showTextToCopy(text, filename) {
+    openPanel(filename, "select all, then copy",
+      '<div class="profile">' +
+      '<div class="readiness no">This device blocked both the share sheet and the download. ' +
+      'The file is below &mdash; tap the box, select all, and copy.</div>' +
+      '<textarea id="rawOut" readonly style="min-height:56vh;font:.8rem/1.5 ui-monospace,Consolas,monospace">' +
+      esc(text) + "</textarea>" +
+      '<div class="profile-cta"><button class="btn btn-primary btn-big" id="rawCopy">Copy it for me</button></div></div>');
+    $("#rawOut").addEventListener("focus", function () { this.select(); });
+    $("#rawCopy").addEventListener("click", function () {
+      var box = $("#rawOut");
+      box.select(); box.setSelectionRange(0, text.length);
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) {}
+      toast(ok ? "Copied" : "Copy blocked - select the text and copy by hand");
+    });
+  }
+
+  function exportPartMd(p) {
+    exportText(MD.serialize(p), p.slug + ".md", showTextToCopy);
+  }
+
+  /* Returns whether the download was actually initiated. */
   function downloadBlob(blob, name) {
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    document.body.appendChild(a); a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+    try {
+      var a = document.createElement("a");
+      if (typeof a.download === "undefined") return false; // no download support
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   function editRaw(slug) {
@@ -1012,6 +1080,67 @@
     bind("#agLink", function () { closeSheet(); connectPart(slug); });
     bind("#agNext", function () { closeSheet(); askCategory(slug, next); });
     bind("#agOpen", function () { closeSheet(); openProfile(slug); });
+  }
+
+  /* ================= merging duplicates =================
+     Two profiles of the same part - one made by hand, one from an import or a
+     session that named it slightly differently. Fold them into one without
+     losing either side. */
+  function mergePartSheet(slug) {
+    var p = ST.getPart(slug);
+    if (!p) return;
+    pickPart("Which part is the same as " + p.name + "?", function (otherSlug) {
+      confirmMerge(slug, otherSlug);
+    }, false, slug);
+  }
+
+  function confirmMerge(aSlug, bSlug) {
+    var keepSlug = aSlug;
+    function render() {
+      var keep = ST.getPart(keepSlug);
+      var absorb = ST.getPart(keepSlug === aSlug ? bSlug : aSlug);
+      if (!keep || !absorb) return;
+      var merged = S.mergeDuplicate(keep, absorb);
+      openSheet(
+        '<h2 class="sheet-title serif">Merge into one part</h2>' +
+        '<p class="dim">Nothing is thrown away: empty fields fill from the other side, ' +
+        'lists combine, coverage takes the higher value, both session logs are kept, ' +
+        'and anything written in the same section is joined rather than replaced. ' +
+        'Relationships pointing at either half end up on the merged part.</p>' +
+        '<label class="fieldlabel">Which name survives?</label>' +
+        '<div class="seg" id="mgName" style="flex-direction:column;gap:3px">' +
+        [aSlug, bSlug].map(function (s) {
+          var x = ST.getPart(s);
+          return '<button data-slug="' + esc(s) + '"' + (s === keepSlug ? ' class="on"' : "") +
+            ' style="text-align:left;padding:11px 12px">' + esc(x.name) +
+            ' <span class="dim">' + Math.round(S.coverageScore(x) * 100) + "% developed</span></button>";
+        }).join("") +
+        "</div>" +
+        '<p class="dim" style="margin:12px 2px 0">Result &mdash; ' + esc(absorb.name) +
+        " is absorbed and disappears from the library:</p>" +
+        previewFieldsHTML(merged) +
+        '<div style="height:12px"></div>' +
+        '<button class="btn btn-primary btn-big" id="mgGo">Merge into ' + esc(keep.name) + "</button>" +
+        '<button class="btn btn-ghost btn-big" id="mgNo">Keep them separate</button>'
+      );
+      $("#mgName").addEventListener("click", function (e) {
+        var btn = e.target.closest("button"); if (!btn) return;
+        keepSlug = btn.dataset.slug; buzz(); render();
+      });
+      bind("#mgNo", closeSheet);
+      bind("#mgGo", function () {
+        var absorbedName = absorb.name;
+        var res = ST.absorbPart(keepSlug, absorb.slug);
+        closeSheet(); buzz(12);
+        renderParts();
+        if (currentView === "map") renderMap();
+        if (res) {
+          openProfile(res.slug);
+          toast(absorbedName + " merged into " + res.name);
+        }
+      });
+    }
+    render();
   }
 
   /* Pick another part, then reuse the map's relationship sheet. */

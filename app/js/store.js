@@ -148,6 +148,33 @@
     return merged;
   }
 
+  /* Fold one part into another and drop the absorbed slug. Edges elsewhere in
+     the system that named the absorbed part are repointed at the survivor
+     first - deletePart would otherwise throw those relationships away. */
+  function absorbPart(keepSlug, absorbSlug) {
+    var keep = state.parts[keepSlug], absorb = state.parts[absorbSlug];
+    if (!keep || !absorb || keepSlug === absorbSlug) return null;
+    var merged = S.mergeDuplicate(keep, absorb);
+
+    Object.keys(state.parts).forEach(function (k) {
+      if (k === keepSlug || k === absorbSlug) return;
+      var p = state.parts[k];
+      var out = [], seen = {};
+      (p.relationships || []).forEach(function (r) {
+        var target = r.part === absorbSlug ? keepSlug : r.part;
+        if (seen[target]) return;   // both halves were linked to this part
+        seen[target] = 1;
+        out.push({ part: target, type: r.type, notes: r.notes || "" });
+      });
+      p.relationships = out;
+    });
+
+    delete state.parts[absorbSlug];
+    state.parts[keepSlug] = merged;
+    save();
+    return merged;
+  }
+
   function deletePart(slug) {
     delete state.parts[slug];
     // drop dangling edges pointing at the deleted part
@@ -303,6 +330,7 @@
     getPart: getPart,
     upsertPart: upsertPart,
     mergePart: mergePart,
+    absorbPart: absorbPart,
     deletePart: deletePart,
     addTranscript: addTranscript,
     deleteTranscript: deleteTranscript,

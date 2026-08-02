@@ -10,6 +10,20 @@
   var sim = null;
   var refreshFn = null; // set by the active render; lets the UI re-apply the legend filter
 
+  /* render() runs again on every visit to the map and after every edge saved,
+     but the pan/pinch/wheel handlers live on the <svg> itself, which
+     innerHTML = "" does not clear. Track them so each render replaces the
+     previous set instead of stacking another one on an installed PWA. */
+  var svgHandlers = [];
+  function bindSvg(svg, type, fn, opts) {
+    svg.addEventListener(type, fn, opts);
+    svgHandlers.push([svg, type, fn, opts]);
+  }
+  function unbindSvg() {
+    svgHandlers.forEach(function (h) { h[0].removeEventListener(h[1], h[2], h[3]); });
+    svgHandlers = [];
+  }
+
   /* How far from Self each seat sits, once a table has been built.
      "away" is absent: no pull, so it drifts with the rest of the swarm. */
   var SEAT_RADIUS = { table: 120, room: 200, adjoining: 280 };
@@ -64,6 +78,7 @@
   function render(svg, parts, opts) {
     opts = opts || {};
     if (sim) { cancelAnimationFrame(sim.raf); sim = null; }
+    unbindSvg();
     svg.innerHTML = "";
     var W = svg.clientWidth || 360, H = svg.clientHeight || 560;
     var g = buildGraph(parts);
@@ -230,7 +245,7 @@
             a still tap clears the selection ---- */
     var pointers = {};
     var pinchStart = null;
-    svg.addEventListener("pointerdown", function (ev) {
+    bindSvg(svg, "pointerdown", function (ev) {
       try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
       pointers[ev.pointerId] = { x: ev.clientX, y: ev.clientY, sx: ev.clientX, sy: ev.clientY };
       var ids = Object.keys(pointers);
@@ -239,7 +254,7 @@
         pinchStart = { d: Math.hypot(a.x - b.x, a.y - b.y), view: { x: view.x, y: view.y, w: view.w, h: view.h } };
       }
     });
-    svg.addEventListener("pointermove", function (ev) {
+    bindSvg(svg, "pointermove", function (ev) {
       var p = pointers[ev.pointerId];
       if (!p) return;
       var ids = Object.keys(pointers);
@@ -274,11 +289,11 @@
       delete pointers[ev.pointerId];
       if (Object.keys(pointers).length < 2) pinchStart = null;
     };
-    svg.addEventListener("pointerup", endPointer);
-    svg.addEventListener("pointercancel", endPointer);
+    bindSvg(svg, "pointerup", endPointer);
+    bindSvg(svg, "pointercancel", endPointer);
 
     // desktop nicety: wheel to zoom
-    svg.addEventListener("wheel", function (ev) {
+    bindSvg(svg, "wheel", function (ev) {
       ev.preventDefault();
       var factor = ev.deltaY > 0 ? 1.1 : 0.9;
       var w = Math.max(W * .4, Math.min(W * 2.5, view.w * factor));

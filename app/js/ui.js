@@ -536,8 +536,11 @@
     $("#rawSave").addEventListener("click", function () {
       try {
         var np = MD.parse($("#rawMd").value);
-        if (np.slug !== slug) ST.deletePart(slug);
-        ST.upsertPart(np);
+        if (np.slug !== slug && !ST.renamePart(slug, np)) {
+          toast("Not saved: another part is already called " + np.name);
+          return;
+        }
+        if (np.slug === slug) ST.upsertPart(np);
         closePanel(); renderParts(); toast("Saved");
         openProfile(np.slug);
       } catch (e) { toast("Not saved: " + e.message); }
@@ -548,6 +551,12 @@
   function newSessionSheet() {
     var parts = ST.listParts();
     var ready = parts.filter(function (p) { return S.readiness(p).ready; });
+    var tb = ST.state.table;
+    var seatedN = tb.built ? parts.filter(function (p) { return tb.seats[p.slug] === "table"; }).length : 0;
+    var meetOn = tb.built ? parts.length >= 2 : ready.length >= 2;
+    var meetSub = tb.built
+      ? (seatedN >= 2 ? seatedN + " seated at your table" : "seat two parts at your table first")
+      : (ready.length >= 2 ? "all developed parts respond; Self synthesizes" : "needs two developed parts");
     openSheet(
       '<h2 class="sheet-title serif">Start something</h2>' +
       '<div class="mi-head">Add a part</div>' +
@@ -562,7 +571,8 @@
       menuItem("", "Map two parts", parts.length >= 2 ? "AI session · who protects, who conflicts" : "you need two parts first", "mi-map", parts.length < 2) +
       '<div class="mi-head">Put them to work</div>' +
       menuItem("", "A part reacts to material", ready.length ? "embody one part over a document or decision" : "no part is developed enough yet", "mi-embody", !ready.length) +
-      menuItem("", "Table meeting", ready.length >= 2 ? "all developed parts respond; Self synthesizes" : "needs two developed parts", "mi-meeting", ready.length < 2)
+      // once a room exists, seating - not the readiness bar - governs meetings
+      menuItem("", "Table meeting", meetSub, "mi-meeting", !meetOn)
     );
     bind("#mi-intake", function () { closeSheet(); startSession("intake", []); });
     bind("#mi-create", function () { createPartSheet(""); });
@@ -585,6 +595,20 @@
     });
     bind("#mi-embody", function () { pickPart("Which part should react?", function (slug) { askMaterial("embody", [slug]); }, true); });
     bind("#mi-meeting", function () {
+      // with a room built, seating is the single source of truth for who
+      // attends - otherwise the prompt seats nobody and the meeting is empty
+      var tb = ST.state.table;
+      if (tb.built) {
+        var atTable = ST.listParts().filter(function (p) { return tb.seats[p.slug] === "table"; });
+        closeSheet();
+        if (atTable.length < 2) {
+          showView("table");
+          toast("Seat at least two parts at the table first");
+          return;
+        }
+        askMaterial("meeting", atTable.map(function (p) { return p.slug; }));
+        return;
+      }
       pickParts("Who takes a seat at the table?", 2, 99, true, function (slugs) { askMaterial("meeting", slugs); });
     });
     bind("#mi-import", importSheet);
@@ -1007,18 +1031,29 @@
       if (!answers.length) { closePanel(); return; }
 
       var answered = Q.applyAnswers(p, cat, answers);
-      // the introduction can rename the part; keep the slug in step
-      if (p.slug !== S.slugify(p.name)) p.slug = S.slugify(p.name);
       p.narrative.session_notes = S.todayISO() + " - answered " + answered + " of " +
         qs.length + " " + S.CATEGORY_LABELS[cat].toLowerCase() + " questions.\n\n" +
         (p.narrative.session_notes || "");
       p.sessions.push({ date: S.todayISO(), mode: "checkin", categories: [cat],
         note: "guided questions: " + S.CATEGORY_LABELS[cat].toLowerCase() });
 
-      var oldSlug = slug;
-      if (p.slug !== oldSlug) ST.deletePart(oldSlug);
-      ST.upsertPart(p);
+      // the introduction question can rename the part; move it properly
+      var taken = null;
+      if (S.slugify(p.name) !== slug) {
+        if (!ST.renamePart(slug, p)) {
+          taken = S.slugify(p.name);   // that name already belongs to someone
+          p.slug = slug;
+          ST.upsertPart(p);
+        }
+      } else {
+        ST.upsertPart(p);
+      }
       closePanel(); renderParts(); buzz(12);
+      if (taken) {
+        toast("A part is already called that - nothing was overwritten");
+        setTimeout(function () { confirmMerge(p.slug, taken); }, 400);
+        return;
+      }
       afterGathering(p.slug, cat);
     }
 
@@ -1506,7 +1541,7 @@
       '<button class="btn btn-primary btn-big" id="closeRetry">Try closing again</button>' +
       '<div style="height:8px"></div>' +
       '<button class="btn btn-soft btn-big" id="closeSaveOnly">Save the transcript without a profile</button>' +
-      '<p class="dim" style="margin:8px 2px">You can extract the profile from a saved transcript later, from the Sessions tab.</p>' +
+      '<p class="dim" style="margin:8px 2px">You can extract the profile from a saved transcript later, under Settings &rarr; Your data.</p>' +
       '<button class="btn btn-ghost btn-big" id="closeStay">Keep talking instead</button>'
     );
     bind("#closeRetry", function () { closeSheet(); endSession(); });
@@ -1579,7 +1614,7 @@
     renderParts();
 
     if (!incoming.length) {
-      toast(interviewish ? "Transcript saved - extract the profile anytime from Sessions" : "Session saved");
+      toast(interviewish ? "Transcript saved - extract it anytime from Settings" : "Session saved");
       return;
     }
     reviewMerge(incoming, function (saved) {
@@ -1934,7 +1969,7 @@
       var patch = { built: true };
       Object.keys(answers).forEach(function (k) { patch[k] = answers[k]; });
       // editing keeps whatever was left blank this time
-      if (!patch.room && !t.room) { done = false; closePanel(); return; }
+      if (!patch.room && !t.room) { closePanel(); return; }
       ST.saveTable(patch);
       closePanel();
       showView("table");
@@ -2052,6 +2087,12 @@
           '<span class="mi-icon">' + (have[x.id] ? "&#10003;" : "+") + '</span><span class="mi-main">' +
           esc(x.label) + '<span class="mi-sub">' + esc(x.blurb) + "</span></span></button>";
       }).join("") +
+      // anything invented needs a way back out, or it is in the room forever
+      t.tools.filter(function (x) { return x.id.indexOf("own-") === 0; }).map(function (x) {
+        return '<button class="menu-item tool on" data-tool="' + esc(x.id) + '">' +
+          '<span class="mi-icon">&#10003;</span><span class="mi-main">' + esc(x.label) +
+          '<span class="mi-sub">yours &middot; tap to remove</span></span></button>';
+      }).join("") +
       '<div style="height:12px"></div>' +
       '<label class="fieldlabel">Anything you want to invent yourself</label>' +
       '<input id="tlOwn" autocomplete="off" placeholder="a bell, a second door, a window...">' +
@@ -2062,8 +2103,9 @@
       el.addEventListener("click", function () {
         var id = el.dataset.tool;
         var def = R.TOOLS.filter(function (x) { return x.id === id; })[0];
-        if (have[id]) t.tools = t.tools.filter(function (x) { return x.id !== id; });
-        else t.tools.push({ id: id, label: def.label, note: "" });
+        var already = t.tools.some(function (x) { return x.id === id; });
+        if (already) t.tools = t.tools.filter(function (x) { return x.id !== id; });
+        else if (def) t.tools.push({ id: id, label: def.label, note: "" });
         ST.saveTable({ tools: t.tools });
         buzz(); renderTable(); toolsSheet();
       });
@@ -2071,7 +2113,11 @@
     bind("#tlAdd", function () {
       var v = $("#tlOwn").value.trim();
       if (!v) { toast("Name it first"); return; }
-      t.tools.push({ id: "own-" + S.slugify(v), label: v, note: "your own" });
+      var ownId = "own-" + S.slugify(v);
+      if (t.tools.some(function (x) { return x.id === ownId; })) {
+        toast("That one is already in the room"); return;
+      }
+      t.tools.push({ id: ownId, label: v, note: "your own" });
       ST.saveTable({ tools: t.tools });
       closeSheet(); renderTable(); buzz(12);
       toast(v + " is in the room");
@@ -2109,8 +2155,13 @@
         t.log.push({ date: S.todayISO(), answers: answers,
           note: answers.showed_up ? answers.showed_up.slice(0, 80) : "closing reflection" });
         if (answers.agreements) {
-          t.agreements = t.agreements.concat(splitLines(answers.agreements));
+          var have = {};
+          t.agreements.forEach(function (a) { have[a.toLowerCase().trim()] = 1; });
+          splitLines(answers.agreements).forEach(function (a) {
+            if (!have[a.toLowerCase().trim()]) { have[a.toLowerCase().trim()] = 1; t.agreements.push(a); }
+          });
         }
+        if (t.log.length > 100) t.log = t.log.slice(-100);
         ST.saveTable({ log: t.log, agreements: t.agreements });
       }
       closePanel(); renderTable();

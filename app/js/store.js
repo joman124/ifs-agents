@@ -186,10 +186,41 @@
       p.relationships = out;
     });
 
+    // the survivor takes the chair if it had none of its own
+    if (!state.table.seats[keepSlug] && state.table.seats[absorbSlug]) {
+      state.table.seats[keepSlug] = state.table.seats[absorbSlug];
+    }
+    delete state.table.seats[absorbSlug];
     delete state.parts[absorbSlug];
     state.parts[keepSlug] = merged;
     save();
     return merged;
+  }
+
+  /* Move a part onto the slug its name now derives, carrying everything with
+     it. deletePart must never be used for this: it strips every inbound edge
+     and the part's seat, and upsertPart would overwrite whatever already sits
+     on the destination. Returns null if that slug belongs to someone else -
+     the caller decides (the UI offers a merge). */
+  function renamePart(oldSlug, part) {
+    var newSlug = S.slugify(part.name);
+    if (newSlug === oldSlug) { part.slug = oldSlug; upsertPart(part); return part; }
+    if (state.parts[newSlug]) return null;
+    part.slug = newSlug;
+    Object.keys(state.parts).forEach(function (k) {
+      if (k === oldSlug) return;
+      (state.parts[k].relationships || []).forEach(function (r) {
+        if (r.part === oldSlug) r.part = newSlug;   // inbound edges follow it
+      });
+    });
+    if (state.table.seats[oldSlug]) {              // and so does its chair
+      state.table.seats[newSlug] = state.table.seats[oldSlug];
+      delete state.table.seats[oldSlug];
+    }
+    delete state.parts[oldSlug];
+    state.parts[newSlug] = part;
+    save();
+    return part;
   }
 
   function deletePart(slug) {
@@ -233,9 +264,20 @@
     var count = 0;
     Object.keys(data.parts).forEach(function (k) {
       var p = data.parts[k];
-      if (p && p.slug && p.name) { mergePart(p); count++; }
+      var clean = S.normalizePart(p);   // a hand-edited file must not brick the app
+      if (clean) { mergePart(clean); count++; }
     });
-    if (data.table && typeof data.table === "object") Object.assign(state.table, data.table);
+    if (data.table && typeof data.table === "object") {
+      var d = data.table, tb = {};
+      ["name", "room", "details"].forEach(function (k) { if (typeof d[k] === "string") tb[k] = d[k]; });
+      if (Array.isArray(d.tools)) tb.tools = d.tools.filter(function (x) { return x && typeof x.label === "string"; });
+      if (Array.isArray(d.agreements)) tb.agreements = d.agreements.filter(function (x) { return typeof x === "string"; });
+      if (d.seats && typeof d.seats === "object" && !Array.isArray(d.seats)) tb.seats = d.seats;
+      if (Array.isArray(d.log)) tb.log = d.log.filter(function (x) { return x && x.date; });
+      // built only counts if there is actually a room, or buildTable can loop
+      tb.built = !!(tb.room || state.table.room);
+      Object.assign(state.table, tb);
+    }
     if (Array.isArray(data.transcripts)) {
       var have = {};
       state.transcripts.forEach(function (t) { have[t.id] = 1; });
@@ -343,6 +385,7 @@
     save: save,
     initMirror: initMirror,
     saveTable: saveTable,
+    renamePart: renamePart,
     setDraft: setDraft,
     clearDraft: clearDraft,
     markBackup: markBackup,

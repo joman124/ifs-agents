@@ -218,6 +218,55 @@
     return out;
   }
 
+  /* Coerce an arbitrary object into a well-formed part, or null if it isn't
+     one. A backup file is just JSON someone can hand-edit, and a part missing
+     `coverage` or `narrative` makes readiness() and coverageScore() throw
+     inside renderParts - which bricks the Parts tab on every later boot. */
+  function normalizePart(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    if (typeof raw.name !== "string" || !raw.name.trim()) return null;
+    var p = blankPart(raw.name);
+    p.slug = (typeof raw.slug === "string" && raw.slug) ? raw.slug : slugify(raw.name);
+    ["type", "age", "location", "appearance", "origin", "positive_intent",
+     "unburdened_vision", "trust_in_self"].forEach(function (k) {
+      if (typeof raw[k] === "string") p[k] = raw[k];
+    });
+    if (PART_TYPES.indexOf(p.type) < 0) p.type = "unknown";
+    if (TRUST_LEVELS.indexOf(p.trust_in_self) < 0) p.trust_in_self = "unknown";
+    ["emotions", "fears", "hopes_goals", "behaviors", "wants_needs"].forEach(function (k) {
+      if (Array.isArray(raw[k])) {
+        p[k] = raw[k].filter(function (x) { return typeof x === "string" && x.trim(); });
+      }
+    });
+    if (Array.isArray(raw.relationships)) {
+      p.relationships = raw.relationships.filter(function (r) {
+        return r && typeof r === "object" && typeof r.part === "string" && r.part &&
+          EDGE_TYPES.indexOf(r.type) >= 0;
+      }).map(function (r) {
+        return { part: r.part, type: r.type, notes: typeof r.notes === "string" ? r.notes : "" };
+      });
+    }
+    if (raw.coverage && typeof raw.coverage === "object") {
+      CATEGORIES.forEach(function (c) {
+        if (COVERAGE_STATUSES.indexOf(raw.coverage[c]) >= 0) p.coverage[c] = raw.coverage[c];
+      });
+    }
+    if (Array.isArray(raw.sessions)) {
+      p.sessions = raw.sessions.filter(function (s) { return s && typeof s === "object" && s.date; })
+        .map(function (s) {
+          return { date: String(s.date), mode: s.mode || "checkin",
+                   categories: Array.isArray(s.categories) ? s.categories : [],
+                   note: typeof s.note === "string" ? s.note : "" };
+        });
+    }
+    if (raw.narrative && typeof raw.narrative === "object") {
+      NARRATIVE_SECTIONS.forEach(function (sec) {
+        if (typeof raw.narrative[sec.key] === "string") p.narrative[sec.key] = raw.narrative[sec.key];
+      });
+    }
+    return p;
+  }
+
   function todayISO() {
     var d = new Date();
     var m = String(d.getMonth() + 1).padStart(2, "0");
@@ -244,6 +293,7 @@
     coverageScore: coverageScore,
     mergeParts: mergeParts,
     mergeDuplicate: mergeDuplicate,
+    normalizePart: normalizePart,
     todayISO: todayISO
   };
 })();

@@ -1,6 +1,6 @@
 # Inner Table — handoff
 
-Everything a fresh session needs to pick this up. Written 2026-08-01.
+Everything a fresh session needs to pick this up. Written 2026-08-01, updated 2026-08-02.
 
 ---
 
@@ -82,6 +82,9 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
    questions, invite parts to one of four seats, add tools and agreements, hold a
    meeting, close with the reflection.
 4. **Settings** — provider keys, voice, theme, backup/restore, transcripts.
+   "Find my voices" lists the ElevenLabs account's own voices (clones first) so
+   no ID is copied by hand; "Test this key" does a live round-trip for
+   whichever LLM provider is active instead of failing silently mid-session.
 
 The **ⓘ in the topbar** opens the reference library from anywhere.
 

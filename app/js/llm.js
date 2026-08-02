@@ -5,14 +5,26 @@
 (function () {
   "use strict";
 
+  /* Always carry the provider's own words. A 403 is not always a bad key -
+     it is just as often a workspace, region or model permission - and
+     answering "check your key" to all of them sends people to the one place
+     the problem isn't. */
   function friendly(status, bodyText, provider) {
-    if (status === 401 || status === 403) return "The " + provider + " API key was rejected. Check it in Settings.";
-    if (status === 404) return "That " + provider + " model name wasn't found. Check the model in Settings.";
-    if (status === 429) return "Rate limit or quota reached on " + provider + ". Wait a minute and try again.";
-    if (status >= 500) return provider + " is having a moment (server error " + status + "). Try again shortly.";
     var detail = "";
-    try { detail = JSON.parse(bodyText).error.message || ""; } catch (e) {}
-    return provider + " error " + status + (detail ? ": " + detail.slice(0, 200) : ".");
+    try {
+      var j = JSON.parse(bodyText);
+      detail = (j.error && (j.error.message || j.error.status)) || j.message ||
+        (j.detail && (j.detail.message || j.detail)) || "";
+      if (typeof detail !== "string") detail = "";
+    } catch (e) {}
+    var said = detail ? " " + provider + " said: " + detail.slice(0, 200) : "";
+    if (status === 401) return "The " + provider + " API key was rejected." + (said || " Check it in Settings.");
+    if (status === 403) return provider + " refused that request (403)." +
+      (said || " The key may be valid but not permitted to use this model - check the key's workspace and model access.");
+    if (status === 404) return "That " + provider + " model name wasn't found." + (said || " Check the model in Settings.");
+    if (status === 429) return "Rate limit or quota reached on " + provider + "." + (said || " Wait a minute and try again.");
+    if (status >= 500) return provider + " is having a moment (server error " + status + ")." + said;
+    return provider + " error " + status + (said || ".");
   }
 
   async function withRetry(fn) {

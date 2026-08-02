@@ -77,6 +77,27 @@
   var gen = 0;
   var audioEl = null; // current ElevenLabs playback
 
+  /* ElevenLabs puts the real reason in the body - {detail:{status,message}} -
+     and a bare status code sends people hunting in the wrong place. A 403 in
+     particular is usually a key created without text_to_speech permission, or
+     a voice the plan doesn't cover; only the body says which. Consumes the
+     response, so call it only on a failure. */
+  async function apiError(res, noun) {
+    var msg = "";
+    try {
+      var d = (await res.json()).detail;
+      if (typeof d === "string") msg = d;
+      else if (d && typeof d.message === "string") msg = d.message;
+      else if (Array.isArray(d) && d[0] && d[0].msg) msg = d[0].msg;
+    } catch (e) {}
+    if (msg) return "ElevenLabs: " + msg.slice(0, 200);
+    if (res.status === 401) return "ElevenLabs rejected that API key";
+    if (res.status === 403) return "ElevenLabs refused that request (403) - the key may lack text-to-speech permission, or the voice may need a paid plan";
+    if (res.status === 404) return "That ElevenLabs " + (noun || "voice") + " wasn't found";
+    if (res.status === 429) return "ElevenLabs quota or rate limit reached";
+    return "ElevenLabs error " + res.status;
+  }
+
   function elevenConfig() {
     try {
       var s = window.IFS.store.state.settings;
@@ -125,10 +146,7 @@
         body: JSON.stringify({ text: clean, model_id: s.elevenModel || "eleven_flash_v2_5" })
       });
       if (!res.ok) {
-        apiProblem = res.status === 401 ? "ElevenLabs rejected the API key - check it in Settings."
-          : res.status === 404 ? "That ElevenLabs voice ID wasn't found - check it in Settings."
-          : res.status === 429 ? "ElevenLabs quota or rate limit reached."
-          : "ElevenLabs error " + res.status + ".";
+        apiProblem = await apiError(res, "voice");
         throw new Error(apiProblem);
       }
       var blob = await res.blob();
@@ -153,7 +171,7 @@
       a.play().catch(function () { a.onerror(); });
     } catch (e) {
       if (apiProblem && window.IFS.ui && window.IFS.ui.toast) {
-        window.IFS.ui.toast(apiProblem + " Using the browser voice.");
+        window.IFS.ui.toast(apiProblem.replace(/\.?$/, ".") + " Using the browser voice.");
       }
       if (gen === myGen && canSpeak()) browserSpeak(clean, myGen, done);
       else done();
@@ -167,6 +185,7 @@
   }
 
   window.IFS.voice = {
+    apiError: apiError,
     canListen: canListen,
     canSpeak: canSpeak,
     listen: listen,

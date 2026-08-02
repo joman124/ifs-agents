@@ -2376,11 +2376,7 @@
       var res = await fetch("https://api.elevenlabs.io/v1/voices", {
         headers: { "xi-api-key": s.elevenKey }
       });
-      if (!res.ok) {
-        throw new Error(res.status === 401 ? "ElevenLabs rejected that API key"
-          : res.status === 429 ? "ElevenLabs rate limit reached - try again shortly"
-          : "ElevenLabs error " + res.status);
-      }
+      if (!res.ok) throw new Error(await V.apiError(res, "account"));
       voices = (await res.json()).voices || [];
     } catch (e) {
       toast(e.message || "Could not reach ElevenLabs");

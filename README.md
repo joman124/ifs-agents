@@ -109,13 +109,14 @@ It follows one spine — **add a part → gather → integrate → connect**:
 - Installable PWA (Add to Home Screen), works offline, dark/light, and a
   one-tap "ground me" pause with the safety boundaries built in.
 
-Run the safety tests with `node test/run.js` — no dependencies, no browser; it
-checks profile parsing, merging, and untrusted-backup handling.
+Run it locally with any static server (`python -m http.server --directory app`,
+or `npx serve app`). There is no build step — `app/` is served as static files,
+and pushing to `main` deploys it.
 
-Run it locally with any static server (`python -m http.server --directory app`)
-or deploy it: the included GitHub Actions workflow publishes `app/` to GitHub
-Pages on every push (enable it once under **Settings → Pages → Source: GitHub
-Actions**).
+Run the safety tests with `node test/run.js` — no dependencies, no browser, no
+build. They cover data integrity rather than the UI: profile parsing and round
+trips, both merge paths, untrusted backups, the question bank, the store, and
+mic turn-taking.
 
 ## Quickstart B — Claude Code
 

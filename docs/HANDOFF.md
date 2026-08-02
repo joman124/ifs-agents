@@ -42,6 +42,7 @@ app/                 the webapp (this is what deploys)
   sw.js              service worker, cache-first shell — bump CACHE on every deploy
   manifest.webmanifest
   js/                see the table below
+test/                node test/run.js — 127 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
@@ -143,27 +144,43 @@ python3 -m http.server 8777 --directory app
 # then http://localhost:8777/index.html
 ```
 
-No build, no install. For browser testing this environment has Chromium at
-`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; drive it with
-`playwright-core` (`npm i playwright-core`), viewport 390×844.
+No build, no install. Any static server works — Node one-liners and
+`npx serve app` do too; `.claude/launch.json` has a config for the latter.
 
-**A safety test suite lives at `test/run.js`** — `node test/run.js`, no
-dependencies, no browser, no build. 23 assertions over the pure modules
-(`schema`, `questions`, `markdown`), using `examples/parts/the-critic.md` and
-generated fixtures. It covers **data integrity, not the UI**: parsing and
-round-tripping profiles, both merge paths, normalising untrusted backups, the
-question bank, and the coverage rules. It will catch a profile being mangled or
-overwritten; it will not catch a button that stopped working. Run it before
-every push.
+### The test suite
+
+```bash
+node test/run.js
+```
+
+No dependencies, no browser, no build, under a second, and it exits non-zero
+on failure so it drops straight into a hook or CI later. It covers **data
+integrity, not the UI**: it will catch a profile being mangled or overwritten;
+it will not catch a button that stopped working. Run it before every push.
+
+`test/harness.js` runs the real browser modules unchanged — they are IIFEs
+hanging off `window.IFS`, so a Node `vm` context with just enough browser in it
+(a `localStorage` object, a `navigator`, a fake `SpeechRecognition`) loads them
+with nothing to keep in sync. It also supplies a **virtual clock**: `voice.js`
+decides a spoken turn is over with four- and nine-second timers, and a suite
+that really waits nine seconds is a suite nobody runs. `clock.tick(ms)` fires
+the due timers in order.
+
+Covered: `parts/<slug>.md` round trips including the committed example and the
+awkward cases (`#` inside a quoted value, concatenated files, an unnamed part),
+both merge paths, untrusted backups, the question bank's routing and its
+refusal to re-ask a declined category, the store defects from the review
+(rename carrying edges and seats, collision refusal, absorb, delete), and mic
+turn-taking.
 
 It earned its place immediately — the first run found that
 `examples/parts/the-critic.md`, the repo's own worked example, could not be
 imported by the app, because the file opens with an HTML comment and the
 frontmatter regex demanded `---` first.
 
-The UI was additionally verified during development with throwaway Playwright
-scripts (82 assertions) that are **not** in the repo. Two patterns worth
-reusing if you write more:
+Not covered: anything needing a DOM. The UI has been verified by driving the
+real page — Playwright where available, otherwise the browser tools — and two
+patterns are worth reusing when you do:
 
 - The sheet and panel animate for ~200–350 ms. Settle between transitions or
   clicks land on the wrong element.
@@ -252,12 +269,17 @@ Everything is in `localStorage` with an IndexedDB mirror. Risks worth closing:
   a "your data is only on this device" line in onboarding.
 - No import/export of the table alone; only the whole-backup JSON.
 
-### 3. Commit the test harness
+### 3. Commit the test harness — **done**
 
-Ten Playwright/Node scripts exist only in a scratch directory and will be lost.
-Port them into `app/test/`, swapping the private-repo fixtures for
-`examples/parts/the-critic.md` and generated ones, and add a one-line runner.
-Without this the next change has no safety net.
+`test/` now holds 127 assertions over the pure logic, run with
+`node test/run.js`. See *Running and verifying locally* above for what is
+and isn't covered. What's left here is smaller: DOM-level coverage of the
+sheet/panel flows, and wiring the runner into a pre-commit hook.
+
+Writing it found one real defect, now fixed: `examples/parts/the-critic.md`
+opens with an HTML comment saying it is fictional, and frontmatter has to come
+first — so the one example profile in the repo was the one file the importer
+refused. `extractProfiles` now drops a leading comment before giving up.
 
 ### 4. Table follow-ons
 

@@ -1262,11 +1262,15 @@
 
   function buildSystem(mode, slugs, material) {
     var parts = slugs.map(ST.getPart).filter(Boolean);
-    if (mode === "intake") return T.intake();
-    if (mode === "checkin") return T.checkin(parts[0]);
-    if (mode === "mapping") return T.mapping(parts);
-    if (mode === "embody") return T.embody(parts[0], material);
-    return T.meeting(parts, material, ST.state.table);
+    var sys =
+      mode === "intake" ? T.intake() :
+      mode === "checkin" ? T.checkin(parts[0]) :
+      mode === "mapping" ? T.mapping(parts) :
+      mode === "embody" ? T.embody(parts[0], material) :
+      T.meeting(parts, material, ST.state.table);
+    /* Copy-prompt sessions always carried pacing rules; live ones never did,
+       so voice mode got the written cadence read aloud fast. */
+    return ST.state.settings.voiceOn ? sys + "\n\n" + T.voicePacing() : sys;
   }
 
   function startSession(mode, slugs, material) {
@@ -1368,6 +1372,9 @@
       s.voiceOn = !s.voiceOn; ST.save();
       vt.classList.toggle("voice-on", s.voiceOn);
       buzz();
+      /* the pacing rules ride in the system prompt, so toggling mid-session
+         has to rebuild it or the model keeps the cadence it started with */
+      if (session) session.system = buildSystem(session.mode, session.slugs, session.material);
       if (s.voiceOn) {
         toast(V.canListen() ? "Voice mode: replies are spoken, mic opens after each one"
                             : "Voice mode: replies are spoken aloud (no mic support in this browser)");
@@ -1483,7 +1490,8 @@
         if (box && finalText) { box.value = finalText; box.dispatchEvent(new Event("input")); }
         if (autoSend && finalText && ST.state.settings.voiceOn && !sess.busy) sendChat();
       },
-      onError: function (msg) { micState(false); toast(msg); }
+      onError: function (msg) { micState(false); toast(msg); },
+      onInterrupt: function () { toast("Heard that - the mic will wait longer before it closes"); }
     });
     if (!ok) micState(false);
   }
@@ -2452,6 +2460,12 @@
       '<button class="btn btn-soft" id="elFind" style="margin-top:8px">Find my voices</button>' +
       '<label class="fieldlabel">Model</label>' +
       '<input id="elModel" autocomplete="off" value="' + esc(s.elevenModel) + '">' +
+      '<label class="fieldlabel">Speaking pace</label>' +
+      '<div class="seg" id="rateSeg">' +
+      segBtn("0.8", "Unhurried", String(s.speechRate)) +
+      segBtn("0.9", "Slow", String(s.speechRate)) +
+      segBtn("1", "Normal", String(s.speechRate)) +
+      "</div>" +
       '<button class="btn btn-soft" id="elTest" style="margin-top:12px">Hear a sample</button>' +
       '<p class="dim" style="margin:12px 2px 2px">With a key and voice ID, voice mode speaks in that ElevenLabs voice &mdash; e.g. your own professional clone &mdash; instead of the built-in one. Paste the key, then <b>Find my voices</b> lists the account&rsquo;s voices so there is no ID to copy by hand. For a professional clone, <code>eleven_multilingual_v2</code> is the most faithful and <code>eleven_flash_v2_5</code> the quickest to start speaking. Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
       "</div></div>" +
@@ -2498,6 +2512,11 @@
     $("#elVoice").addEventListener("input", function (e) { s.elevenVoiceId = e.target.value.trim(); ST.save(); });
     $("#elModel").addEventListener("input", function (e) { s.elevenModel = e.target.value.trim(); ST.save(); });
     bind("#elFind", pickElevenVoice);
+    $("#rateSeg").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      s.speechRate = parseFloat(b.dataset.val); ST.save(); renderSettings(); buzz();
+      V.speak("This is the pace I'll speak at.", null);
+    });
     $("#elTest").addEventListener("click", function () {
       buzz();
       toast(s.elevenKey && s.elevenVoiceId ? "Generating a sample in your voice..." : "No ElevenLabs key set - this is the browser voice");

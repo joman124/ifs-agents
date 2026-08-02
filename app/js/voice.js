@@ -15,9 +15,23 @@
   function canListen() { return !!Rec; }
   function canSpeak() { return "speechSynthesis" in window; }
 
-  /* Start dictation. opts: {onInterim(text), onEnd(finalText), onError(msg)}
-     Runs one utterance (continuous: false) then calls onEnd with what was
-     heard - the caller decides whether to auto-send or leave it in the box. */
+  /* Turn-taking.
+     The Web Speech API ends a run by itself after a few seconds of quiet, and
+     with continuous:false that closed the mic on someone who was still
+     gathering their answer - which is most of a session, since the pause after
+     an IFS question is where the answer comes from. So: the run restarts until
+     speech actually arrives, and once it has, the turn ends only after the
+     person has been quiet for SILENCE_MS. Saying you are being interrupted
+     buys INTERRUPT_MS more, and keeps it for the rest of the page session - a
+     room with someone else in it stays that way. */
+  var SILENCE_MS = 4000;
+  var INTERRUPT_MS = 5000;
+  var MAX_RESTARTS = 40;      // ~5 minutes of holding the mic open for silence
+  var INTERRUPTED = /\b(?:interrupt(?:ed|ing|ion)?|hold on|hang on|one (?:sec|second|minute|moment)|give me a (?:sec|second|minute|moment)|be right back|back in a (?:sec|second|minute)|someone(?:'s| is)? (?:here|calling|talking|at the door)|somebody(?:'s| is)? (?:here|calling)|(?:the|my) (?:door|phone|dog|baby|kid|kids))\b/i;
+  var extraGrace = 0;
+
+  /* Start dictation. opts: {onInterim(text), onEnd(finalText), onError(msg),
+     onInterrupt()}. onEnd fires once, with everything heard across the turn. */
   function listen(opts) {
     opts = opts || {};
     if (!Rec) { if (opts.onError) opts.onError("Voice input isn't supported in this browser."); return false; }
@@ -25,8 +39,25 @@
     var r = new Rec();
     r.lang = navigator.language || "en-US";
     r.interimResults = true;
-    r.continuous = false;
-    var finalText = "";
+    r.continuous = true;
+
+    var finalText = "", done = false, stopping = false, timer = null, restarts = 0;
+
+    function disarm() { if (timer) { clearTimeout(timer); timer = null; } }
+    function finish() {
+      if (done) return;
+      done = true;
+      disarm();
+      if (active === r) active = null;
+      try { r.stop(); } catch (e) {}
+      if (opts.onEnd) opts.onEnd(finalText.trim());
+    }
+    function arm() {   // every syllable pushes the end of the turn back out
+      disarm();
+      timer = setTimeout(finish, SILENCE_MS + extraGrace);
+    }
+    r.__stop = function () { stopping = true; };
+
     r.onresult = function (ev) {
       var interim = "";
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
@@ -34,18 +65,36 @@
         if (res.isFinal) finalText += res[0].transcript;
         else interim += res[0].transcript;
       }
-      if (opts.onInterim) opts.onInterim((finalText + interim).trim());
+      var all = (finalText + interim).trim();
+      if (!all) return;
+      if (!extraGrace && INTERRUPTED.test(all)) {
+        extraGrace = INTERRUPT_MS;
+        if (opts.onInterrupt) opts.onInterrupt();
+      }
+      if (opts.onInterim) opts.onInterim(all);
+      arm();
     };
+
     r.onerror = function (ev) {
-      if (ev.error === "no-speech" || ev.error === "aborted") return; // onend handles it
+      if (ev.error === "no-speech" || ev.error === "aborted") return; // onend decides
+      stopping = true; // don't reopen a mic we've been told we can't have
       if (opts.onError) opts.onError(
         ev.error === "not-allowed" ? "Microphone access was blocked. Allow it in your browser settings."
                                    : "Voice input hiccup (" + ev.error + ").");
     };
+
+    /* The browser ending its run is not the person finishing their turn. Only
+       the silence timer, an error, or an explicit stop ends the turn. */
     r.onend = function () {
-      if (active === r) active = null;
-      if (opts.onEnd) opts.onEnd(finalText.trim());
+      if (done) return;
+      if (stopping || restarts >= MAX_RESTARTS) { finish(); return; }
+      restarts++;
+      setTimeout(function () {
+        if (done) return;
+        try { r.start(); } catch (e) { finish(); }
+      }, 250);
     };
+
     active = r;
     try { r.start(); } catch (e) {
       active = null;
@@ -55,8 +104,13 @@
     return true;
   }
 
+  /* stop(), not abort() - it delivers what was already heard instead of
+     throwing the turn away. */
   function stopListening() {
-    if (active) { var r = active; active = null; try { r.abort(); } catch (e) {} }
+    if (!active) return;
+    var r = active;
+    if (r.__stop) r.__stop();
+    try { r.stop(); } catch (e) { try { r.abort(); } catch (e2) {} }
   }
   function isListening() { return !!active; }
 
@@ -98,6 +152,30 @@
     return "ElevenLabs error " + res.status;
   }
 
+  /* One rate for both engines. ElevenLabs accepts 0.7-1.2 and the browser is
+     happy well outside that, so clamp to the narrower range and stay honest
+     about what the two do differently: ElevenLabs re-times the delivery,
+     speechSynthesis just plays back slower. */
+  function speechRate() {
+    var v = NaN;
+    try { v = parseFloat(window.IFS.store.state.settings.speechRate); } catch (e) {}
+    if (!v || isNaN(v)) v = 0.9;
+    return Math.min(1.2, Math.max(0.7, v));
+  }
+
+  /* ponytail: voice_settings is sent only when the rate is not 1, because a
+     partial voice_settings object can drop the voice's own stored stability
+     and similarity for that request - which would quietly retune a clone
+     someone tuned deliberately. At normal speed we send nothing and the voice
+     keeps its own settings. Upgrade path if speed at 1.0 is ever wanted: GET
+     /v1/voices/<id>/settings once per session and merge. */
+  function elevenBody(clean, s) {
+    var body = { text: clean, model_id: s.elevenModel || "eleven_flash_v2_5" };
+    var rate = speechRate();
+    if (rate !== 1) body.voice_settings = { speed: rate };
+    return body;
+  }
+
   function elevenConfig() {
     try {
       var s = window.IFS.store.state.settings;
@@ -120,7 +198,7 @@
 
   function browserSpeak(clean, myGen, done) {
     var u = new SpeechSynthesisUtterance(clean);
-    u.rate = 1.02;
+    u.rate = speechRate();
     var fired = false;
     var finish = function () { if (!fired) { fired = true; done(); } };
     u.onend = finish;
@@ -143,7 +221,7 @@
         encodeURIComponent(s.elevenVoiceId) + "?output_format=mp3_44100_128", {
         method: "POST",
         headers: { "Content-Type": "application/json", "xi-api-key": s.elevenKey },
-        body: JSON.stringify({ text: clean, model_id: s.elevenModel || "eleven_flash_v2_5" })
+        body: JSON.stringify(elevenBody(clean, s))
       });
       if (!res.ok) {
         apiProblem = await apiError(res, "voice");

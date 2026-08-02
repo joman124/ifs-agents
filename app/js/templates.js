@@ -9,14 +9,30 @@
   var Q = window.IFS.questions;
 
   /* The question bank, rendered for a prompt. Named categories only, so a
-     check-in ships just the questions it's actually heading for. */
+     check-in ships just the questions it's actually heading for.
+     The bank is the map, not the script: read verbatim it interrogates, and
+     a question that ignores what someone just said tells them nobody is
+     listening. So the wording is explicitly the model's to adapt - what may
+     not move is which category it covers, or how far it goes. */
+  var ADAPT = [
+    "These are the ground to cover, not a script. Rewrite any of them to fit the conversation:",
+    "- Use the person's own words for the part and for what it does. If they call it \"the watchman\", ask about the watchman, not \"this part\".",
+    "- Build the question out of what they just said. Following on beats starting over.",
+    "- Ask only what has not effectively been answered already. If an answer arrives sideways, in another question's answer, take it and move on.",
+    "- Drop or reorder anything. Order here is not priority, and any question can be skipped.",
+    "- Keep the intent. Rephrasing is free; changing what a question is reaching for, or reaching further than it does, is not - the bank's depth limit is deliberate.",
+    "- Adapting is not adding. Do not invent new areas of inquiry, and never follow an adapted question toward trauma detail.",
+    "- One at a time, in the person's register - plainer if they are plain, quieter if they are tired."
+  ].join("\n");
+
   function questionBank(cats) {
-    return (cats || S.CATEGORIES).map(function (c) {
+    var banks = (cats || S.CATEGORIES).map(function (c) {
       var qs = Q.forCategory(c);
       if (!qs.length) return "";
       return "**" + S.CATEGORY_LABELS[c] + "** (" + c + ")\n" +
         qs.map(function (x) { return '- "' + x.q + '"'; }).join("\n");
     }).filter(Boolean).join("\n\n");
+    return banks ? banks + "\n\n" + ADAPT : banks;
   }
 
   var SAFETY = [
@@ -67,7 +83,7 @@
       "",
       "1. Setup: explain in two sentences what you'll do (ask questions to get to know one part, build a written profile, stop whenever they want). Ask which part they'd like to get to know today. If unsure: 'Is there a feeling, urge, or inner voice that's been showing up lately that you're curious about?' Ask permission to begin.",
       "2. Introduction (always first), then two or three more categories as tolerated. Ask permission at each category boundary. Depth over coverage - three categories explored well beats nine skimmed.",
-      "3. Work from the question bank below. Use its wording where it fits naturally; follow the part when it takes you somewhere the bank doesn't go. Never run it as a checklist, and never ask two at once.",
+      "3. Work from the question bank below, adapting its wording to the conversation exactly as the rules underneath it describe; follow the part when it takes you somewhere the bank doesn't go. Never run it as a checklist, and never ask two at once.",
       "4. Closing reflection: thank the part by name; 'anything you want written down?'; note anything for next time.",
       "",
       "## The question bank",
@@ -289,17 +305,29 @@
      the model should slow down, leave real pauses, and never read files
      aloud. Prompts can't add literal seconds of delay, but these rules make
      voice assistants hold back instead of rushing the person. */
-  var PORTABLE_VOICE = [
-    "## If this is a voice conversation",
-    "",
-    "The person may run this session in your voice mode. In that case, pace is everything:",
+  var VOICE_RULES = [
     "- Slow way down. One or two short sentences, then your single question, then stop talking completely.",
+    "- Keep spoken turns shorter than written ones. Two sentences carry further out loud than five.",
     "- After you ask, wait. Silence means the person is feeling for an answer inside - it is part of the session, not a gap to fill. Never repeat the question, rephrase it, or move on because the pause feels long. Let pauses run as long as they need, even a minute or more.",
     "- Leave a beat before you respond. Do not jump in the instant they stop speaking - they may be mid-thought. If what they said trails off, stay quiet and let them finish rather than answering the half-thought.",
     "- Never interrupt or talk over the person.",
-    "- No lists, headings, or formatting in spoken replies - just short, plain, warm sentences.",
+    "- If they say they are being interrupted, or that someone needs them, or that they will be right back - stop. Say one short sentence at most, then wait. Do not fill the gap, do not repeat the question, and when they return pick up exactly where you left off rather than starting again.",
+    "- No lists, headings, or formatting in spoken replies - just short, plain, warm sentences."
+  ];
+
+  /* Live in-app voice sessions: same pacing, minus the copy-prompt tail. */
+  function voicePacing() {
+    return ["## This is being spoken aloud", "", "The person is hearing you, not reading you, and answering by voice. Pace is everything:"]
+      .concat(VOICE_RULES).join("\n");
+  }
+
+  var PORTABLE_VOICE = [
+    "## If this is a voice conversation",
+    "",
+    "The person may run this session in your voice mode. In that case, pace is everything:"
+  ].concat(VOICE_RULES).concat([
     "- Do NOT read profile files aloud, ever. Only produce the written profile when the person says the session is over, and tell them to switch to the keyboard/transcript view to copy it."
-  ].join("\n");
+  ]).join("\n");
 
   /* Exact skeleton of parts/<slug>.md so an outside model's paste-back
      imports into the app cleanly. Built from the schema so it never drifts. */
@@ -378,6 +406,7 @@
   window.IFS.templates = {
     intake: intake, checkin: checkin, mapping: mapping,
     embody: embody, meeting: meeting, portable: portable, convertNotes: convertNotes,
+    voicePacing: voicePacing,
     CLOSE_INSTRUCTION: "We're closing the session now. Please give your short closing reflection and then output the complete updated profile(s) in fenced markdown blocks, exactly as instructed."
   };
 })();

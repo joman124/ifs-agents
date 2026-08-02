@@ -36,6 +36,7 @@
         elevenKey: "",           // optional: ElevenLabs TTS for a personal voice
         elevenVoiceId: "",
         elevenModel: "eleven_flash_v2_5",
+        speechRate: 0.9,         // 0.7-1.2; spoken replies are slower than chat
         haptics: true,
         lastBackup: "",          // ISO date of last full export
         backupSnooze: "",        // ISO date the backup reminder was dismissed

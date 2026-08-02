@@ -98,6 +98,11 @@ It follows one spine — **add a part → gather → integrate → connect**:
   as a chat, powered by your own Gemini, Anthropic, or OpenAI API key — the key
   and all profiles stay on your device. No key? A **copy-prompt mode** generates
   the portable prompt for any chat you already use, and imports the result back.
+- **Voice mode**: dictate your answers, hear replies spoken. Settings &rarr;
+  Voice takes an ElevenLabs key and **Find my voices** lists that account's own
+  voices — professional clones first — so a cloned voice is one tap, not an ID
+  copied by hand. Without a key it uses the browser voice; if ElevenLabs fails
+  mid-session it falls back rather than going silent.
 - **Round-trip markdown**: profiles import/export in the exact
   `parts/<slug>.md` format, so the webapp and the Claude Code skills below
   interoperate on the same files.

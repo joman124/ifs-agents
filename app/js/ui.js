@@ -2361,6 +2361,80 @@
     }
   }
 
+  /* Copying a voice ID out of the ElevenLabs dashboard by hand is the step
+     people get wrong, and a wrong ID only shows up as a 404 mid-session. List
+     the account's own voices instead. Professional and instant clones sort
+     first - a cloned voice is what someone came here for. The ID field stays
+     editable, so this failing never blocks anyone. */
+  async function pickElevenVoice() {
+    var s = ST.state.settings;
+    buzz();
+    if (!s.elevenKey) { toast("Add your ElevenLabs API key first"); return; }
+    toast("Fetching your voices…");
+    var voices;
+    try {
+      var res = await fetch("https://api.elevenlabs.io/v1/voices", {
+        headers: { "xi-api-key": s.elevenKey }
+      });
+      if (!res.ok) {
+        throw new Error(res.status === 401 ? "ElevenLabs rejected that API key"
+          : res.status === 429 ? "ElevenLabs rate limit reached - try again shortly"
+          : "ElevenLabs error " + res.status);
+      }
+      voices = (await res.json()).voices || [];
+    } catch (e) {
+      toast(e.message || "Could not reach ElevenLabs");
+      return;
+    }
+    if (!voices.length) { toast("That account has no voices yet"); return; }
+
+    var RANK = { professional: 0, cloned: 1, generated: 2, premade: 3 };
+    var rank = function (v) { return RANK[v.category] == null ? 4 : RANK[v.category]; };
+    voices.sort(function (a, b) { return rank(a) - rank(b); });
+
+    openSheet('<h2 class="sheet-title serif">Your ElevenLabs voices</h2>' +
+      '<p class="dim">Tap the one sessions should speak in.</p>' +
+      voices.map(function (v) {
+        var kind = v.category === "professional" ? "professional clone"
+          : v.category === "cloned" ? "instant clone"
+          : v.category || "voice";
+        return '<button class="menu-item" data-vid="' + esc(v.voice_id) + '" data-vname="' + esc(v.name) + '">' +
+          '<span class="mi-icon">♪</span><span class="mi-main">' + esc(v.name) +
+          '<span class="mi-sub">' + esc(kind) + (v.voice_id === s.elevenVoiceId ? " &middot; current" : "") +
+          "</span></span></button>";
+      }).join(""));
+
+    /* bind the buttons, not #sheetBody - that element outlives every sheet,
+       so a listener on it would stack up one per visit */
+    document.querySelectorAll("#sheetBody [data-vid]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        s.elevenVoiceId = b.dataset.vid;
+        ST.save();
+        closeSheet();
+        renderSettings();
+        toast("Sessions will speak as " + b.dataset.vname);
+      });
+    });
+  }
+
+  /* A key that is wrong is otherwise silent until the first session fails
+     halfway through a sentence. One round trip, said plainly. */
+  async function testProviderKey(btn) {
+    var s = ST.state.settings;
+    var cfg = PROVIDERS[s.provider];
+    if (!cfg || !s[cfg.key]) { toast("Add the API key first"); return; }
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    try {
+      await LLM.chat(s, "Reply with the single word: ready.", [{ role: "user", text: "ready?" }]);
+      toast(cfg.label + " is working - " + s[cfg.model] + " answered");
+    } catch (e) {
+      toast(e.message || (cfg.label + " did not answer"));
+    }
+    btn.disabled = false;
+    btn.textContent = "Test this key";
+  }
+
   /* ================= settings ================= */
   function renderSettings() {
     var s = ST.state.settings;
@@ -2379,10 +2453,11 @@
       '<input type="password" id="elKey" autocomplete="off" placeholder="sk_..." value="' + esc(s.elevenKey) + '">' +
       '<label class="fieldlabel">Voice ID</label>' +
       '<input id="elVoice" autocomplete="off" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" value="' + esc(s.elevenVoiceId) + '">' +
+      '<button class="btn btn-soft" id="elFind" style="margin-top:8px">Find my voices</button>' +
       '<label class="fieldlabel">Model</label>' +
       '<input id="elModel" autocomplete="off" value="' + esc(s.elevenModel) + '">' +
       '<button class="btn btn-soft" id="elTest" style="margin-top:12px">Hear a sample</button>' +
-      '<p class="dim" style="margin:12px 2px 2px">With a key and voice ID, voice mode speaks in that ElevenLabs voice &mdash; e.g. your own cloned voice &mdash; instead of the built-in one. The voice ID is under <b>Voices</b> in ElevenLabs (My Voices &rarr; ID). Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
+      '<p class="dim" style="margin:12px 2px 2px">With a key and voice ID, voice mode speaks in that ElevenLabs voice &mdash; e.g. your own professional clone &mdash; instead of the built-in one. Paste the key, then <b>Find my voices</b> lists the account&rsquo;s voices so there is no ID to copy by hand. For a professional clone, <code>eleven_multilingual_v2</code> is the most faithful and <code>eleven_flash_v2_5</code> the quickest to start speaking. Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
       "</div></div>" +
 
       '<div class="set-group"><h3>Appearance</h3>' +
@@ -2426,6 +2501,7 @@
     $("#elKey").addEventListener("input", function (e) { s.elevenKey = e.target.value.trim(); ST.save(); });
     $("#elVoice").addEventListener("input", function (e) { s.elevenVoiceId = e.target.value.trim(); ST.save(); });
     $("#elModel").addEventListener("input", function (e) { s.elevenModel = e.target.value.trim(); ST.save(); });
+    bind("#elFind", pickElevenVoice);
     $("#elTest").addEventListener("click", function () {
       buzz();
       toast(s.elevenKey && s.elevenVoiceId ? "Generating a sample in your voice..." : "No ElevenLabs key set - this is the browser voice");
@@ -2467,7 +2543,7 @@
 
   var PROVIDERS = {
     gemini: { label: "Gemini", key: "geminiKey", model: "geminiModel", ph: "AIza...",
-      hint: 'Free keys at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a>.' },
+      hint: 'Free keys at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> &mdash; sign in, <b>Create API key</b>, paste it above. The free tier covers ordinary use of <code>gemini-2.5-flash</code>; on it, Google may use your prompts to improve their models, so keep depth work out of live sessions.' },
     anthropic: { label: "Anthropic", key: "anthropicKey", model: "anthropicModel", ph: "sk-ant-...",
       hint: 'Keys at <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.' },
     openai: { label: "OpenAI", key: "openaiKey", model: "openaiModel", ph: "sk-...",
@@ -2488,7 +2564,9 @@
       '<input type="password" id="provKey" autocomplete="off" placeholder="' + cfg.ph + '" value="' + esc(s[cfg.key]) + '">' +
       '<label class="fieldlabel">Model</label>' +
       '<input type="text" id="provModel" value="' + esc(s[cfg.model]) + '">' +
+      '<button class="btn btn-soft" id="provTest" style="margin-top:12px">Test this key</button>' +
       '<p class="dim" style="margin:10px 2px 0">' + cfg.hint + "</p>";
+    $("#provTest").addEventListener("click", function () { testProviderKey(this); });
     $("#provKey").addEventListener("input", function (e) {
       s[cfg.key] = e.target.value.trim(); ST.save();
     });

@@ -1,5 +1,5 @@
 /* Inner Table - service worker: cache-first app shell for offline use. */
-var CACHE = "inner-table-v10";
+var CACHE = "inner-table-v11";
 var SHELL = [
   "./",
   "index.html",
@@ -17,7 +17,10 @@ var SHELL = [
   "js/app.js",
   "manifest.webmanifest",
   "icons/icon.svg",
-  "icons/icon-maskable.svg"
+  "icons/icon-180.png",
+  "icons/icon-192.png",
+  "icons/icon-512.png",
+  "icons/icon-maskable-512.png"
 ];
 
 self.addEventListener("install", function (e) {

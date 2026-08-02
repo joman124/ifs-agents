@@ -139,6 +139,64 @@
       function () { ST.markBackup(); renderParts(); });
   }
 
+  /* ================= add to home screen =================
+     Android and desktop hand us a beforeinstallprompt event we can fire on
+     demand. iOS Safari fires nothing and exposes no API, so there the only
+     honest thing is to say where the Share-sheet item lives. */
+  var deferredInstall = null;
+
+  function isStandalone() {
+    return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  }
+  function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+  function installHint() {
+    if (deferredInstall) return "opens like an app and works offline";
+    if (isIOS()) return "tap Share, then <b>Add to Home Screen</b>";
+    return "use your browser menu &rarr; <b>Install</b>";
+  }
+  function doInstall() {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    deferredInstall.userChoice.then(function (c) {
+      if (c.outcome === "accepted") deferredInstall = null;
+      renderParts();
+    });
+  }
+  function watchInstall() {
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault();
+      deferredInstall = e;
+      renderBanners();
+    });
+    window.addEventListener("appinstalled", function () {
+      deferredInstall = null;
+      renderBanners();
+      toast("Inner Table is on your home screen");
+    });
+  }
+
+  /* app.js asks for persistent storage at boot; this reports whether the
+     browser actually granted it. Safari can evict a site that was never
+     granted and never installed, so silence here would be a lie. */
+  function showStorageStatus() {
+    var el = $("#storeStat");
+    if (!el) return;
+    if (!navigator.storage || !navigator.storage.persisted) {
+      el.textContent = "this browser cannot say - export a backup regularly";
+      return;
+    }
+    navigator.storage.persisted().then(function (ok) {
+      var e2 = $("#storeStat");
+      if (!e2) return;
+      e2.textContent = ok
+        ? "protected - the browser has agreed not to clear this site"
+        : "not protected - browsers can clear site data, so export backups";
+    });
+  }
+
   function renderBanners() {
     var el = $("#partsBanner");
     if (!el) return;
@@ -151,6 +209,12 @@
         '<span class="bn-sub">from ' + esc(d.updated || "recently") + " &middot; pick up where you left off</span></span>" +
         '<button class="btn btn-primary" id="bnResume">Resume</button>' +
         '<button class="btn btn-ghost" id="bnDiscard" aria-label="Discard draft">&#10005;</button></div>';
+    } else if (!isStandalone() && (deferredInstall || isIOS()) && daysSince(s.installSnooze) >= 30) {
+      html +=
+        '<div class="banner quiet"><span class="bn-main"><b>Add to your home screen</b>' +
+        '<span class="bn-sub">' + installHint() + "</span></span>" +
+        (deferredInstall ? '<button class="btn btn-soft" id="bnInstall">Install</button>' : "") +
+        '<button class="btn btn-ghost" id="bnInstallNo" aria-label="Not now">&#10005;</button></div>';
     } else if (ST.listParts().length && daysSince(s.lastBackup) >= 21 && daysSince(s.backupSnooze) >= 14) {
       html +=
         '<div class="banner quiet"><span class="bn-main"><b>Back up your parts</b>' +
@@ -168,6 +232,8 @@
     });
     bind("#bnBackup", doExportBackup);
     bind("#bnSnooze", function () { s.backupSnooze = S.todayISO(); ST.save(); renderParts(); });
+    bind("#bnInstall", doInstall);
+    bind("#bnInstallNo", function () { s.installSnooze = S.todayISO(); ST.save(); renderParts(); });
   }
 
   function renderParts() {
@@ -2333,6 +2399,17 @@
       '<div class="set-row"><span class="sr-main" style="color:var(--danger)">Erase everything<span class="sr-sub">removes all parts and sessions from this device</span></span><button class="btn btn-danger" id="wipeAll">Erase</button></div>' +
       "</div>" +
 
+      '<div class="set-group"><h3>This app</h3>' +
+      '<div class="set-row"><span class="sr-main">' +
+      (isStandalone()
+        ? 'Installed<span class="sr-sub">running from your home screen &middot; works offline</span>'
+        : 'Add to home screen<span class="sr-sub">' + installHint() + "</span>") +
+      "</span>" +
+      (!isStandalone() && deferredInstall ? '<button class="btn btn-soft" id="setInstall">Install</button>' : "") +
+      "</div>" +
+      '<div class="set-row"><span class="sr-main">On-device storage<span class="sr-sub" id="storeStat">checking&hellip;</span></span></div>' +
+      "</div>" +
+
       '<div class="set-group"><h3>About</h3>' +
       '<div class="set-pad" style="padding-top:12px"><p class="dim" style="margin:0 0 8px"><b>Inner Table</b> is the webapp of the open-source <a href="https://github.com/joman124/ifs-agents" target="_blank" rel="noopener">ifs-agents</a> system, inspired by Internal Family Systems (Richard C. Schwartz). It is a self-exploration and journaling tool, <b>not therapy</b> — no trauma processing, no unburdening. Read the <a href="https://github.com/joman124/ifs-agents/blob/main/docs/safety.md" target="_blank" rel="noopener">safety guide</a>.</p>' +
       '<p class="dim" style="margin:0">In crisis? Call or text <b>988</b> (US) or visit <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p></div></div>';
@@ -2355,6 +2432,8 @@
       V.speak("Hi, this is how your sessions will sound. Take all the time you need.", null);
     });
     $("#hapt").addEventListener("change", function (e) { s.haptics = e.target.checked; ST.save(); buzz(); });
+    bind("#setInstall", doInstall);
+    showStorageStatus();
     $("#openTranscripts").addEventListener("click", function () {
       if (!ST.state.transcripts.length) { toast("No transcripts yet - live AI sessions save one each"); return; }
       openPanel("Session transcripts", ST.state.transcripts.length + " saved",
@@ -2445,6 +2524,7 @@
   /* ================= boot wiring ================= */
   function init() {
     applyTheme();
+    watchInstall();
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 
     document.querySelectorAll(".tab").forEach(function (t) {

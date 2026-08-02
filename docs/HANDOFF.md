@@ -193,11 +193,13 @@ edges it can't resolve, so those relationships never draw. The app labels them
 "not in your library yet". Fixing means rewriting the `part:` targets in five
 files. Deliberately not done — it touches live personal data.
 
-**PWA install is not actually ready for iOS.** `manifest.webmanifest` declares
-only SVG icons. iOS ignores SVG for home-screen icons and needs PNG
-(`apple-touch-icon` 180×180, plus 192 and 512 in the manifest). Today, "Add to
-Home Screen" on an iPhone gives a screenshot-derived icon. This is the single
-biggest gap against the goal of a phone-installable app.
+**Icons are generated, not hand-drawn.** The PNGs in `app/icons/` are rasterised
+from `icon.svg` and `icon-maskable.svg`. If either SVG changes, regenerate them —
+there is no build step and no image tooling in the repo. The throwaway method
+that produced them: serve `app/`, open it, and in the page console draw the SVG
+into a canvas at each size and `PUT` the base64 back to a dev server that writes
+the file. 180 is drawn on an opaque `#14110e` background (iOS composites its own
+mask over an opaque square); 192 and 512 keep the rounded transparent corners.
 
 ---
 
@@ -205,27 +207,33 @@ biggest gap against the goal of a phone-installable app.
 
 Ordered by value against "a web app people save to their phones for local use".
 
-### 1. Make it genuinely installable — highest value
+### 1. Make it genuinely installable — **done**, one bullet left
 
-- **PNG icons.** Generate 180/192/512 PNGs from `icons/icon.svg`, add
-  `<link rel="apple-touch-icon" href="icons/icon-180.png">` and list the PNGs in
-  the manifest. Without this the iOS home-screen icon is wrong.
-- **An install prompt.** Android fires `beforeinstallprompt` — capture it and
-  offer a button. iOS fires nothing, so detect iOS Safari and show the
-  Share → *Add to Home Screen* instructions once.
-- **Manifest polish:** `screenshots` (richer Android install UI), `id`,
-  `categories`, and a maskable PNG.
-- **Verify offline.** The service worker caches the shell, but nothing has been
-  tested with the network actually off, including a cold start from the home
-  screen.
+- ~~**PNG icons.**~~ `icons/icon-180.png` (opaque, `apple-touch-icon`),
+  `icon-192.png`, `icon-512.png`, and `icon-maskable-512.png` now exist and are
+  what the manifest and `<link>` point at. The SVGs stay as the source.
+- ~~**An install prompt.**~~ `ui.js` captures `beforeinstallprompt` and offers a
+  banner with a real **Install** button on Android/desktop; on iOS, where no such
+  event exists, the same banner says *tap Share, then Add to Home Screen*.
+  Dismissing snoozes it for 30 days (`settings.installSnooze`). Settings →
+  **This app** is the permanent path, and reads *Installed* once it is.
+- ~~**Manifest polish:** `id`, `categories`, maskable PNG.~~ Still missing:
+  `screenshots`, which is what gives Android the richer install card. It needs
+  real device-sized PNG screenshots, which nothing in this repo can generate.
+- ~~**Verify offline.**~~ Verified for real on 2026-08-01: shell cached under
+  `inner-table-v11`, dev server killed, cold navigation still booted the whole
+  app with zero console errors. **Not** yet verified from an iOS home-screen
+  icon on a real phone — that is the one remaining install check.
 
 ### 2. Protect local data — it is the whole product
 
 Everything is in `localStorage` with an IndexedDB mirror. Risks worth closing:
 
-- Safari can evict script-writable storage after ~7 days of no interaction for
+- ~~Safari can evict script-writable storage after ~7 days of no interaction for
   sites not on the home screen. `navigator.storage.persist()` is already
-  requested; surface whether it was *granted* and warn if not.
+  requested; surface whether it was *granted* and warn if not.~~ Settings →
+  **This app** now reports the real `navigator.storage.persisted()` answer, and
+  says "export backups" when it is false (which it is on a plain desktop tab).
 - The backup reminder only nags after 3 weeks. Consider a first-run prompt and
   a "your data is only on this device" line in onboarding.
 - No import/export of the table alone; only the whole-backup JSON.

@@ -38,7 +38,8 @@
         elevenModel: "eleven_flash_v2_5",
         haptics: true,
         lastBackup: "",          // ISO date of last full export
-        backupSnooze: ""         // ISO date the backup reminder was dismissed
+        backupSnooze: "",        // ISO date the backup reminder was dismissed
+        installSnooze: ""        // ISO date the add-to-home-screen nudge was dismissed
       }
     };
   }

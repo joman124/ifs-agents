@@ -174,10 +174,51 @@
     ].join("\n");
   }
 
-  function meeting(parts, material) {
+  /* The room the person actually built on the Table tab, rendered for the
+     prompt. Without it the meeting happens in a generic room; with it, in
+     theirs - with their tools, their agreements, and whoever they seated. */
+  function roomBlock(table, parts) {
+    if (!table || !table.built) return "";
+    var R = window.IFS.reference;
+    var bySeat = {};
+    parts.forEach(function (p) {
+      var s = (table.seats && table.seats[p.slug]) || "away";
+      (bySeat[s] = bySeat[s] || []).push(p.name);
+    });
+    var lines = ["## The room", "",
+      "This meeting happens in a room the person built themselves. Describe it as theirs, and never redecorate it:", "",
+      (table.name ? "**" + table.name + "**\n\n" : "") + table.room +
+      (table.details ? "\n\n" + table.details : ""), ""];
+
+    var present = R.SEATS.map(function (seat) {
+      var who = bySeat[seat.id];
+      if (!who || !who.length) return "";
+      return "- **" + seat.label + "** (" + seat.blurb + "): " + who.join(", ");
+    }).filter(Boolean);
+    if (present.length) {
+      lines = lines.concat(["## Who is in the room", "", present.join("\n"), "",
+        "Only the parts seated at the table speak in the rounds. A part at the side of the room or in an adjoining room is present and may be referred to, and may speak if it chooses to come forward - invite it once, gently, and accept a no. A part marked not here today is absent; do not voice it at all.", ""]);
+    }
+    if (table.tools && table.tools.length) {
+      lines = lines.concat(["## Tools in the room", "",
+        table.tools.map(function (t) { return "- " + t.label; }).join("\n"),
+        "", "These exist in the room and can be used and referred to as real objects.", ""]);
+    }
+    if (table.agreements && table.agreements.length) {
+      lines = lines.concat(["## Agreements already made", "",
+        table.agreements.map(function (a) { return "- " + a; }).join("\n"),
+        "", "These were agreed in an earlier meeting. Honour them, and say so if one is about to be broken.", ""]);
+    }
+    return lines.join("\n");
+  }
+
+  function meeting(parts, material, table) {
+    var atTable = table && table.built && table.seats;
     var seated = [], benched = [];
     parts.forEach(function (p) {
-      (S.readiness(p).ready ? seated : benched).push(p);
+      // once a room exists, seating decides who speaks - not the readiness bar
+      var ok = atTable ? table.seats[p.slug] === "table" : S.readiness(p).ready;
+      (ok ? seated : benched).push(p);
     });
     return [
       "You facilitate an inner 'table meeting' AS SELF - embodying the 8 Cs: compassionate, curious, courageous, calm, clear, connected, creative, confident. You chair the meeting; you are not one of the parts. Modeled on Fraser's Table: a safe, neutral room where parts speak one at a time and no one is forced to participate.",
@@ -186,12 +227,17 @@
       "",
       "Formatting rule (strict, the app renders each voice separately): every speaking turn starts on its own paragraph with the speaker's name in bold followed by a colon - exactly **The Critic:** for parts, and **Self:** whenever you facilitate or synthesize. Use each part's exact profile name. No headers, no bullet lists.",
       "",
+      roomBlock(table, parts),
       "## Seated parts (profiles below)",
       "",
       seated.map(profileBlock).join("\n\n"),
-      benched.length ? "\n## Not seated\nThese parts' profiles have not cleared the readiness bar and sit out today (say so kindly in the convening): " + benched.map(function (p) { return p.name; }).join(", ") + ". They need a check-in session or two first.\n" : "",
+      benched.length ? "\n## Not speaking today\n" + (atTable
+        ? "These parts were not seated at the table. Some are present in the room; see who is in the room above. Do not put words in their mouths: "
+        : "These parts' profiles have not cleared the readiness bar and sit out today (say so kindly in the convening): ") +
+        benched.map(function (p) { return p.name; }).join(", ") +
+        (atTable ? "." : ". They need a check-in session or two first.") + "\n" : "",
       "## Meeting flow",
-      "1. Convene: name the room briefly, state the agenda (the material and the question), invite each part by name.",
+      "1. Convene: name the room briefly - if the person described their own room above, convene in that one, in their words - state the agenda (the material and the question), invite each part by name.",
       "2. Opening round: each seated part in turn - first reaction, what I see, fears/hopes, what I'd do, what I need. Let anxious protectors go first.",
       "3. Discussion round: one or two exchanges through you as facilitator, prioritizing known polarizations and protective pairs from the relationship edges. Keep to the material at hand.",
       "4. Self synthesis: where the parts agree; where they're polarized on THIS material; what each part needs for the path forward to feel safe; a Self-led recommendation flagged clearly as a synthesis for the person to consider - the person decides.",
@@ -314,13 +360,13 @@
 
   /* Portable copy-paste prompt for manual mode: same content, but instructing
      the model in a normal chat instead of this app. */
-  function portable(mode, parts, material) {
+  function portable(mode, parts, material, table) {
     var sys;
     if (mode === "intake") sys = intake();
     else if (mode === "checkin") sys = checkin(parts[0]);
     else if (mode === "mapping") sys = mapping(parts);
     else if (mode === "embody") sys = embody(parts[0], material || "(paste the material here)");
-    else sys = meeting(parts, material || "(paste the material here)");
+    else sys = meeting(parts, material || "(paste the material here)", table);
     sys = sys.replace(/The app will tell you the session is closing\. When it does, respond with:/,
       "When the person says the session is over, respond with:");
     var writesProfiles = mode === "intake" || mode === "checkin" || mode === "mapping";

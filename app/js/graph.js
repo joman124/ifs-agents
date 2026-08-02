@@ -10,6 +10,10 @@
   var sim = null;
   var refreshFn = null; // set by the active render; lets the UI re-apply the legend filter
 
+  /* How far from Self each seat sits, once a table has been built.
+     "away" is absent: no pull, so it drifts with the rest of the swarm. */
+  var SEAT_RADIUS = { table: 120, room: 200, adjoining: 280 };
+
   function buildGraph(parts) {
     var nodes = [{ id: "self", label: "Self", self: true }];
     var idx = { self: 0 };
@@ -315,6 +319,24 @@
         if (!a.pin && !a.drag) { a.vx += fx; a.vy += fy; }
         if (!b.pin && !b.drag) { b.vx -= fx; b.vy -= fy; }
       });
+      /* Seating from the Table tab, made literal: a part seated at the table
+         is pulled close to Self, one at the side of the room sits further
+         out, one in the adjoining room further still. "Who sits closest to
+         you" becomes something you can see rather than only record. */
+      var seats = opts.seats;
+      if (seats) {
+        var self = g.nodes[0];
+        g.nodes.forEach(function (n) {
+          if (n.self || n.pin || n.drag) return;
+          var want = SEAT_RADIUS[seats[n.id]];
+          if (!want) return;                       // not seated: left to the swarm
+          var dx = n.x - self.x, dy = n.y - self.y;
+          var d = Math.sqrt(dx * dx + dy * dy) || 1;
+          var f = (d - want) * 0.02;
+          n.vx -= f * dx / d; n.vy -= f * dy / d;
+        });
+      }
+
       g.nodes.forEach(function (n) {
         if (n.pin || n.drag) return;
         n.vx += (W / 2 - n.x) * 0.0015;

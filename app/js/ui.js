@@ -1165,7 +1165,7 @@
     if (mode === "checkin") return T.checkin(parts[0]);
     if (mode === "mapping") return T.mapping(parts);
     if (mode === "embody") return T.embody(parts[0], material);
-    return T.meeting(parts, material);
+    return T.meeting(parts, material, ST.state.table);
   }
 
   function startSession(mode, slugs, material) {
@@ -1596,7 +1596,7 @@
   /* ---------- manual (copy-prompt) mode ---------- */
   function manualSession(mode, slugs, material) {
     var parts = slugs.map(ST.getPart).filter(Boolean);
-    var prompt = T.portable(mode, parts, material);
+    var prompt = T.portable(mode, parts, material, ST.state.table);
     openPanel(MODE_TITLES[mode], "copy-prompt mode",
       '<div class="profile">' +
       '<div class="card"><h3>How this works</h3><div class="prose">1. Copy the prompt below.\n2. Paste it into any AI chat you trust (Claude, ChatGPT, Gemini...).\n3. Have the session there.\n4. When it ends, the model outputs an updated profile - paste that back here with the Import button.</div></div>' +
@@ -1693,6 +1693,7 @@
       renderLegend(parts);
       G.render(svg, parts, {
         tone: function () { return mapTone; },
+        seats: ST.state.table.built ? ST.state.table.seats : null,
         onEdge: function (aSlug, bSlug) { relationshipSheet(aSlug, bSlug); },
         onSelect: function (node) {
             var card = $("#mapCard");
@@ -1708,6 +1709,10 @@
                     : edges ? edges + " mapped"
                     : open ? open + " to name"
                     : "the only part so far";
+            // once a room exists, where it sits is the more useful fact
+            if (ST.state.table.built) {
+              sub = R.seatLabel(ST.state.table.seats[p.slug] || "away").toLowerCase() + " · " + sub;
+            }
             card.innerHTML =
               '<span class="mc-name">' + esc(p.name) +
               '<span class="mc-sub">' + esc(p.type) + " &middot; " + sub + "</span></span>" +

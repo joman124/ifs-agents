@@ -147,12 +147,23 @@ No build, no install. For browser testing this environment has Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; drive it with
 `playwright-core` (`npm i playwright-core`), viewport 390×844.
 
-**There is no test suite in the repo** — see *Next steps*. The work so far was
-verified with a throwaway harness: a Node script that loads `schema.js`,
-`questions.js` and `markdown.js` into a fake `window` and asserts on the pure
-logic, plus Playwright scripts driving the real UI. 78 assertions across 11
-scripts at last run, all green, zero console errors. Two patterns worth
-reusing:
+**A safety test suite lives at `test/run.js`** — `node test/run.js`, no
+dependencies, no browser, no build. 23 assertions over the pure modules
+(`schema`, `questions`, `markdown`), using `examples/parts/the-critic.md` and
+generated fixtures. It covers **data integrity, not the UI**: parsing and
+round-tripping profiles, both merge paths, normalising untrusted backups, the
+question bank, and the coverage rules. It will catch a profile being mangled or
+overwritten; it will not catch a button that stopped working. Run it before
+every push.
+
+It earned its place immediately — the first run found that
+`examples/parts/the-critic.md`, the repo's own worked example, could not be
+imported by the app, because the file opens with an HTML comment and the
+frontmatter regex demanded `---` first.
+
+The UI was additionally verified during development with throwaway Playwright
+scripts (82 assertions) that are **not** in the repo. Two patterns worth
+reusing if you write more:
 
 - The sheet and panel animate for ~200–350 ms. Settle between transitions or
   clicks land on the wrong element.

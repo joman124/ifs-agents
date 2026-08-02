@@ -215,7 +215,16 @@
     return [];
   }
 
+  /* A profile file may open with an HTML comment before its frontmatter -
+     examples/parts/the-critic.md does, and a person pasting a file they were
+     given shouldn't be told it isn't a profile because of a header note. */
+  function stripLeadingComments(text) {
+    return String(text == null ? "" : text)
+      .replace(/^﻿?\s*(?:<!--[\s\S]*?-->\s*)+/, "");
+  }
+
   function parse(markdown) {
+    markdown = stripLeadingComments(markdown);
     var m = markdown.match(/^﻿?\s*---\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
     if (!m) throw new Error("No YAML frontmatter found. Expected a profile in the parts/<slug>.md format.");
     return buildPart(parseFrontmatter(m[1]), m[2]);
@@ -302,8 +311,8 @@
         try { found.push(parse(block)); } catch (e) { /* skip non-profile blocks */ }
       }
     }
-    if (!found.length && /^﻿?\s*---/.test(text)) {
-      splitDocs(text).forEach(function (doc) {
+    if (!found.length && /^﻿?\s*---/.test(stripLeadingComments(text))) {
+      splitDocs(stripLeadingComments(text)).forEach(function (doc) {
         try { found.push(parse(doc)); } catch (e) { /* not a bare profile */ }
       });
     }
@@ -325,7 +334,7 @@
     var profiles = extractProfiles(text);
     if (profiles.length) return { profiles: profiles };
 
-    var hasFM = /^﻿?\s*---/.test(text) || /```[\s\S]*?---/.test(text);
+    var hasFM = /^﻿?\s*---/.test(stripLeadingComments(text)) || /```[\s\S]*?---/.test(text);
     var hasName = /^\s*name\s*:\s*\S/m.test(text);
 
     // Salvage: the frontmatter parser is line-based, so running it over the

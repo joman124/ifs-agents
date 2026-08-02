@@ -9,6 +9,7 @@
   var G = window.IFS.graph;
   var V = window.IFS.voice;
   var Q = window.IFS.questions;
+  var R = window.IFS.reference;
 
   var $ = function (sel) { return document.querySelector(sel); };
   var esc = function (s) {
@@ -105,11 +106,11 @@
     document.querySelectorAll(".view").forEach(function (v) {
       v.classList.toggle("hidden", v.id !== "view-" + name);
     });
-    $("#topTitle").textContent = { parts: "Inner Table", map: "Swarm Map", sessions: "Sessions", settings: "Settings" }[name];
+    $("#topTitle").textContent = { parts: "Inner Table", map: "Swarm Map", table: "The Table", settings: "Settings" }[name];
     $("#fabNew").classList.toggle("hidden", name !== "parts");
     if (name === "map") renderMap(); else G.stop();
     if (name === "parts") renderParts();
-    if (name === "sessions") renderSessions();
+    if (name === "table") renderTable();
     if (name === "settings") renderSettings();
     buzz();
   }
@@ -1833,11 +1834,356 @@
     });
   }
 
+  /* ================= the table =================
+     Fraser's Table as a place that persists, rather than a chat that
+     evaporates. The room is built once through the document's own questions,
+     then edited; parts are invited to a seat, never assigned one. */
+  function renderTable() {
+    var t = ST.state.table;
+    var parts = ST.listParts();
+    $("#tableEmpty").classList.toggle("hidden", !!t.built);
+    $("#tablePane").classList.toggle("hidden", !t.built);
+    if (!t.built) return;
+
+    var seatGroups = R.SEATS.map(function (seat) {
+      var inSeat = parts.filter(function (p) { return (t.seats[p.slug] || "away") === seat.id; });
+      if (!inSeat.length) return "";
+      return '<div class="seatgroup"><div class="seat-head">' + esc(seat.label) +
+        ' <span class="dim">' + esc(seat.blurb) + "</span></div>" +
+        inSeat.map(function (p) {
+          return '<button class="seatchip" data-seat-slug="' + esc(p.slug) + '">' +
+            '<span class="sc-i">' + esc(S.initial(p.name)) + "</span>" + esc(p.name) + "</button>";
+        }).join("") + "</div>";
+    }).join("");
+
+    var seated = parts.filter(function (p) { return t.seats[p.slug] === "table"; });
+
+    $("#tablePane").innerHTML =
+      '<div class="room-card">' +
+      '<h2 class="serif room-name">' + esc(t.name || "The room") + "</h2>" +
+      '<div class="prose">' + esc(t.room) + "</div>" +
+      (t.details ? '<div class="prose dim" style="margin-top:10px">' + esc(t.details) + "</div>" : "") +
+      '<button class="chip chip-btn" id="tbEditRoom">&#9998; edit the room</button>' +
+      "</div>" +
+
+      '<div class="card"><h3>Who is here' +
+      '<button class="cardedit" id="tbInvite" aria-label="Invite parts">&#9998;</button></h3>' +
+      (parts.length
+        ? (seatGroups || '<div class="prose none">nobody has been invited yet</div>')
+        : '<div class="prose none">no parts yet - meet one on the Parts tab first</div>') +
+      "</div>" +
+
+      '<div class="card"><h3>Tools in the room' +
+      '<button class="cardedit" id="tbTools" aria-label="Choose tools">&#9998;</button></h3>' +
+      (t.tools.length
+        ? t.tools.map(function (x) {
+            return '<div class="sessionrow"><span>' + esc(x.label) +
+              (x.note ? ' <span class="dim">' + esc(x.note) + "</span>" : "") + "</span></div>";
+          }).join("")
+        : '<div class="prose none">none yet - a talking stick, lighting, a break signal</div>') +
+      "</div>" +
+
+      '<div class="card"><h3>Agreements' +
+      '<button class="cardedit" id="tbAgree" aria-label="Edit agreements">&#9998;</button></h3>' +
+      (t.agreements.length ? tagList(t.agreements)
+        : '<div class="prose none">what would help everyone feel more at ease?</div>') +
+      "</div>" +
+
+      (t.log.length
+        ? '<div class="card"><h3>Past meetings</h3>' + t.log.slice().reverse().map(function (m) {
+            return '<div class="sessionrow"><span class="sr-date">' + esc(m.date) +
+              "</span><span>" + esc(m.note || "closing reflection") + "</span></div>";
+          }).join("") + "</div>"
+        : "") +
+
+      '<div class="profile-cta">' +
+      '<button class="btn btn-primary btn-big" id="tbMeet"' + (seated.length >= 2 ? "" : " disabled") + ">Hold a meeting" +
+      (seated.length >= 2 ? "" : " (seat two parts first)") + "</button>" +
+      '<button class="btn btn-soft btn-big" id="tbClose">Closing reflection</button>' +
+      "</div>";
+
+    document.querySelectorAll("#tablePane [data-seat-slug]").forEach(function (el) {
+      el.addEventListener("click", function () { seatSheet(el.dataset.seatSlug); });
+    });
+    bind("#tbEditRoom", function () { buildTable(true); });
+    bind("#tbInvite", invitePartsSheet);
+    bind("#tbTools", toolsSheet);
+    bind("#tbAgree", agreementsSheet);
+    bind("#tbClose", closingReflection);
+    bind("#tbMeet", function () {
+      askMaterial("meeting", seated.map(function (p) { return p.slug; }));
+    });
+  }
+
+  /* Walk the document's "Developing the Table" questions, one per screen. */
+  function buildTable(editing) {
+    var t = ST.state.table;
+    var steps = R.BUILD;
+    var answers = {};
+    var i = 0;
+    var done = false;
+
+    function finish() {
+      if (done) return;
+      done = true;
+      var patch = { built: true };
+      Object.keys(answers).forEach(function (k) { patch[k] = answers[k]; });
+      // editing keeps whatever was left blank this time
+      if (!patch.room && !t.room) { done = false; closePanel(); return; }
+      ST.saveTable(patch);
+      closePanel();
+      showView("table");
+      buzz(12);
+      toast(editing ? "The room is updated" : "Your table is ready - now invite some parts");
+      if (!editing) setTimeout(invitePartsSheet, 400);
+    }
+
+    function step() {
+      if (i >= steps.length) { finish(); return; }
+      var d = steps[i];
+      var current = editing ? (t[d.key] || "") : "";
+      openPanel(editing ? "Edit the room" : "Build your table",
+        "Fraser's Table · " + (i + 1) + " of " + steps.length,
+        '<div class="profile">' +
+        '<div class="qprogress"><i style="width:' + Math.round((i / steps.length) * 100) + '%"></i></div>' +
+        '<div class="card"><div class="qtext serif">' + esc(d.q) + "</div>" +
+        (d.hint ? '<div class="prose dim" style="margin-top:10px">' + esc(d.hint) + "</div>" : "") +
+        "</div>" +
+        (d.short
+          ? '<input id="tqBox" autocomplete="off" placeholder="a name, if one comes" value="' + esc(current) + '">'
+          : '<textarea id="tqBox" style="min-height:150px" placeholder="In your own words. There is no right answer.">' + esc(current) + "</textarea>") +
+        '<div class="profile-cta">' +
+        '<button class="btn btn-primary btn-big" id="tqNext">' +
+        (i === steps.length - 1 ? (editing ? "Save the room" : "Open the room") : "Next") + "</button>" +
+        '<button class="btn btn-soft btn-big" id="tqSkip">Skip this one</button>' +
+        "</div></div>", "",
+        function () { if (Object.keys(answers).length) finish(); return true; });
+
+      $("#tqNext").addEventListener("click", function () {
+        var v = $("#tqBox").value.trim();
+        if (v) answers[d.key] = v;
+        if (i === 0 && !v && !t.room) {
+          toast("The room needs a description before it can open");
+          return;
+        }
+        i++; buzz(); step();
+      });
+      $("#tqSkip").addEventListener("click", function () {
+        if (i === 0 && !t.room) { toast("This one is the room itself - it can't be skipped"); return; }
+        i++; buzz(); step();
+      });
+    }
+    step();
+  }
+
+  /* One part's seat. The document is explicit that a part may prefer to be
+     near without participating, so every seat is an equal choice. */
+  function seatSheet(slug) {
+    var p = ST.getPart(slug);
+    if (!p) return;
+    var t = ST.state.table;
+    var current = t.seats[slug] || "away";
+    openSheet(
+      '<h2 class="sheet-title serif">' + esc(p.name) + "</h2>" +
+      '<p class="dim">There is no pressure to sit. Being near the room without joining in is a real answer, and it gets recorded as one.</p>' +
+      '<div class="seg" id="stSeat" style="flex-direction:column;gap:3px">' +
+      R.SEATS.map(function (s) {
+        return '<button data-val="' + s.id + '"' + (s.id === current ? ' class="on"' : "") +
+          ' style="text-align:left;padding:11px 12px">' + esc(s.label) +
+          ' <span class="dim">' + esc(s.blurb) + "</span></button>";
+      }).join("") +
+      "</div>" +
+      '<div style="height:14px"></div>' +
+      '<button class="btn btn-soft btn-big" id="stOpen">Open ' + esc(p.name) + "'s profile</button>"
+    );
+    $("#stSeat").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      t.seats[slug] = b.dataset.val;
+      ST.saveTable({ seats: t.seats });
+      buzz(); closeSheet(); renderTable();
+      toast(p.name + ": " + R.seatLabel(b.dataset.val).toLowerCase());
+    });
+    bind("#stOpen", function () { closeSheet(); openProfile(slug); });
+  }
+
+  function invitePartsSheet() {
+    var parts = ST.listParts();
+    if (!parts.length) { toast("Meet a part on the Parts tab first"); return; }
+    var t = ST.state.table;
+    openSheet(
+      '<h2 class="sheet-title serif">Invite parts in</h2>' +
+      '<p class="dim">Watch who comes. There is no pressure &mdash; a part might prefer the side of the room, or an adjoining room, and that is welcome too. Tap to move anyone.</p>' +
+      parts.map(function (p) {
+        var seat = t.seats[p.slug] || "away";
+        return '<button class="menu-item" data-slug="' + esc(p.slug) + '"><span class="mi-icon">' +
+          esc(S.initial(p.name)) + '</span><span class="mi-main">' + esc(p.name) +
+          '<span class="mi-sub">' + esc(R.seatLabel(seat)) + "</span></span></button>";
+      }).join("") +
+      '<div style="height:12px"></div>' +
+      '<button class="btn btn-soft btn-big" id="ivAll">Seat everyone at the table</button>' +
+      '<p class="dim" style="margin:10px 2px 0">I want to thank all these parts for meeting here. ' +
+      "If there are others, they can join at any time. They are welcome too.</p>"
+    );
+    document.querySelectorAll("#sheetBody .menu-item").forEach(function (el) {
+      el.addEventListener("click", function () { closeSheet(); setTimeout(function () { seatSheet(el.dataset.slug); }, 240); });
+    });
+    bind("#ivAll", function () {
+      parts.forEach(function (p) { t.seats[p.slug] = "table"; });
+      ST.saveTable({ seats: t.seats });
+      closeSheet(); renderTable(); buzz(12);
+      toast("Everyone is seated - move anyone who would rather not be");
+    });
+  }
+
+  function toolsSheet() {
+    var t = ST.state.table;
+    var have = {};
+    t.tools.forEach(function (x) { have[x.id] = 1; });
+    openSheet(
+      '<h2 class="sheet-title serif">Tools in the room</h2>' +
+      '<p class="dim">With several parts present it can feel loud, tense, or confusing. These help everyone feel safe and respected. Tap to add or remove.</p>' +
+      R.TOOLS.map(function (x) {
+        return '<button class="menu-item tool' + (have[x.id] ? " on" : "") + '" data-tool="' + esc(x.id) + '">' +
+          '<span class="mi-icon">' + (have[x.id] ? "&#10003;" : "+") + '</span><span class="mi-main">' +
+          esc(x.label) + '<span class="mi-sub">' + esc(x.blurb) + "</span></span></button>";
+      }).join("") +
+      '<div style="height:12px"></div>' +
+      '<label class="fieldlabel">Anything you want to invent yourself</label>' +
+      '<input id="tlOwn" autocomplete="off" placeholder="a bell, a second door, a window...">' +
+      '<div style="height:10px"></div>' +
+      '<button class="btn btn-primary btn-big" id="tlAdd">Add it to the room</button>'
+    );
+    document.querySelectorAll("#sheetBody .tool").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var id = el.dataset.tool;
+        var def = R.TOOLS.filter(function (x) { return x.id === id; })[0];
+        if (have[id]) t.tools = t.tools.filter(function (x) { return x.id !== id; });
+        else t.tools.push({ id: id, label: def.label, note: "" });
+        ST.saveTable({ tools: t.tools });
+        buzz(); renderTable(); toolsSheet();
+      });
+    });
+    bind("#tlAdd", function () {
+      var v = $("#tlOwn").value.trim();
+      if (!v) { toast("Name it first"); return; }
+      t.tools.push({ id: "own-" + S.slugify(v), label: v, note: "your own" });
+      ST.saveTable({ tools: t.tools });
+      closeSheet(); renderTable(); buzz(12);
+      toast(v + " is in the room");
+    });
+  }
+
+  function agreementsSheet() {
+    var t = ST.state.table;
+    openSheet(
+      '<h2 class="sheet-title serif">Agreements</h2>' +
+      '<p class="dim">What rules or agreements would help everyone feel more at ease? One per line.</p>' +
+      '<textarea id="agBox" style="min-height:150px" placeholder="only the part holding the stick speaks&#10;anyone can call a break&#10;nobody is made to sit">' +
+      esc(t.agreements.join("\n")) + "</textarea>" +
+      '<div style="height:12px"></div>' +
+      '<button class="btn btn-primary btn-big" id="agSave">Save</button>'
+    );
+    bind("#agSave", function () {
+      ST.saveTable({ agreements: splitLines($("#agBox").value) });
+      closeSheet(); renderTable(); buzz(10);
+      toast("Agreements saved");
+    });
+  }
+
+  /* The document's closing reflection, asked one at a time and kept. */
+  function closingReflection() {
+    var steps = R.CLOSING;
+    var answers = {};
+    var i = 0, done = false;
+
+    function finish() {
+      if (done) return;
+      done = true;
+      var t = ST.state.table;
+      if (Object.keys(answers).length) {
+        t.log.push({ date: S.todayISO(), answers: answers,
+          note: answers.showed_up ? answers.showed_up.slice(0, 80) : "closing reflection" });
+        if (answers.agreements) {
+          t.agreements = t.agreements.concat(splitLines(answers.agreements));
+        }
+        ST.saveTable({ log: t.log, agreements: t.agreements });
+      }
+      closePanel(); renderTable();
+      if (Object.keys(answers).length) {
+        openSheet('<h2 class="sheet-title serif">Before you go</h2>' +
+          '<div class="prose">' + esc(R.FAREWELL) + "</div>" +
+          '<div style="height:14px"></div>' +
+          '<button class="btn btn-primary btn-big" id="fwOk">Leave the room gently</button>');
+        bind("#fwOk", closeSheet);
+      }
+    }
+
+    function step() {
+      if (i >= steps.length) { finish(); return; }
+      var d = steps[i];
+      openPanel("Closing reflection", "Fraser's Table · " + (i + 1) + " of " + steps.length,
+        '<div class="profile">' +
+        '<div class="qprogress"><i style="width:' + Math.round((i / steps.length) * 100) + '%"></i></div>' +
+        '<div class="card"><div class="qtext serif">' + esc(d.q) + "</div>" +
+        (d.hint ? '<div class="prose dim" style="margin-top:10px">' + esc(d.hint) + "</div>" : "") + "</div>" +
+        '<textarea id="crBox" placeholder="Blank is fine."></textarea>' +
+        '<div class="profile-cta">' +
+        '<button class="btn btn-primary btn-big" id="crNext">' +
+        (i === steps.length - 1 ? "Close the meeting" : "Next") + "</button>" +
+        '<button class="btn btn-soft btn-big" id="crSkip">Skip</button>' +
+        "</div></div>", "",
+        function () { if (Object.keys(answers).length) finish(); return true; });
+      $("#crNext").addEventListener("click", function () {
+        var v = $("#crBox").value.trim();
+        if (v) answers[d.key] = v;
+        i++; buzz(); step();
+      });
+      $("#crSkip").addEventListener("click", function () { i++; buzz(); step(); });
+    }
+    step();
+  }
+
+  /* ================= learn =================
+     The reference library, reachable from the topbar anywhere in the app. */
+  function renderLearnBody(page) {
+    return page.body.map(function (b) {
+      if (b[0] === "h") return "<h3>" + esc(b[1]) + "</h3>";
+      if (b[0] === "l") return "<ul class='learn-list'>" + b[1].map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>";
+      return "<p>" + b[1] + "</p>";
+    }).join("");
+  }
+
+  function learnPage(id) {
+    var page = R.LEARN.filter(function (x) { return x.id === id; })[0];
+    if (!page) return;
+    openPanel(page.title, page.blurb,
+      '<div class="profile learn">' + renderLearnBody(page) +
+      '<div class="profile-cta"><button class="btn btn-soft btn-big" id="lnBack">Back to the library</button></div></div>');
+    bind("#lnBack", function () { closePanel(); setTimeout(learnSheet, 200); });
+  }
+
+  function learnSheet() {
+    openSheet(
+      '<h2 class="sheet-title serif">How this works</h2>' +
+      '<p class="dim">The framework behind the app, in short.</p>' +
+      R.LEARN.map(function (x) {
+        return '<button class="menu-item" data-learn="' + esc(x.id) + '"><span class="mi-icon">&#9679;</span>' +
+          '<span class="mi-main">' + esc(x.title) + '<span class="mi-sub">' + esc(x.blurb) + "</span></span></button>";
+      }).join("")
+    );
+    document.querySelectorAll("#sheetBody [data-learn]").forEach(function (el) {
+      el.addEventListener("click", function () { closeSheet(); setTimeout(function () { learnPage(el.dataset.learn); }, 240); });
+    });
+  }
+
   /* ================= sessions ================= */
+  /* Transcripts lost their tab to the table and now open as a panel from
+     Settings, so the list may not be on screen when this is called. */
   function renderSessions() {
     var ts = ST.state.transcripts;
-    $("#sessionsEmpty").classList.toggle("hidden", ts.length > 0);
-    $("#sessionsList").innerHTML = ts.map(function (t) {
+    var list = $("#sessionsList");
+    if (!list) return;
+    list.innerHTML = ts.map(function (t) {
       return '<div class="sess-card" data-id="' + esc(t.id) + '">' +
         '<div class="sc-top"><span>' + esc(t.date) + "</span><span>" + esc(t.mode) + "</span></div>" +
         '<div class="sc-title">' + esc(t.title) + "</div>" +
@@ -1925,7 +2271,8 @@
       '<input type="checkbox" id="hapt" style="width:auto" ' + (s.haptics ? "checked" : "") + "></div></div>" +
 
       '<div class="set-group"><h3>Your data</h3>' +
-      '<div class="set-row"><span class="sr-main">Export backup<span class="sr-sub">all parts + transcripts as one JSON file</span></span><button class="btn btn-soft" id="expAll">Export</button></div>' +
+      '<div class="set-row"><span class="sr-main">Session transcripts<span class="sr-sub">' + ST.state.transcripts.length + ' saved from live AI sessions</span></span><button class="btn btn-soft" id="openTranscripts">Open</button></div>' +
+      '<div class="set-row"><span class="sr-main">Export backup<span class="sr-sub">everything, including the table, as one JSON file</span></span><button class="btn btn-soft" id="expAll">Export</button></div>' +
       '<div class="set-row"><span class="sr-main">Import backup<span class="sr-sub">merge a previously exported file</span></span><button class="btn btn-soft" id="impAll">Import</button></div>' +
       '<div class="set-row"><span class="sr-main" style="color:var(--danger)">Erase everything<span class="sr-sub">removes all parts and sessions from this device</span></span><button class="btn btn-danger" id="wipeAll">Erase</button></div>' +
       "</div>" +
@@ -1952,6 +2299,12 @@
       V.speak("Hi, this is how your sessions will sound. Take all the time you need.", null);
     });
     $("#hapt").addEventListener("change", function (e) { s.haptics = e.target.checked; ST.save(); buzz(); });
+    $("#openTranscripts").addEventListener("click", function () {
+      if (!ST.state.transcripts.length) { toast("No transcripts yet - live AI sessions save one each"); return; }
+      openPanel("Session transcripts", ST.state.transcripts.length + " saved",
+        '<div class="view-pad" id="sessionsList"></div>');
+      renderSessions();
+    });
     $("#expAll").addEventListener("click", doExportBackup);
     $("#impAll").addEventListener("click", function () {
       var inp = document.createElement("input");
@@ -2042,6 +2395,7 @@
       t.addEventListener("click", function () { showView(t.dataset.view); });
     });
     $("#themeBtn").addEventListener("click", cycleTheme);
+    $("#learnBtn").addEventListener("click", learnSheet);
     $("#fabNew").addEventListener("click", newSessionSheet);
     $("#sheetBackdrop").addEventListener("click", closeSheet);
     $("#panelBack").addEventListener("click", closePanel);
@@ -2066,6 +2420,8 @@
       if (t.dataset.action === "new-intake") startSession("intake", []);
       if (t.dataset.action === "create-part") createPartSheet("");
       if (t.dataset.action === "import-part") importSheet();
+      if (t.dataset.action === "build-table") buildTable(false);
+      if (t.dataset.action === "learn-table") learnPage("table");
       if (t.dataset.action === "load-sample") {
         try {
           ST.upsertPart(MD.parse(ST.SAMPLE_CRITIC));

@@ -1,11 +1,12 @@
 /* Inner Table - service worker: cache-first app shell for offline use. */
-var CACHE = "inner-table-v9";
+var CACHE = "inner-table-v10";
 var SHELL = [
   "./",
   "index.html",
   "css/app.css",
   "js/schema.js",
   "js/questions.js",
+  "js/reference.js",
   "js/markdown.js",
   "js/store.js",
   "js/templates.js",

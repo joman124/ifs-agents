@@ -12,6 +12,16 @@
       parts: {},        // slug -> part object
       transcripts: [],  // {id, date, mode, title, parts:[slugs], text}
       draft: null,      // in-progress session checkpoint {mode, slugs, material, messages, updated}
+      table: {          // Fraser's Table: the room, built once and edited after
+        built: false,
+        name: "",       // what the person named the room, if they named it
+        room: "",       // the room and the table, in their words
+        details: "",    // what stood out on a second look
+        tools: [],      // [{id, label, note}] - agreed tools in the room
+        agreements: [], // ["only the part holding the stick speaks", ...]
+        seats: {},      // slug -> "table" | "room" | "adjoining" | "away"
+        log: []         // [{date, answers:{key:text}, note}] closing reflections
+      },
       settings: {
         onboarded: false,
         theme: "auto",           // auto | dark | light
@@ -38,7 +48,14 @@
     if (parsed.parts) state.parts = parsed.parts;
     if (parsed.transcripts) state.transcripts = parsed.transcripts;
     if (parsed.draft) state.draft = parsed.draft;
+    if (parsed.table) Object.assign(state.table, parsed.table);
     if (parsed.settings) Object.assign(state.settings, parsed.settings);
+  }
+
+  function saveTable(t) {
+    Object.assign(state.table, t);
+    save();
+    return state.table;
   }
 
   function load() {
@@ -182,6 +199,7 @@
       var p = state.parts[k];
       p.relationships = (p.relationships || []).filter(function (r) { return r.part !== slug; });
     });
+    delete state.table.seats[slug]; // and its chair at the table
     save();
   }
 
@@ -204,7 +222,8 @@
       version: 1,
       exported: new Date().toISOString(),
       parts: state.parts,
-      transcripts: state.transcripts
+      transcripts: state.transcripts,
+      table: state.table
     }, null, 2);
   }
 
@@ -216,6 +235,7 @@
       var p = data.parts[k];
       if (p && p.slug && p.name) { mergePart(p); count++; }
     });
+    if (data.table && typeof data.table === "object") Object.assign(state.table, data.table);
     if (Array.isArray(data.transcripts)) {
       var have = {};
       state.transcripts.forEach(function (t) { have[t.id] = 1; });
@@ -322,6 +342,7 @@
     load: load,
     save: save,
     initMirror: initMirror,
+    saveTable: saveTable,
     setDraft: setDraft,
     clearDraft: clearDraft,
     markBackup: markBackup,

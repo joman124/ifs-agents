@@ -60,7 +60,10 @@
   <header class="topbar">
     <div class="topbar-inner">
       <span class="brand serif" id="topTitle">Inner Table</span>
-      <button class="iconbtn" id="themeBtn" aria-label="Toggle theme"><span class="glyph glyph-moon"></span></button>
+      <div style="display:flex;gap:2px">
+        <button class="iconbtn" id="learnBtn" aria-label="How this works"><span class="glyph glyph-info"></span></button>
+        <button class="iconbtn" id="themeBtn" aria-label="Toggle theme"><span class="glyph glyph-moon"></span></button>
+      </div>
     </div>
   </header>
 
@@ -98,14 +101,16 @@
       </div>
     </section>
 
-    <!-- SESSIONS -->
-    <section class="view hidden" id="view-sessions">
+    <!-- THE TABLE -->
+    <section class="view hidden" id="view-table">
       <div class="view-pad">
-        <div id="sessionsList"></div>
-        <div id="sessionsEmpty" class="empty hidden">
-          <div class="empty-art"><span class="glyph glyph-book"></span></div>
-          <h2 class="serif">No sessions yet</h2>
-          <p>Session transcripts and table meetings you save will appear here.</p>
+        <div id="tablePane" class="hidden"></div>
+        <div id="tableEmpty" class="empty hidden">
+          <div class="empty-art"><span class="glyph glyph-table"></span></div>
+          <h2 class="serif">Build your table</h2>
+          <p>A meeting place with a table in it &mdash; a room where no harm can come to you, and a table that feels safe or neutral. Once it exists, parts can be invited to sit.</p>
+          <button class="btn btn-primary btn-big" data-action="build-table">Imagine the room</button>
+          <button class="btn btn-ghost" data-action="learn-table">What is Fraser's Table?</button>
         </div>
       </div>
     </section>
@@ -119,7 +124,7 @@
   <nav class="tabbar" role="tablist">
     <button class="tab active" data-view="parts" role="tab"><span class="glyph glyph-parts"></span><span>Parts</span></button>
     <button class="tab" data-view="map" role="tab"><span class="glyph glyph-web"></span><span>Map</span></button>
-    <button class="tab" data-view="sessions" role="tab"><span class="glyph glyph-book"></span><span>Sessions</span></button>
+    <button class="tab" data-view="table" role="tab"><span class="glyph glyph-table"></span><span>Table</span></button>
     <button class="tab" data-view="settings" role="tab"><span class="glyph glyph-gear"></span><span>Settings</span></button>
   </nav>
 
@@ -158,6 +163,7 @@
 
 <script src="js/schema.js"></script>
 <script src="js/questions.js"></script>
+<script src="js/reference.js"></script>
 <script src="js/markdown.js"></script>
 <script src="js/store.js"></script>
 <script src="js/templates.js"></script>

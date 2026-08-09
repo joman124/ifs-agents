@@ -6,6 +6,11 @@
   var KEY = "innertable.v1";
 
   var state = null;
+  var listeners = [];
+
+  /* Fires after every save() - lets sync.js push without store.js knowing
+     sync exists. */
+  function onChange(fn) { listeners.push(fn); }
 
   function defaults() {
     return {
@@ -124,6 +129,7 @@
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
     catch (e) { console.error("save failed", e); }
     idbWrite();
+    listeners.forEach(function (fn) { fn(); });
   }
 
   /* ---- in-progress session checkpoint ---- */
@@ -385,6 +391,7 @@
   window.IFS.store = {
     load: load,
     save: save,
+    onChange: onChange,
     initMirror: initMirror,
     saveTable: saveTable,
     renamePart: renamePart,

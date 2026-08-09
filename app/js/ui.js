@@ -10,6 +10,8 @@
   var V = window.IFS.voice;
   var Q = window.IFS.questions;
   var R = window.IFS.reference;
+  var AUTH = window.IFS.auth;
+  var SY = window.IFS.sync;
 
   var $ = function (sel) { return document.querySelector(sel); };
   var esc = function (s) {
@@ -2439,6 +2441,21 @@
     btn.textContent = "Test this key";
   }
 
+  /* Push first, then pull: local edits made offline reach the server before
+     the server's copy is merged back in, so neither side is lost. */
+  async function syncNow() {
+    var btn = $("#syncNowBtn");
+    btn.disabled = true;
+    btn.textContent = "Syncing…";
+    await SY.push();
+    var changed = await SY.pull();
+    if (changed) renderParts();
+    renderSettings();
+    toast(SY.status() === "synced"
+      ? (changed ? "Synced - your other device's changes are here" : "Synced")
+      : "Could not reach sync - your parts are safe on this device");
+  }
+
   /* ================= settings ================= */
   function renderSettings() {
     var s = ST.state.settings;
@@ -2476,6 +2493,14 @@
       "</div></div>" +
       '<div class="set-row"><span class="sr-main">Haptic feedback<span class="sr-sub">tiny vibrations on taps (where supported)</span></span>' +
       '<input type="checkbox" id="hapt" style="width:auto" ' + (s.haptics ? "checked" : "") + "></div></div>" +
+
+      '<div class="set-group"><h3>Sync</h3>' +
+      (AUTH.isLoggedIn()
+        ? '<div class="set-row"><span class="sr-main">Signed in as ' + esc(AUTH.getUsername()) + '<span class="sr-sub">changes sync to your other signed-in devices</span></span><button class="btn btn-soft" id="syncNowBtn">Sync now</button></div>' +
+          '<div class="set-row"><span class="sr-main">Sign out<span class="sr-sub">parts already on this device stay here</span></span><button class="btn btn-soft" id="signOutBtn">Sign out</button></div>'
+        : '<div class="set-row"><span class="sr-main">Not signed in<span class="sr-sub">sign in to sync parts between your devices</span></span><button class="btn btn-soft" id="signInBtn">Sign in</button></div>') +
+      '<p class="dim" style="margin:12px 14px 14px">Syncing stores an encrypted-in-transit copy of your parts on the server so your devices can share them. Local-only use never sends anything.</p>' +
+      "</div>" +
 
       '<div class="set-group"><h3>Your data</h3>' +
       '<div class="set-row"><span class="sr-main">Session transcripts<span class="sr-sub">' + ST.state.transcripts.length + ' saved from live AI sessions</span></span><button class="btn btn-soft" id="openTranscripts">Open</button></div>' +
@@ -2523,6 +2548,14 @@
       V.speak("Hi, this is how your sessions will sound. Take all the time you need.", null);
     });
     $("#hapt").addEventListener("change", function (e) { s.haptics = e.target.checked; ST.save(); buzz(); });
+    bind("#signInBtn", showLogin);
+    bind("#signOutBtn", function () {
+      AUTH.logout();
+      SY.reset();
+      toast("Signed out - your parts are still on this device");
+      renderSettings();
+    });
+    bind("#syncNowBtn", syncNow);
     bind("#setInstall", doInstall);
     showStorageStatus();
     $("#openTranscripts").addEventListener("click", function () {
@@ -2610,8 +2643,69 @@
       $("#onboarding").classList.add("hidden");
       $("#app").classList.remove("hidden");
       showView("parts");
+      maybeShowLogin();
       buzz(15);
     });
+  }
+
+  /* ================= login (optional sync gate) ================= */
+  var SKIP_KEY = "innertable.loginSkipped";
+  var signupMode = false;
+
+  function setLoginMode(signup) {
+    signupMode = signup;
+    $("#loginTitle").textContent = signup ? "Create an account" : "Sign in to sync";
+    $("#loginIntro").textContent = signup
+      ? "Pick a name and a password of at least 8 characters. Your parts stay private to this account - nobody else signing in can see them."
+      : "Sign in to sync your parts between your phone and desktop. Your local data works fully without this.";
+    $("#loginSubmit").textContent = signup ? "Create account" : "Sign in";
+    $("#loginToggle").textContent = signup ? "I already have an account" : "Create an account";
+    // lets a password manager offer to generate one, rather than autofilling
+    $("#loginPass").setAttribute("autocomplete", signup ? "new-password" : "current-password");
+    $("#loginError").classList.add("hidden");
+  }
+
+  async function doLogin() {
+    var user = $("#loginUser").value.trim();
+    var pass = $("#loginPass").value;
+    var err = $("#loginError");
+    err.classList.add("hidden");
+    if (!user || !pass) return;
+    var btn = $("#loginSubmit");
+    var label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = signupMode ? "Creating…" : "Signing in…";
+    try {
+      if (signupMode) await AUTH.signup(user, pass);
+      else await AUTH.login(user, pass);
+      localStorage.removeItem(SKIP_KEY);
+      $("#login").classList.add("hidden");
+      toast(signupMode ? "Welcome, " + user : "Signed in as " + user);
+      var changed = await SY.pull();
+      if (changed) refresh("Synced with your other device");
+    } catch (e) {
+      err.textContent = e.message || (signupMode ? "Could not create that account" : "Sign in failed");
+      err.classList.remove("hidden");
+    }
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+
+  function bindLoginForm() {
+    $("#loginSubmit").addEventListener("click", doLogin);
+    $("#loginPass").addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); });
+    $("#loginToggle").addEventListener("click", function () { setLoginMode(!signupMode); buzz(); });
+    $("#loginSkip").addEventListener("click", function () {
+      localStorage.setItem(SKIP_KEY, "1");
+      $("#login").classList.add("hidden");
+    });
+  }
+
+  function showLogin() { $("#login").classList.remove("hidden"); }
+
+  function maybeShowLogin() {
+    if (AUTH.isLoggedIn() || localStorage.getItem(SKIP_KEY)) return;
+    showLogin();
   }
 
   /* ================= boot wiring ================= */
@@ -2633,6 +2727,7 @@
       hideGrounding();
       if (session) endSession();
     });
+    bindLoginForm();
 
     // swipe-down on the sheet grip
     var sheet = $("#sheet");
@@ -2662,6 +2757,7 @@
     if (ST.state.settings.onboarded) {
       $("#app").classList.remove("hidden");
       showView("parts");
+      maybeShowLogin();
     } else {
       runOnboarding();
     }

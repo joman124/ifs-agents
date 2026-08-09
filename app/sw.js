@@ -1,5 +1,5 @@
 /* Inner Table - service worker: cache-first app shell for offline use. */
-var CACHE = "inner-table-v15";
+var CACHE = "inner-table-v17";
 var SHELL = [
   "./",
   "index.html",
@@ -13,6 +13,8 @@ var SHELL = [
   "js/llm.js",
   "js/voice.js",
   "js/graph.js",
+  "js/auth.js",
+  "js/sync.js",
   "js/ui.js",
   "js/app.js",
   "manifest.webmanifest",
@@ -43,6 +45,8 @@ self.addEventListener("fetch", function (e) {
   var url = new URL(e.request.url);
   // never intercept LLM API calls
   if (url.origin !== location.origin) return;
+  // never cache sync/login - a cached GET would hand back a stale state blob
+  if (url.pathname.indexOf("/api/") === 0) return;
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(function (hit) {
       if (hit) {

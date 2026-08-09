@@ -2,8 +2,17 @@
 # (Root-anchored so the fictional samples in examples/ still commit.)
 /parts/
 /sessions/
+/docs/parts/
 .claude/agents/part-*.md
+
+# Server credentials pulled from Vercel (`vercel env pull .env.local`)
+.env*.local
+.env
+.vercel
 
 # OS noise
 .DS_Store
 Thumbs.db
+
+.vercel
+.env*

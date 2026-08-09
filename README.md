@@ -69,7 +69,8 @@ part has a positive intent; there are no bad parts. Longer version:
 ## Quickstart A — the webapp (Inner Table)
 
 The [`app/`](app/) directory is **Inner Table**, a mobile-first installable
-webapp version of this whole flow — no install, no backend, no account.
+webapp version of this whole flow — no install, and no account unless you want
+your own devices to sync.
 **Live at [ifs-agents.vercel.app](https://ifs-agents.vercel.app)** (open it on
 your phone and Add to Home Screen):
 
@@ -117,6 +118,42 @@ Run the safety tests with `node test/run.js` — no dependencies, no browser, no
 build. They cover data integrity rather than the UI: profile parsing and round
 trips, both merge paths, untrusted backups, the question bank, the store, and
 mic turn-taking.
+
+### Optional: syncing your own devices
+
+By default nothing leaves the device. Signing in turns on sync, so a part
+edited on your phone shows up on your desktop. It needs three environment
+variables on the Vercel project:
+
+| Variable | Where it comes from |
+|---|---|
+| `UPSTASH_REDIS_REST_URL` | your Upstash Redis database |
+| `UPSTASH_REDIS_REST_TOKEN` | same |
+| `SESSION_SECRET` | any long random string — `openssl rand -base64 32` |
+
+Accounts are created in the app itself — **Create an account** on the sign-in
+screen takes a username and a password of at least 8 characters. A name that
+already exists is refused rather than overwritten. Each account's parts are
+stored under its own key and are never readable by another account.
+
+Anyone who can reach the URL can create an account, so treat the deployment as
+public. To make an account yourself instead — or to reset a forgotten
+password — run, from the project root:
+
+```
+node scripts/add-user.js <username>
+```
+
+That needs `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in a local
+`.env.local` (copy them from the Upstash console — Vercel cannot pull back
+values marked Sensitive). The password is typed at a prompt rather than passed
+as an argument, so it never lands in shell history.
+
+Each user's parts live under their own key and are never readable by another
+account. The Upstash token stays server-side in [`api/`](api/); the browser
+only ever holds a signed session token. This is still a journaling tool, not
+a therapy record system — the [safety guide](docs/safety.md) applies doubly
+once profiles are on a server.
 
 ## Quickstart B — Claude Code
 

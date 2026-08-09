@@ -3,10 +3,11 @@
    takes an assert object and calls it as many times as it likes. */
 "use strict";
 
-var SUITES = ["schema", "markdown", "questions", "store", "voice"];
+var SUITES = ["schema", "markdown", "questions", "store", "voice", "auth", "sync"];
 
 var pass = 0;
 var failures = [];
+var pending = [];
 
 SUITES.forEach(function (name) {
   var t = {
@@ -24,14 +25,21 @@ SUITES.forEach(function (name) {
       catch (e) { pass++; }
     }
   };
-  try {
-    require("./" + name + ".test.js")(t);
-  } catch (e) {
+  function blame(e) {
     failures.push(name + " - suite threw: " + (e && e.stack ? e.stack.split("\n").slice(0, 3).join("\n      ") : e));
+  }
+  try {
+    // a suite may be async (the auth gate is); collect it and await below
+    var result = require("./" + name + ".test.js")(t);
+    if (result && typeof result.then === "function") pending.push(result.catch(blame));
+  } catch (e) {
+    blame(e);
   }
 });
 
-console.log("\n" + pass + " passed, " + failures.length + " failed");
-failures.forEach(function (f) { console.log("\n  FAIL  " + f); });
-console.log("");
-process.exit(failures.length ? 1 : 0);
+Promise.all(pending).then(function () {
+  console.log("\n" + pass + " passed, " + failures.length + " failed");
+  failures.forEach(function (f) { console.log("\n  FAIL  " + f); });
+  console.log("");
+  process.exit(failures.length ? 1 : 0);
+});

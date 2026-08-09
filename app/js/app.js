@@ -13,6 +13,13 @@
     navigator.storage.persist().catch(function () {});
   }
 
+  // if this device is signed in, fold in whatever the other device changed
+  if (window.IFS.auth.isLoggedIn()) {
+    window.IFS.sync.pull().then(function (changed) {
+      if (changed) window.IFS.ui.refresh("Synced with your other device");
+    });
+  }
+
   // PWA: register the service worker when served over http(s)
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     window.addEventListener("load", function () {

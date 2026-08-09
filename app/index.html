@@ -45,7 +45,8 @@
     <section class="onboard-slide">
       <div class="onboard-art"><span class="glyph glyph-lock"></span></div>
       <h2 class="serif">Yours, and only yours</h2>
-      <p class="lead">Everything lives on this device. No account, no server, no analytics. Part profiles are intimate &mdash; export backups and keep them private.</p>
+      <p class="lead">Everything lives on this device unless you turn on sync. No analytics, ever. Part profiles are intimate &mdash; export backups and keep them private.</p>
+      <p class="dim">Sync is optional: sign in and a copy of your parts is kept on the server so your own devices can share them. Signed out, nothing leaves this device.</p>
       <p class="dim">Live sessions can use your own AI key (sent directly from your device to the provider), or a copy-paste mode with any chat you already trust.</p>
       <button class="btn btn-primary btn-big" id="onboardDone">Enter</button>
     </section>
@@ -159,6 +160,20 @@
   </div>
 </div>
 
+<!-- ============ LOGIN (optional - gates cross-device sync only) ============ -->
+<div id="login" class="ground hidden" role="dialog" aria-modal="true">
+  <div class="ground-inner">
+    <h2 class="serif" id="loginTitle">Sign in to sync</h2>
+    <p id="loginIntro">Sign in to sync your parts between your phone and desktop. Your local data works fully without this.</p>
+    <input id="loginUser" autocomplete="username" placeholder="Username" style="margin-bottom:10px">
+    <input id="loginPass" type="password" autocomplete="current-password" placeholder="Password" style="margin-bottom:10px">
+    <p id="loginError" class="dim hidden" style="color:var(--danger)"></p>
+    <button class="btn btn-primary btn-big" id="loginSubmit">Sign in</button>
+    <button class="btn btn-soft" id="loginToggle">Create an account</button>
+    <button class="btn btn-ghost" id="loginSkip">Use this device only</button>
+  </div>
+</div>
+
 <div id="toast" class="toast hidden"></div>
 
 <script src="js/schema.js"></script>
@@ -170,6 +185,8 @@
 <script src="js/llm.js"></script>
 <script src="js/voice.js"></script>
 <script src="js/graph.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/sync.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/app.js"></script>
 </body>

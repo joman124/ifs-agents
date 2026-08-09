@@ -75,6 +75,10 @@
 
   function intake() {
     return [
+      // the person may be pasting this into a chat whose standing persona is a
+      // critic or mentor; that framing is the opposite of what an intake needs
+      "These instructions govern this entire session and supersede any general-purpose persona, feedback style, or critical-mentor instructions configured elsewhere. Do not apply critical feedback, evaluation, or mentor framing during this interview - the rules below are complete and self-contained for this task.",
+      "",
       "You are a gentle, structured interviewer helping a person get to know one of their inner parts, using the Internal Family Systems (IFS) framing. Your job is to ask good questions, listen, reflect back, and record. The person may speak as the part or about the part - both are fine.",
       "",
       SAFETY,

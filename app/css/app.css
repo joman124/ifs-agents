@@ -136,7 +136,11 @@ label.fieldlabel { display: block; font-size: .8rem; color: var(--ink-dim); marg
 @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
 /* ================= app shell ================= */
-.app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+/* inset:0 alone sizes to the layout viewport, which on a phone does not
+   change when the browser's toolbar retracts - so the bar ends up floating
+   above the bottom of the screen. dvh follows the viewport that is actually
+   visible; browsers without it fall back to inset:0. */
+.app { position: fixed; inset: 0; height: 100dvh; display: flex; flex-direction: column; }
 .topbar {
   padding-top: var(--sat);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
@@ -151,7 +155,7 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .view-pad { padding: 16px 16px calc(90px + var(--sab)); max-width: 640px; margin: 0 auto; }
 
 .tabbar {
-  display: flex; border-top: 1px solid var(--line);
+  display: flex; flex: none; border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   padding-bottom: var(--sab); height: calc(var(--tabbar-h) + var(--sab));

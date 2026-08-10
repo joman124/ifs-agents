@@ -105,6 +105,55 @@ module.exports = function (t) {
   t.ok(withDeclined > S.coverageScore(scored),
     "a declined topic is excluded from the score rather than counted as a gap");
 
+  /* The % has to describe the part, not the flags. A profile typed in by
+     hand or imported as markdown arrives full of content with every flag
+     still untouched; it used to read 0%. */
+  var blank = part("Blank");
+  t.eq(S.coverageScore(blank), 0, "a part with nothing in it scores zero");
+
+  var filled = part("Filled", {
+    positive_intent: "keep the person safe",
+    emotions: ["vigilance", "contempt"],
+    fears: ["being seen"], hopes_goals: ["rest"], behaviors: ["rehearses"],
+    origin: "a spelling bee", unburdened_vision: "an editor",
+    age: "about forty", location: "behind the eyes", trust_in_self: "low"
+  });
+  S.CATEGORIES.forEach(function (c) { filled.coverage[c] = "untouched"; });
+  t.ok(S.coverageScore(filled) > 0.5,
+    "content alone lifts the score, with every coverage flag still untouched");
+  t.ok(S.coverageScore(filled) > S.coverageScore(blank),
+    "and a part that holds more reads higher than one that holds nothing");
+
+  /* per-category, the number tracks the fields that category is made of */
+  t.eq(S.dataScore(blank, "positive_intent"), 0, "no intent recorded scores zero");
+  t.eq(S.dataScore(filled, "positive_intent"), 1, "an intent recorded scores full");
+  t.eq(S.dataScore(filled, "emotions_feelings"), 1, "two emotions fill that category");
+  t.eq(S.dataScore(part("One", { emotions: ["vigilance"] }), "emotions_feelings"), 0.5,
+    "one of two wanted signals is half");
+
+  /* explored but thin still counts - the flag is the other honest signal */
+  var explored = part("Explored");
+  S.CATEGORIES.forEach(function (c) { explored.coverage[c] = "untouched"; });
+  explored.coverage.history_origin = "complete";
+  t.ok(S.coverageScore(explored) > 0,
+    "a category explored to completion counts even if little was recordable");
+
+  /* nobody's part may lose ground: the score can only ever be at or above
+     what the coverage flags alone would have given */
+  var flagsOnly = function (p) {
+    var pts = 0, denom = 0;
+    S.CATEGORIES.forEach(function (c) {
+      if (p.coverage[c] === "declined") return;
+      denom += 1;
+      pts += p.coverage[c] === "complete" ? 1 : (p.coverage[c] === "partial" ? 0.5 : 0);
+    });
+    return denom ? pts / denom : 0;
+  };
+  [blank, filled, explored, scored].forEach(function (p) {
+    t.ok(S.coverageScore(p) >= flagsOnly(p) - 1e-9,
+      p.name + " never scores below what its coverage flags alone gave");
+  });
+
   var ready = part("Ready", { positive_intent: "protection" });
   ready.coverage.introduction = "complete";
   ready.coverage.positive_intent = "complete";

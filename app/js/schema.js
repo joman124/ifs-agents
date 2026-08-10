@@ -126,15 +126,57 @@
     return { ready: missing.length === 0, missing: missing };
   }
 
-  /* 0..1 development score for the coverage ring */
+  /* Which fields actually carry a category's content. The coverage flag says
+     a topic was explored; this says something was written down. A profile
+     imported as markdown, or typed in by hand, arrives full of content with
+     every flag still untouched - so a number built on flags alone floats
+     free of the part it describes. */
+  var EVIDENCE = {
+    introduction: { need: 2, of: function (p) {
+      return [p.age, p.location, p.appearance, p.type !== "unknown" ? "t" : "", p.narrative.in_its_own_words];
+    } },
+    history_origin: { need: 1, of: function (p) { return [p.origin, p.narrative.origin_story]; } },
+    emotions_feelings: { need: 2, of: function (p) {
+      return (p.emotions || []).concat([p.narrative.what_activates_it]);
+    } },
+    beliefs_motivations: { need: 2, of: function (p) {
+      return (p.fears || []).concat(p.hopes_goals || [], p.behaviors || []);
+    } },
+    relationships: { need: 1, of: function (p) {
+      return (p.relationships || []).map(function (r) { return r.part; })
+        .concat([p.narrative.relates_to_others]);
+    } },
+    communication_needs: { need: 2, of: function (p) {
+      return (p.wants_needs || []).concat([p.narrative.what_it_needs]);
+    } },
+    positive_intent: { need: 1, of: function (p) { return [p.positive_intent]; } },
+    changes_healing: { need: 1, of: function (p) { return [p.unburdened_vision]; } },
+    integration_harmony: { need: 1, of: function (p) {
+      return [p.trust_in_self !== "unknown" ? "t" : "", p.narrative.relates_to_others];
+    } }
+  };
+
+  /* 0..1: how much of this category the part actually has written down. */
+  function dataScore(part, category) {
+    var spec = EVIDENCE[category];
+    if (!spec) return 0;
+    var filled = spec.of(part).filter(function (v) { return v && String(v).trim(); }).length;
+    return Math.min(1, filled / spec.need);
+  }
+
+  /* 0..1 development score for the ring and the "% developed" label.
+     Per category, the better of two honest signals: what the coverage map
+     says was explored, and what the profile actually holds. Either alone
+     lies - a topic can be explored and produce nothing recordable, and a
+     profile can be full of content nobody has run a session over. */
   function coverageScore(part) {
     var pts = 0, denom = 0;
     CATEGORIES.forEach(function (c) {
       var s = part.coverage[c];
       if (s === "declined") return; // declined topics don't count against the part
-      denom += 2;
-      if (s === "partial") pts += 1;
-      if (s === "complete") pts += 2;
+      denom += 1;
+      var flag = s === "complete" ? 1 : (s === "partial" ? 0.5 : 0);
+      pts += Math.max(flag, dataScore(part, c));
     });
     return denom ? pts / denom : 0;
   }
@@ -290,6 +332,7 @@
     initial: initial,
     blankPart: blankPart,
     readiness: readiness,
+    dataScore: dataScore,
     coverageScore: coverageScore,
     mergeParts: mergeParts,
     mergeDuplicate: mergeDuplicate,

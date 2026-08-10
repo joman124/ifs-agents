@@ -100,4 +100,44 @@ module.exports = function (t) {
   reloaded.storage.setItem("innertable.v1", raw);
   reloaded.IFS.store.load();
   t.eq(reloaded.IFS.store.getPart("the-keeper").name, "The Keeper", "and read back on the next boot");
+
+  /* --- the starter system a new account opens on --- */
+  var s = fresh();
+  t.eq(s.IFS.store.seedStarters(), 3, "an empty store gets the three starters");
+  var starters = s.IFS.store.listParts();
+  t.eq(starters.map(function (p) { return p.type; }).sort(),
+    ["exile", "firefighter", "manager"], "one of each kind");
+
+  /* Both protectors stand in front of the same exile, and are polarized with
+     each other - if that shape breaks, the map stops teaching anything. */
+  var S = s.IFS.schema;
+  var edge = function (from, to) {
+    var p = s.IFS.store.getPart(from);
+    var found = (p.relationships || []).filter(function (r) { return r.part === to; })[0];
+    return found ? found.type : null;
+  };
+  t.eq(edge("the-perfectionist", "the-ashamed-one"), "protects", "the manager protects the exile");
+  t.eq(edge("the-numbing-one", "the-ashamed-one"), "protects", "the firefighter protects the same exile");
+  t.eq(edge("the-perfectionist", "the-numbing-one"), "polarized-with", "the two protectors are polarized");
+
+  /* every edge must exist from both ends, or the map draws a half-thread */
+  var asymmetric = [];
+  starters.forEach(function (p) {
+    (p.relationships || []).forEach(function (r) {
+      if (edge(r.part, p.slug) !== S.EDGE_MIRROR[r.type]) {
+        asymmetric.push(p.slug + " -" + r.type + "-> " + r.part);
+      }
+    });
+  });
+  t.eq(asymmetric, [], "every starter edge is mirrored in the other profile");
+
+  starters.forEach(function (p) {
+    t.ok(!S.readiness(p).ready, p.name + " is not compile-ready - the real work is still the person's");
+  });
+
+  /* --- and they never land on top of someone's real parts --- */
+  var h = fresh();
+  h.add("A Part I Already Had");
+  t.eq(h.IFS.store.seedStarters(), 0, "a store with parts in it is left alone");
+  t.eq(h.IFS.store.listParts().length, 1, "and keeps only what was there");
 };

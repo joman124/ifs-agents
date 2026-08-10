@@ -131,6 +131,14 @@ variables on the Vercel project:
 | `UPSTASH_REDIS_REST_TOKEN` | same |
 | `SESSION_SECRET` | any long random string — `openssl rand -base64 32` |
 
+A new account opens on three **example** parts rather than an empty app — a
+critical manager, an ashamed exile, and a substance-using firefighter, already
+mapped in the shape those three usually take: both protectors standing in front
+of the same exile, polarized with each other. They are labelled as examples and
+sit deliberately short of the compile-readiness bar; rename them, rewrite them,
+or delete them. They are only ever seeded into an empty account, so signing up
+after using the app on a device never drops strangers among your own parts.
+
 Accounts are created in the app itself — **Create an account** on the sign-in
 screen takes a username and a password of at least 8 characters. A name that
 already exists is refused rather than overwritten. Each account's parts are

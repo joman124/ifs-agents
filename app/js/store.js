@@ -388,10 +388,110 @@
     ""
   ].join("\n");
 
+  /* A new account opens onto an empty app, which is a hard place to begin.
+     These three are the textbook IFS triangle: a critical manager and a
+     reactive firefighter standing in front of the same exile, polarized with
+     each other because each one's method undoes the other's. They are
+     labelled examples on purpose - the point is to show what a mapped system
+     looks like, not to tell anyone what is inside them. */
+  var STARTERS = [
+    {
+      name: "The Perfectionist",
+      type: "manager",
+      age: "older than the person - it arrived early and never left",
+      location: "behind the eyes, reading over their shoulder",
+      origin: "showed up the first time being wrong happened in front of other people",
+      emotions: ["vigilance", "contempt worn as armour", "a tiredness it will not admit to"],
+      fears: ["that if it eases off, the shame underneath becomes visible to everyone"],
+      hopes_goals: ["work nobody can fault", "the person taken seriously"],
+      behaviors: ["rehearses conversations in advance", "finds the flaw before anyone else can"],
+      wants_needs: ["acknowledgement that its standards have kept the person safe"],
+      positive_intent: "keep the person from ever being humiliated again by getting there first",
+      unburdened_vision: "an editor rather than a censor - sharpening work it believes in",
+      trust_in_self: "low",
+      relationships: [
+        { part: "the-ashamed-one", type: "protects",
+          notes: "I keep the standard high so nobody ever gets close enough to see it." },
+        { part: "the-numbing-one", type: "polarized-with",
+          notes: "Every time it checks out, I work twice as hard to cover for us - and the harder I push, the sooner it reaches for something." }
+      ]
+    },
+    {
+      name: "The Ashamed One",
+      type: "exile",
+      age: "young - somewhere around seven or eight",
+      location: "low in the chest, curled small",
+      origin: "the moment being wrong turned into being bad, with people watching",
+      emotions: ["shame", "loneliness", "a wish to disappear"],
+      fears: ["being seen exactly as it is and being left anyway"],
+      hopes_goals: ["to be told it was never the unforgivable thing it believes it is"],
+      behaviors: ["goes quiet", "makes itself smaller when attention arrives"],
+      wants_needs: ["someone to stay after seeing it"],
+      positive_intent: "hold the hurt so the rest of the system can keep functioning",
+      unburdened_vision: "a child who can be looked at without flinching",
+      trust_in_self: "none",
+      relationships: [
+        { part: "the-perfectionist", type: "protected-by",
+          notes: "It never lets anyone get near enough to find me." },
+        { part: "the-numbing-one", type: "protected-by",
+          notes: "When it gets loud in here, that one makes it stop." }
+      ]
+    },
+    {
+      name: "The Numbing One",
+      type: "firefighter",
+      age: "arrived in adolescence, when the pressure first outran the coping",
+      location: "hands and throat - the reach for something",
+      origin: "the first time something took the feeling away and it worked",
+      emotions: ["urgency", "relief", "the flatness afterwards"],
+      fears: ["that without it the shame would simply not stop"],
+      hopes_goals: ["a few hours where none of it can reach the person"],
+      behaviors: ["reaches for a substance when the shame lands", "acts fast, argues later"],
+      wants_needs: ["another way to stop the pain that works as quickly as this one does"],
+      positive_intent: "put the fire out immediately, whatever it costs later",
+      unburdened_vision: "rest that does not have to be bought",
+      trust_in_self: "none",
+      relationships: [
+        { part: "the-ashamed-one", type: "protects",
+          notes: "When the shame lands I put it out fast, with whatever is nearest." },
+        { part: "the-perfectionist", type: "polarized-with",
+          notes: "It never stops pushing. Somebody has to give us a way out, and it is never going to be them." }
+      ]
+    }
+  ];
+
+  function starterPart(spec) {
+    var p = S.blankPart(spec.name);
+    Object.keys(spec).forEach(function (k) { p[k] = spec[k]; });
+    p.slug = S.slugify(spec.name);
+    // an intro, an intent and a mapped relationship - deliberately short of
+    // the compile-readiness bar, because the real work is still the person's
+    ["introduction", "positive_intent", "relationships"].forEach(function (c) {
+      p.coverage[c] = "partial";
+    });
+    p.narrative.session_notes = S.todayISO() +
+      " - Example starter part, not from a session. Rename it, rewrite it, or " +
+      "delete it. The parts that matter are the ones you meet yourself.";
+    return p;
+  }
+
+  /* Only ever writes into an empty store: someone who used the app on this
+     device before signing up must not find three strangers among their parts. */
+  function seedStarters() {
+    if (Object.keys(state.parts).length) return 0;
+    STARTERS.forEach(function (spec) {
+      var p = starterPart(spec);
+      state.parts[p.slug] = p;
+    });
+    save();
+    return STARTERS.length;
+  }
+
   window.IFS.store = {
     load: load,
     save: save,
     onChange: onChange,
+    seedStarters: seedStarters,
     initMirror: initMirror,
     saveTable: saveTable,
     renamePart: renamePart,

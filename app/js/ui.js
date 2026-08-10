@@ -2682,7 +2682,11 @@
       $("#login").classList.add("hidden");
       toast(signupMode ? "Welcome, " + user : "Signed in as " + user);
       var changed = await SY.pull();
-      if (changed) refresh("Synced with your other device");
+      // seed only after the pull, so an account that already has parts
+      // somewhere else never gets three examples dropped in beside them
+      var seeded = signupMode ? ST.seedStarters() : 0;
+      if (seeded) refresh("Three example parts to start from - rename or delete them");
+      else if (changed) refresh("Synced with your other device");
     } catch (e) {
       err.textContent = e.message || (signupMode ? "Could not create that account" : "Sign in failed");
       err.classList.remove("hidden");

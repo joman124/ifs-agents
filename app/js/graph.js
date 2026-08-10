@@ -28,6 +28,19 @@
      "away" is absent: no pull, so it drifts with the rest of the swarm. */
   var SEAT_RADIUS = { table: 120, room: 200, adjoining: 280 };
 
+  /* A circle is 22px and its name sits underneath it, so two parts closer
+     than this are unreadable on a phone long before the circles touch.
+     The force pass only approximates separation - past a handful of parts
+     it settles with nodes on top of each other - so the distance is also
+     enforced directly, once per frame. */
+  var MIN_GAP = 64;
+
+  /* Above this many unmapped pairs the faint threads stop being a question
+     and become a hairball: at twelve parts there are sixty of them on a
+     375px screen. They come back the moment a part is selected, or when the
+     legend's "not mapped yet" row is switched on. */
+  var HAIRBALL = 18;
+
   function buildGraph(parts) {
     var nodes = [{ id: "self", label: "Self", self: true }];
     var idx = { self: 0 };
@@ -111,12 +124,19 @@
 
     var typeColor = { manager: "var(--manager)", firefighter: "var(--firefighter)", exile: "var(--exile)", unknown: "var(--unknown)" };
 
+    /* The opening ring has to be big enough to seat everyone at MIN_GAP,
+       or twelve parts start life in a pile and the simulation spends its
+       first seconds untangling them in front of the person. */
+    var ringMin = (g.nodes.length * MIN_GAP) / (2 * Math.PI);
+    var ringX = Math.max(Math.min(W, H) * .26, ringMin);
+    var ringY = Math.max(Math.min(W, H) * .22, ringMin);
+
     g.nodes.forEach(function (n, i) {
       if (n.self) { n.x = W / 2; n.y = Math.min(90, H * .16); n.pin = true; }
       else {
         var ang = (i / (g.nodes.length - 1)) * Math.PI * 2;
-        n.x = W / 2 + Math.cos(ang) * Math.min(W, H) * .26;
-        n.y = H * .55 + Math.sin(ang) * Math.min(W, H) * .22;
+        n.x = W / 2 + Math.cos(ang) * ringX;
+        n.y = H * .55 + Math.sin(ang) * ringY;
       }
       n.vx = 0; n.vy = 0;
     });
@@ -155,15 +175,20 @@
 
     /* Visibility is two filters at once: which part is selected, and which
        legend tone is switched on. An edge shows only if it passes both. */
+    var implicitCount = g.edges.filter(function (e) { return e.implicit; }).length;
+
     function applySelection() {
       var tone = opts.tone && opts.tone();
+      // too many unmapped threads to show at rest - unless the person has
+      // asked for exactly those, or is focused on one part
+      var crowded = implicitCount > HAIRBALL && tone !== "unknown";
       g.edges.forEach(function (e, i) {
         var touches = selected != null && (e.a === selected || e.b === selected);
         var inTone = !tone || toneOf(e) === tone;
         var el = edgeEls[i];
         var op;
         if (!inTone) op = 0;
-        else if (selected == null) op = e.implicit ? .3 : 1;
+        else if (selected == null) op = e.implicit ? (crowded ? 0 : .3) : 1;
         else if (touches) op = 1;
         else op = e.implicit ? 0 : .12;
         el.line.style.opacity = op;
@@ -205,9 +230,11 @@
       var name = document.createElementNS(NS, "text");
       name.setAttribute("dy", r + 16);
       name.setAttribute("font-size", "11");
-      // long names run off a phone screen; the full one is on the tap card
+      // long names run off a phone screen, and two of them collide long
+      // before the circles do; the full one is on the tap card
+      var maxLabel = W < 480 ? 12 : 18;
       name.textContent = n.self ? ""
-        : (n.label.length > 18 ? n.label.slice(0, 17).trim() + "…" : n.label);
+        : (n.label.length > maxLabel ? n.label.slice(0, maxLabel - 1).trim() + "…" : n.label);
       grp.appendChild(c); grp.appendChild(initial); grp.appendChild(name);
       nodeLayer.appendChild(grp);
 
@@ -352,17 +379,40 @@
         });
       }
 
+      function clamp(n) {
+        // keep the name under the circle on screen, not just the circle
+        n.x = Math.max(52, Math.min(W - 52, n.x));
+        n.y = Math.max(40, Math.min(H - 70, n.y));
+      }
+
       g.nodes.forEach(function (n) {
         if (n.pin || n.drag) return;
         n.vx += (W / 2 - n.x) * 0.0015;
         n.vy += (H * .52 - n.y) * 0.0015;
         n.vx *= 0.82; n.vy *= 0.82;
         n.x += n.vx * heat; n.y += n.vy * heat;
-        // keep the name under the circle on screen, not just the circle
-        n.x = Math.max(52, Math.min(W - 52, n.x));
-        n.y = Math.max(40, Math.min(H - 70, n.y));
+        clamp(n);
       });
       heat *= 0.985;
+
+      /* Separation, applied to positions rather than velocities so it holds
+         even after the heat has run out and the forces have stopped moving
+         anything. Self and a dragged node stay put; the other one takes the
+         whole push. */
+      for (var si = 0; si < g.nodes.length; si++) {
+        for (var sj = si + 1; sj < g.nodes.length; sj++) {
+          var na = g.nodes[si], nb = g.nodes[sj];
+          var sdx = nb.x - na.x, sdy = nb.y - na.y;
+          var sd = Math.sqrt(sdx * sdx + sdy * sdy) || 0.01;
+          if (sd >= MIN_GAP) continue;
+          var freeA = !na.pin && !na.drag, freeB = !nb.pin && !nb.drag;
+          if (!freeA && !freeB) continue;
+          var share = (MIN_GAP - sd) / (freeA && freeB ? 2 : 1);
+          var ux = sdx / sd, uy = sdy / sd;
+          if (freeA) { na.x -= ux * share; na.y -= uy * share; clamp(na); }
+          if (freeB) { nb.x += ux * share; nb.y += uy * share; clamp(nb); }
+        }
+      }
 
       g.edges.forEach(function (e, i) {
         var a = g.nodes[e.a], b = g.nodes[e.b];
@@ -383,6 +433,11 @@
 
       sim.raf = requestAnimationFrame(step);
     }
+
+    // establish the resting state before the first frame: without this the
+    // filters only ever ran on a tap, so a fresh map opened showing every
+    // unmapped thread no matter how many there were
+    applySelection();
 
     sim = { raf: 0 };
     step();

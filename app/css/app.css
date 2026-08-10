@@ -158,9 +158,10 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   z-index: 5;
 }
 .tab {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding-top: 8px; color: var(--ink-faint); font-size: .68rem; font-weight: 600;
-  transition: color .15s;
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 5px; padding: 6px 4px 8px;
+  color: var(--ink-faint); font-size: .68rem; font-weight: 600;
+  line-height: 1; transition: color .15s;
 }
 .tab.active { color: var(--accent); }
 .tab .glyph { filter: grayscale(1) opacity(.55); transition: filter .15s; }
@@ -470,6 +471,15 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .map-legend .lg span { flex: 1; }
 .map-legend .lg b { font-variant-numeric: tabular-nums; color: var(--ink); }
 .map-legend .lg-hint { font-size: .62rem; color: var(--ink-faint); padding: 2px 7px 0; }
+/* On a phone the legend was taking a fifth of the map. Same three rows,
+   less furniture around them. */
+@media (max-width: 480px) {
+  .map-legend { left: 8px; gap: 2px; padding: 6px 7px; border-radius: 10px; }
+  .map-legend .lg { padding: 4px 6px; gap: 7px; font-size: .64rem; }
+  .map-legend .lg i { width: 16px; }
+  .map-legend .lg-hint { display: none; }
+  .map-hint { font-size: .64rem; padding: 3px 10px; }
+}
 .rel-tone {
   font-size: .66rem; text-transform: uppercase; letter-spacing: .11em;
   color: var(--ink-faint); padding: 10px 2px 4px;

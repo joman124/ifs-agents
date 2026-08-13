@@ -37,7 +37,10 @@
         anthropicModel: "claude-sonnet-5",
         openaiKey: "",
         openaiModel: "gpt-5.1",
-        voiceOn: false,          // speak replies + hands-free mic in sessions
+        /* Voice is the point of a session: the answer to an IFS question
+           arrives spoken, in the pause, long before anyone would type it.
+           On where it is supported; the toggle is one tap away in-session. */
+        voiceOn: true,           // speak replies + hands-free mic in sessions
         elevenKey: "",           // optional: ElevenLabs TTS for a personal voice
         elevenVoiceId: "",
         elevenModel: "eleven_flash_v2_5",

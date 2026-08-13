@@ -107,23 +107,24 @@
     };
   }
 
-  /* Compile-readiness bar, verbatim from the schema:
-     name set, positive_intent non-empty, introduction partial/complete,
-     positive_intent category partial/complete, plus 2 more categories touched. */
+  /* How developed a part has to be before it can take a seat and speak.
+     The bar used to be a checklist of coverage flags running alongside the
+     development % without ever meeting it, so a part could read 80% and stay
+     barred, or clear the bar reading 17%. One measure now: the light comes on
+     when a part has a name, an intent to act from, and enough of itself
+     written down for its answers to be its own rather than the model's. */
+  var READY_AT = 0.5;
+
   function readiness(part) {
-    var touched = function (c) {
-      return part.coverage[c] === "partial" || part.coverage[c] === "complete";
-    };
     var missing = [];
     if (!part.name) missing.push("a name");
     if (!part.positive_intent) missing.push("a positive intent");
-    if (!touched("introduction")) missing.push("the introduction category");
-    if (!touched("positive_intent")) missing.push("the positive-intent category");
-    var others = CATEGORIES.filter(function (c) {
-      return c !== "introduction" && c !== "positive_intent" && touched(c);
-    });
-    if (others.length < 2) missing.push((2 - others.length) + " more explored categor" + (others.length === 1 ? "y" : "ies"));
-    return { ready: missing.length === 0, missing: missing };
+    var score = coverageScore(part);   // hoisted; defined below
+    if (score < READY_AT) {
+      missing.push("more of itself written down - " + Math.round(score * 100) +
+        "% of the " + Math.round(READY_AT * 100) + "% it takes to join the table");
+    }
+    return { ready: missing.length === 0, missing: missing, score: score };
   }
 
   /* Which fields actually carry a category's content. The coverage flag says
@@ -132,36 +133,51 @@
      every flag still untouched - so a number built on flags alone floats
      free of the part it describes. */
   var EVIDENCE = {
-    introduction: { need: 2, of: function (p) {
-      return [p.age, p.location, p.appearance, p.type !== "unknown" ? "t" : "", p.narrative.in_its_own_words];
+    introduction: { need: 3, of: function (p) {
+      return [p.age, p.location, p.appearance, p.type !== "unknown", p.narrative.in_its_own_words];
     } },
-    history_origin: { need: 1, of: function (p) { return [p.origin, p.narrative.origin_story]; } },
-    emotions_feelings: { need: 2, of: function (p) {
+    history_origin: { need: 2, of: function (p) { return [p.origin, p.narrative.origin_story]; } },
+    emotions_feelings: { need: 3, of: function (p) {
       return (p.emotions || []).concat([p.narrative.what_activates_it]);
     } },
-    beliefs_motivations: { need: 2, of: function (p) {
+    beliefs_motivations: { need: 4, of: function (p) {
       return (p.fears || []).concat(p.hopes_goals || [], p.behaviors || []);
     } },
-    relationships: { need: 1, of: function (p) {
-      return (p.relationships || []).map(function (r) { return r.part; })
+    relationships: { need: 2, of: function (p) {
+      return (p.relationships || []).map(function (r) { return r.notes || r.part; })
         .concat([p.narrative.relates_to_others]);
     } },
-    communication_needs: { need: 2, of: function (p) {
+    communication_needs: { need: 3, of: function (p) {
       return (p.wants_needs || []).concat([p.narrative.what_it_needs]);
     } },
     positive_intent: { need: 1, of: function (p) { return [p.positive_intent]; } },
     changes_healing: { need: 1, of: function (p) { return [p.unburdened_vision]; } },
-    integration_harmony: { need: 1, of: function (p) {
-      return [p.trust_in_self !== "unknown" ? "t" : "", p.narrative.relates_to_others];
+    integration_harmony: { need: 2, of: function (p) {
+      return [p.trust_in_self !== "unknown", p.narrative.relates_to_others];
     } }
   };
+
+  /* Depth, not just presence. "shame" and a sentence that says when the shame
+     arrives and what it costs are both entries in the same field, and counting
+     them the same is how a profile of one-word stubs reads as finished. A flag
+     that is simply set (a type, a trust level) counts whole - there is no
+     shallower way to record it. */
+  function signalWeight(v) {
+    if (v === true) return 1;
+    if (v === false) return 0;   // not String(false) - "false" is five characters
+    var s = String(v == null ? "" : v).trim();
+    if (!s) return 0;
+    if (s.length < 12) return 0.4;    // a word or two
+    if (s.length < 40) return 0.75;   // a phrase
+    return 1;                          // a thought
+  }
 
   /* 0..1: how much of this category the part actually has written down. */
   function dataScore(part, category) {
     var spec = EVIDENCE[category];
     if (!spec) return 0;
-    var filled = spec.of(part).filter(function (v) { return v && String(v).trim(); }).length;
-    return Math.min(1, filled / spec.need);
+    var depth = spec.of(part).reduce(function (sum, v) { return sum + signalWeight(v); }, 0);
+    return Math.min(1, depth / spec.need);
   }
 
   /* 0..1 development score for the ring and the "% developed" label.
@@ -332,7 +348,9 @@
     initial: initial,
     blankPart: blankPart,
     readiness: readiness,
+    READY_AT: READY_AT,
     dataScore: dataScore,
+    signalWeight: signalWeight,
     coverageScore: coverageScore,
     mergeParts: mergeParts,
     mergeDuplicate: mergeDuplicate,

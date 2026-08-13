@@ -132,9 +132,20 @@ Reverse-chronological dated entries appended after each session.
 
 A part may be compiled into a runnable agent when **all** of the following hold:
 - `name` is set and `positive_intent` is non-empty.
-- `coverage.introduction` is `partial` or `complete`.
-- `coverage.positive_intent` is `partial` or `complete`.
-- At least **two** other categories are `partial` or `complete`.
+- The part's **development score** is at least **50%**.
+
+The development score is the same number the app shows as "% developed", so
+the green light and the ring never disagree. Per category it takes the better
+of two honest signals — what `coverage` says was explored, and what the
+profile actually holds — because either alone lies: a topic can be explored
+and produce nothing recordable, and a profile can be full of content nobody
+has run a session over.
+
+Content is weighted by depth, not just presence. A one-word entry counts for
+less than a phrase, and a phrase for less than a worked-through thought, so a
+profile of stubs does not read as finished. A field that is simply set (a
+`type`, a `trust_in_self`) counts whole — there is no shallower way to record
+it. `declined` categories are excluded rather than counted as gaps.
 
 Below this bar, the compile flow should decline and suggest a check-in session
 instead. An under-interviewed part makes a hollow, confabulated agent.

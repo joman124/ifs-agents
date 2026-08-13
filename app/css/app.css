@@ -508,6 +508,30 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   padding: 4px 12px; border-radius: 999px; pointer-events: none;
 }
 
+/* Whose turn it is, for someone not reading the screen. Idle collapses to
+   nothing so text-only sessions look exactly as they did. */
+.voice-orb {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  /* min-height:0 or the flex default (auto) keeps a content-sized floor here
+     and the idle state never collapses */
+  height: 0; min-height: 0; overflow: hidden; opacity: 0;
+  font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-dim); transition: height .2s ease, opacity .2s ease;
+}
+.voice-orb.speaking, .voice-orb.listening, .voice-orb.thinking { height: 30px; opacity: 1; }
+.voice-orb i {
+  width: 11px; height: 11px; border-radius: 50%; flex: none;
+  background: var(--ink-faint); display: block;
+}
+.voice-orb.speaking i { background: var(--self); animation: voPulse 1.4s ease-in-out infinite; }
+.voice-orb.listening i { background: var(--good); animation: voPulse .9s ease-in-out infinite; }
+.voice-orb.thinking i { background: var(--accent); animation: voPulse 2s ease-in-out infinite; }
+.voice-orb.listening { color: var(--good); }
+@keyframes voPulse {
+  0%, 100% { transform: scale(.8); opacity: .55; }
+  50% { transform: scale(1.25); opacity: 1; }
+}
+
 /* banners on the parts view (resume draft, backup nag) */
 .banner {
   display: flex; align-items: center; gap: 12px;

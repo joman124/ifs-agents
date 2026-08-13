@@ -99,7 +99,15 @@ It follows one spine — **add a part → gather → integrate → connect**:
   as a chat, powered by your own Gemini, Anthropic, or OpenAI API key — the key
   and all profiles stay on your device. No key? A **copy-prompt mode** generates
   the portable prompt for any chat you already use, and imports the result back.
-- **Voice mode**: dictate your answers, hear replies spoken. Settings &rarr;
+- **Voice first**: sessions are spoken by default where the browser supports
+  it. The answer to an IFS question arrives in the pause, spoken, long before
+  anyone would type it. The microphone stays open *through* the reply, so you
+  can cut in mid-sentence the way you would with someone in the room — the
+  voice stops and the floor is yours — and when a reply ends the turn simply
+  passes, with no button. The reply coming back off the speaker is filtered
+  out rather than heard as an interruption. A dot above the composer says
+  whose turn it is: speaking, thinking, listening. Typing works throughout.
+- **Voice setup**: Settings &rarr;
   Voice takes an ElevenLabs key and **Find my voices** lists that account's own
   voices — professional clones first — so a cloned voice is one tap, not an ID
   copied by hand. Without a key it uses the browser voice; if ElevenLabs fails

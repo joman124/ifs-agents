@@ -94,4 +94,54 @@ module.exports = function (t) {
   g.env.clock.tick(500);
   t.eq(g.seen.error, null, "no-speech is not surfaced to the person");
   t.eq(g.Fake.starts, 2, "and the mic reopens");
+
+  /* --- barge-in: the mic is open through the reply --- */
+  var V = H.load(["schema", "voice"], { SpeechRecognition: H.fakeRecognition() }).IFS.voice;
+  var reply = "Thank you for telling me that. What does it fear would happen if it stopped?";
+
+  t.ok(V.isEcho("what does it fear would happen", reply),
+    "the reply coming back off the speaker is recognised as echo");
+  t.ok(V.isEcho("Thank you for telling me that.", reply), "punctuation and case do not matter");
+  t.ok(!V.isEcho("it thinks everyone would see straight through me", reply),
+    "an actual answer is not echo");
+  t.ok(!V.isEcho("stopped", reply),
+    "a single word inside the reply is too little to call either way");
+  t.ok(!V.isEcho("what", reply), "nor is one word that happens to appear in it");
+
+  /* echo must not land in the turn, and must not start the end-of-turn clock */
+  function speaking(spokenText) {
+    var Fake = H.fakeRecognition();
+    var env = H.load(["schema", "voice"], { SpeechRecognition: Fake });
+    var seen = { end: null, barged: false };
+    var isSpeaking = true;
+    env.IFS.voice.listen({
+      echoOf: function () { return isSpeaking ? spokenText : ""; },
+      onBargeIn: function () { seen.barged = true; },
+      onEnd: function (text) { seen.end = text; }
+    });
+    return { Fake: Fake, env: env, seen: seen, stopSpeaking: function () { isSpeaking = false; } };
+  }
+
+  var e = speaking(reply);
+  e.Fake.last.say("What does it fear would happen", true);
+  e.env.clock.tick(30000);
+  t.eq(e.seen.end, null, "our own voice never closes the person's turn");
+  t.eq(e.seen.barged, false, "and is not reported as an interruption");
+
+  var b = speaking(reply);
+  b.Fake.last.say("actually can we stay with the shame a moment", true);
+  t.eq(b.seen.barged, true, "real speech during the reply is a barge-in");
+  b.env.clock.tick(6000);
+  t.eq(b.seen.end, "actually can we stay with the shame a moment",
+    "and what they said starts their turn rather than being thrown away");
+
+  /* echo first, then the person - the echo must not contaminate the answer */
+  var m = speaking(reply);
+  m.Fake.last.say("what does it fear would happen", true);
+  m.env.clock.tick(500);
+  m.stopSpeaking();
+  m.Fake.last.say("it fears being laughed at", true);
+  m.env.clock.tick(6000);
+  t.eq(m.seen.end, "it fears being laughed at",
+    "the turn holds only what the person said, not the reply that preceded it");
 };

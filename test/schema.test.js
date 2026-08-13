@@ -119,17 +119,23 @@ module.exports = function (t) {
     age: "about forty", location: "behind the eyes", trust_in_self: "low"
   });
   S.CATEGORIES.forEach(function (c) { filled.coverage[c] = "untouched"; });
-  t.ok(S.coverageScore(filled) > 0.5,
-    "content alone lifts the score, with every coverage flag still untouched");
+  // terse entries on purpose: this proves content counts at all, and depth
+  // weighting keeps a profile of stubs honestly short of half
+  t.ok(S.coverageScore(filled) > 0.25,
+    "content alone lifts the score clear of zero, with every coverage flag untouched");
+  t.ok(S.coverageScore(filled) < 0.5,
+    "but a profile of one-word stubs does not reach the table on its own");
   t.ok(S.coverageScore(filled) > S.coverageScore(blank),
     "and a part that holds more reads higher than one that holds nothing");
 
   /* per-category, the number tracks the fields that category is made of */
   t.eq(S.dataScore(blank, "positive_intent"), 0, "no intent recorded scores zero");
-  t.eq(S.dataScore(filled, "positive_intent"), 1, "an intent recorded scores full");
-  t.eq(S.dataScore(filled, "emotions_feelings"), 1, "two emotions fill that category");
-  t.eq(S.dataScore(part("One", { emotions: ["vigilance"] }), "emotions_feelings"), 0.5,
-    "one of two wanted signals is half");
+  t.ok(S.dataScore(filled, "positive_intent") > 0.5, "an intent recorded carries the category");
+  t.ok(S.dataScore(filled, "emotions_feelings") < 1,
+    "two one-word emotions do not fill a category by themselves");
+  t.ok(S.dataScore(part("Two", { emotions: ["vigilance", "contempt"] }), "emotions_feelings") >
+       S.dataScore(part("One", { emotions: ["vigilance"] }), "emotions_feelings"),
+    "each further signal adds to the category");
 
   /* explored but thin still counts - the flag is the other honest signal */
   var explored = part("Explored");
@@ -154,14 +160,49 @@ module.exports = function (t) {
       p.name + " never scores below what its coverage flags alone gave");
   });
 
+  /* --- depth, not just presence --- */
+  var stub = part("Stub", { emotions: ["sad", "mad", "glad"] });
+  var told = part("Told", { emotions: [
+    "a dread that arrives before the meeting does",
+    "contempt it wears so nobody sees the fear underneath",
+    "tiredness it will not admit to out loud"
+  ] });
+  t.ok(S.dataScore(told, "emotions_feelings") > S.dataScore(stub, "emotions_feelings"),
+    "three sentences count for more than three one-word stubs");
+  t.ok(S.dataScore(stub, "emotions_feelings") > 0, "but stubs still count for something");
+  t.eq(S.signalWeight(true), 1, "a flag that is simply set counts whole");
+  t.ok(S.signalWeight("shame") < S.signalWeight("a shame that arrives before anyone speaks"),
+    "a word weighs less than a thought");
+
+  /* --- the green light is the same measure as the ring --- */
   var ready = part("Ready", { positive_intent: "protection" });
-  ready.coverage.introduction = "complete";
-  ready.coverage.positive_intent = "complete";
-  t.eq(S.readiness(ready).ready, false, "two touched categories are not enough on their own");
-  ready.coverage.emotions_feelings = "partial";
-  ready.coverage.history_origin = "partial";
-  t.eq(S.readiness(ready).ready, true, "name, intent, both required categories and two more is ready");
+  t.eq(S.readiness(ready).ready, false, "an intent alone does not open the table");
+  t.ok(S.readiness(ready).missing.join(" ").indexOf("%") >= 0,
+    "and what is missing is stated as the same percentage the ring shows");
+
+  var developed = part("Developed", {
+    positive_intent: "keep the person from being humiliated again",
+    age: "older than the person is", location: "behind the eyes, reading along",
+    origin: "the first time being wrong happened in front of other people",
+    emotions: ["a vigilance that never fully sets down", "contempt worn as armour"],
+    fears: ["that easing off makes the shame visible to everyone"],
+    hopes_goals: ["work that nobody can find fault with"],
+    behaviors: ["rehearses the conversation before it happens"],
+    wants_needs: ["acknowledgement that the standards kept the person safe"],
+    unburdened_vision: "an editor rather than a censor",
+    trust_in_self: "low"
+  });
+  t.eq(S.readiness(developed).ready, true, "a part with enough of itself written down can join the table");
+  t.ok(S.readiness(developed).score >= 0.5, "and the light agrees with the number the ring shows");
   t.eq(S.readiness(part("Nameless")).ready, false, "an empty part is never ready");
+
+  /* the two must never disagree - that mismatch is what this replaced */
+  [blank, filled, explored, stub, told, developed, ready].forEach(function (p) {
+    var r = S.readiness(p);
+    if (r.ready) t.ok(S.coverageScore(p) >= 0.5, p.name + ": a lit green light means at least 50%");
+    else t.ok(!p.name || !p.positive_intent || S.coverageScore(p) < 0.5,
+      p.name + ": an unlit light means something real is missing");
+  });
 
   t.eq(S.initial("The Final Boss"), "F", "the ring letter skips a leading article");
   t.eq(S.slugify("  Won't Stop!  "), "wont-stop", "slugify strips punctuation and edges");

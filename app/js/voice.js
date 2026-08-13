@@ -30,8 +30,35 @@
   var INTERRUPTED = /\b(?:interrupt(?:ed|ing|ion)?|hold on|hang on|one (?:sec|second|minute|moment)|give me a (?:sec|second|minute|moment)|be right back|back in a (?:sec|second|minute)|someone(?:'s| is)? (?:here|calling|talking|at the door)|somebody(?:'s| is)? (?:here|calling)|(?:the|my) (?:door|phone|dog|baby|kid|kids))\b/i;
   var extraGrace = 0;
 
+  function normalize(s) {
+    return String(s == null ? "" : s).toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  /* The loudspeaker feeding the reply back into the microphone is not the
+     person interrupting. What comes back is the reply's own words, so a run
+     of words already in the sentence being spoken is discarded rather than
+     treated as a turn.
+     ponytail: text-based, which holds on a speaker in a normal room. If it
+     ever mis-fires the upgrade is a getUserMedia stream with echoCancellation
+     feeding a separate recognizer. */
+  function isEcho(heard, spoken) {
+    var h = normalize(heard), sp = normalize(spoken);
+    if (!h || !sp) return false;
+    var hw = h.split(" ");
+    // a word or two is too little to call, and "stop" or "wait" appearing in
+    // the reply must still reach us as an interruption
+    if (hw.length < 3) return false;
+    if (sp.indexOf(h) !== -1) return true;      // a verbatim run of the reply
+    var inSpoken = {};
+    sp.split(" ").forEach(function (w) { inSpoken[w] = 1; });
+    var hits = hw.filter(function (w) { return inSpoken[w]; }).length;
+    return hits / hw.length > 0.8;
+  }
+
   /* Start dictation. opts: {onInterim(text), onEnd(finalText), onError(msg),
-     onInterrupt()}. onEnd fires once, with everything heard across the turn. */
+     onInterrupt(), echoOf() -> text currently being spoken, onBargeIn()}.
+     onEnd fires once, with everything heard across the turn. */
   function listen(opts) {
     opts = opts || {};
     if (!Rec) { if (opts.onError) opts.onError("Voice input isn't supported in this browser."); return false; }
@@ -67,6 +94,15 @@
       }
       var all = (finalText + interim).trim();
       if (!all) return;
+      /* Held open through the reply so the person can cut in. Anything that
+         is just the reply coming back off the speaker is dropped here - it
+         must not land in the turn, and it must not start the end-of-turn
+         clock, or the answer would "finish" full of our own words. */
+      var echoSource = opts.echoOf ? opts.echoOf() : "";
+      if (echoSource) {
+        if (isEcho(all, echoSource)) { finalText = ""; return; }
+        if (opts.onBargeIn) opts.onBargeIn();
+      }
       if (!extraGrace && INTERRUPTED.test(all)) {
         extraGrace = INTERRUPT_MS;
         if (opts.onInterrupt) opts.onInterrupt();
@@ -262,8 +298,57 @@
     if (canSpeak()) { try { speechSynthesis.cancel(); } catch (e) {} }
   }
 
+  /* One conversational turn: speak the reply with the microphone already
+     open, so the person can cut in the way they would with someone in the
+     room, and so the moment the reply ends the turn is simply theirs - no
+     gap, no button. Falls back to speaking alone where there is no mic.
+
+     opts: {onState(state), onInterim(t), onEnd(finalText), onError, onBargeIn}
+     state is one of "speaking" | "listening" | "idle". */
+  function exchange(text, opts) {
+    opts = opts || {};
+    var spoken = speakable(text);
+    var speaking = true;
+    var say = function (s) { if (opts.onState) opts.onState(s); };
+
+    say("speaking");
+    speak(text, function () {
+      if (!speaking) return;              // already cut off by a barge-in
+      speaking = false;
+      say(canListen() ? "listening" : "idle");
+      if (opts.onSpoken) opts.onSpoken();
+    });
+
+    if (!canListen()) return false;
+
+    return listen({
+      echoOf: function () { return speaking ? spoken : ""; },
+      onBargeIn: function () {
+        if (!speaking) return;
+        speaking = false;
+        stopSpeaking();                   // stop mid-sentence; they have the floor
+        say("listening");
+        if (opts.onBargeIn) opts.onBargeIn();
+      },
+      onInterim: opts.onInterim,
+      onInterrupt: opts.onInterrupt,
+      onEnd: function (finalText) {
+        speaking = false;
+        say("idle");
+        if (opts.onEnd) opts.onEnd(finalText);
+      },
+      onError: function (msg) {
+        speaking = false;
+        say("idle");
+        if (opts.onError) opts.onError(msg);
+      }
+    });
+  }
+
   window.IFS.voice = {
     apiError: apiError,
+    isEcho: isEcho,
+    exchange: exchange,
     canListen: canListen,
     canSpeak: canSpeak,
     listen: listen,

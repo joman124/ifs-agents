@@ -1334,6 +1334,7 @@
       '<div class="chat-scroll" id="chatScroll">' +
       '<div class="msg system-note">Private session · ' + esc(s.provider) + " · saved as you go · you can stop anytime</div>" +
       "</div>" +
+      '<div class="voice-orb idle" id="voiceOrb" aria-live="polite"><i></i><span class="vo-label"></span></div>' +
       '<div class="chat-input">' +
       (V.canListen() ? '<button class="micbtn" id="chatMic" aria-label="Dictate">&#127908;</button>' : "") +
       '<textarea id="chatBox" rows="1" placeholder="Speak as yourself or as the part..."></textarea>' +
@@ -1498,13 +1499,39 @@
     if (!ok) micState(false);
   }
 
-  /* After an assistant reply in voice mode: speak it, then open the mic. */
+  /* Whose turn it is, said without words. In voice mode the person is often
+     not looking at the screen, but when they do glance down this is the one
+     thing they need to know. */
+  function voiceState(state) {
+    var el = $("#voiceOrb");
+    if (!el) return;
+    el.className = "voice-orb " + (state || "idle");
+    el.querySelector(".vo-label").textContent =
+      state === "speaking" ? "speaking" :
+      state === "listening" ? "listening" :
+      state === "thinking" ? "thinking" : "";
+    micState(state === "listening");
+  }
+
+  /* After an assistant reply in voice mode: speak it with the microphone
+     already open, so cutting in works and the turn passes without a tap. */
   function voiceAfterReply(sess, reply) {
     if (!ST.state.settings.voiceOn || session !== sess) return;
-    V.speak(stripFences(reply), function () {
-      if (session === sess && ST.state.settings.voiceOn && !sess.closed && V.canListen()) {
-        startDictation(true);
-      }
+    V.exchange(stripFences(reply), {
+      onState: function (st) { if (session === sess) voiceState(st); },
+      onInterim: function (t) {
+        var box = $("#chatBox");
+        if (box && session === sess) { box.value = t; box.dispatchEvent(new Event("input")); }
+      },
+      onBargeIn: function () { buzz(12); },   // felt, so it is clear the voice stopped for them
+      onInterrupt: function () { toast("Heard that - the mic will wait longer before it closes"); },
+      onEnd: function (finalText) {
+        if (session !== sess || sess.closed) return;
+        var box = $("#chatBox");
+        if (box && finalText) { box.value = finalText; box.dispatchEvent(new Event("input")); }
+        if (finalText && ST.state.settings.voiceOn && !sess.busy) sendChat();
+      },
+      onError: function (msg) { voiceState("idle"); toast(msg); }
     });
   }
 
@@ -1538,6 +1565,7 @@
     sess.messages.push({ role: "user", text: userText, hidden: !!hidden });
     var userBubble = hidden ? null : addMsg("user", userText);
     setBusy(true);
+    if (ST.state.settings.voiceOn) voiceState("thinking");
     var tip = typingEl();
     var live = null;
     try {

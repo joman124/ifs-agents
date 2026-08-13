@@ -131,8 +131,13 @@ module.exports = function (t) {
   });
   t.eq(asymmetric, [], "every starter edge is mirrored in the other profile");
 
+  /* They carry enough to take a seat, so a table meeting works on day one -
+     but their own words are not written yet, and the ring says so. */
   starters.forEach(function (p) {
-    t.ok(!S.readiness(p).ready, p.name + " is not compile-ready - the real work is still the person's");
+    t.ok(S.readiness(p).ready, p.name + " is developed enough to join the table");
+    t.ok(S.coverageScore(p) < 0.9,
+      p.name + " still reads short of finished - nobody has heard it speak yet");
+    t.eq(p.narrative.in_its_own_words, "", p.name + " has no words of its own until someone asks");
   });
 
   /* --- and they never land on top of someone's real parts --- */

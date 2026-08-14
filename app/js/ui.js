@@ -199,6 +199,60 @@
     });
   }
 
+  /* An installed PWA has no address bar and no console, so when the shell
+     lays out wrong on a phone there is no way to see why from a desk. This
+     reports what the device actually measured. Reads only geometry the page
+     already exposes - nothing here leaves the phone unless you tap Copy. */
+  function layoutReport() {
+    var css = getComputedStyle(document.documentElement);
+    var app = $(".app"), bar = $(".tabbar");
+    var a = app ? app.getBoundingClientRect() : null;
+    var b = bar ? bar.getBoundingClientRect() : null;
+    var vv = window.visualViewport;
+    var rows = [
+      ["standalone", matchMedia("(display-mode: standalone)").matches +
+        " / navigator " + (navigator.standalone === true)],
+      ["innerHeight", window.innerHeight],
+      ["clientHeight", document.documentElement.clientHeight],
+      ["visualViewport", vv ? Math.round(vv.height) + " @" + Math.round(vv.offsetTop) : "none"],
+      ["screen", screen.width + "x" + screen.height],
+      ["--sat / --sab", css.getPropertyValue("--sat").trim() + " / " + css.getPropertyValue("--sab").trim()],
+      ["app h / bottom", a ? Math.round(a.height) + " / " + Math.round(a.bottom) : "hidden"],
+      ["bar h / bottom", b ? Math.round(b.height) + " / " + Math.round(b.bottom) : "hidden"],
+      ["GAP under bar", b ? Math.round(window.innerHeight - b.bottom) : "?"]
+    ];
+    return caches.keys().then(function (k) {
+      rows.unshift(["build", k.join(",") || "no cache"]);
+      return rows;
+    }, function () {
+      rows.unshift(["build", "caches unavailable"]);
+      return rows;
+    });
+  }
+
+  function showLayoutReport() {
+    layoutReport().then(function (rows) {
+      var el = $("#layoutStat");
+      if (!el) return;
+      el.innerHTML = rows.map(function (r) {
+        return "<b>" + r[0] + ":</b> " + r[1];
+      }).join("<br>");
+      var btn = $("#showLayout");
+      if (btn) {
+        btn.textContent = "Copy";
+        btn.onclick = function () {
+          var text = rows.map(function (r) { return r[0] + ": " + r[1]; }).join("\n") +
+            "\nUA: " + navigator.userAgent;
+          if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () {
+            toast("Layout report copied");
+          }, function () { toast("Could not copy - screenshot it"); });
+          else toast("Could not copy - screenshot it");
+          buzz();
+        };
+      }
+    });
+  }
+
   function renderBanners() {
     var el = $("#partsBanner");
     if (!el) return;
@@ -2546,6 +2600,7 @@
       (!isStandalone() && deferredInstall ? '<button class="btn btn-soft" id="setInstall">Install</button>' : "") +
       "</div>" +
       '<div class="set-row"><span class="sr-main">On-device storage<span class="sr-sub" id="storeStat">checking&hellip;</span></span></div>' +
+      '<div class="set-row"><span class="sr-main">Layout report<span class="sr-sub" id="layoutStat">what this screen actually measured</span></span><button class="btn btn-soft" id="showLayout">Show</button></div>' +
       "</div>" +
 
       '<div class="set-group"><h3>About</h3>' +
@@ -2585,6 +2640,7 @@
     });
     bind("#syncNowBtn", syncNow);
     bind("#setInstall", doInstall);
+    bind("#showLayout", showLayoutReport);
     showStorageStatus();
     $("#openTranscripts").addEventListener("click", function () {
       if (!ST.state.transcripts.length) { toast("No transcripts yet - live AI sessions save one each"); return; }

@@ -141,12 +141,10 @@ label.fieldlabel { display: block; font-size: .8rem; color: var(--ink-dim); marg
    above the bottom of the screen. dvh follows the viewport that is actually
    visible; browsers without it fall back to inset:0. */
 .app { position: fixed; inset: 0; height: 100dvh; display: flex; flex-direction: column; }
-/* Installed to the home screen there is no toolbar to chase, and dvh there
-   resolves to the height *inside* the safe areas - so 100dvh overrides the
-   bottom:0 from inset and ends the shell above the home indicator, floating
-   the bar all over again. inset:0 is already the right answer once the
-   viewport stops moving; let it govern and let .tabbar's own --sab padding
-   carry its background down over the indicator. */
+/* Installed there is no toolbar to chase, so the dvh workaround has nothing
+   to do and inset:0 is the unambiguous answer. Belt and braces only - this
+   was NOT what floated the bar on the home screen. That was
+   apple-mobile-web-app-status-bar-style, see the note in index.html. */
 @media (display-mode: standalone) {
   .app { height: auto; }
 }

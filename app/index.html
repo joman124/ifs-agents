@@ -7,7 +7,13 @@
 <meta name="theme-color" content="#faf6ef" media="(prefers-color-scheme: light)">
 <meta name="description" content="Inner Table - meet your inner parts, build their profiles, and hold table meetings. A private, on-device IFS-inspired journaling tool.">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- Not black-translucent. That asks iOS to let the page run under the status
+     bar, and installed to the home screen iOS then sizes the viewport to the
+     screen *minus* the top inset while still drawing the page from y=0 - so
+     the whole shell rides 59px high and that much dead space falls off the
+     bottom, under the tab bar. Measured on iOS 18.7: screen 852, innerHeight
+     793, safe-area-inset-top 59. Let the system inset us instead. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Inner Table">
 <title>Inner Table &mdash; ifs-agents</title>
 <link rel="manifest" href="manifest.webmanifest">

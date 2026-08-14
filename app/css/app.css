@@ -141,6 +141,15 @@ label.fieldlabel { display: block; font-size: .8rem; color: var(--ink-dim); marg
    above the bottom of the screen. dvh follows the viewport that is actually
    visible; browsers without it fall back to inset:0. */
 .app { position: fixed; inset: 0; height: 100dvh; display: flex; flex-direction: column; }
+/* Installed to the home screen there is no toolbar to chase, and dvh there
+   resolves to the height *inside* the safe areas - so 100dvh overrides the
+   bottom:0 from inset and ends the shell above the home indicator, floating
+   the bar all over again. inset:0 is already the right answer once the
+   viewport stops moving; let it govern and let .tabbar's own --sab padding
+   carry its background down over the indicator. */
+@media (display-mode: standalone) {
+  .app { height: auto; }
+}
 .topbar {
   padding-top: var(--sat);
   background: color-mix(in srgb, var(--bg) 82%, transparent);

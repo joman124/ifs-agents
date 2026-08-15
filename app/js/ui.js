@@ -212,6 +212,7 @@
     var rows = [
       ["standalone", matchMedia("(display-mode: standalone)").matches +
         " / navigator " + (navigator.standalone === true)],
+      [".ios class", document.documentElement.classList.contains("ios")],
       ["innerHeight", window.innerHeight],
       ["clientHeight", document.documentElement.clientHeight],
       ["visualViewport", vv ? Math.round(vv.height) + " @" + Math.round(vv.offsetTop) : "none"],
@@ -219,7 +220,11 @@
       ["--sat / --sab", css.getPropertyValue("--sat").trim() + " / " + css.getPropertyValue("--sab").trim()],
       ["app h / bottom", a ? Math.round(a.height) + " / " + Math.round(a.bottom) : "hidden"],
       ["bar h / bottom", b ? Math.round(b.height) + " / " + Math.round(b.bottom) : "hidden"],
-      ["GAP under bar", b ? Math.round(window.innerHeight - b.bottom) : "?"]
+      ["GAP vs innerHeight", b ? Math.round(window.innerHeight - b.bottom) : "?"],
+      /* innerHeight is itself short by the excluded status-bar height on iOS
+         (see app.css), so a 0 above can still hide a real gap. screen.height
+         is the one number that quirk cannot shrink. */
+      ["GAP vs screen.height", b ? Math.round(screen.height - b.bottom) : "?"]
     ];
     return caches.keys().then(function (k) {
       rows.unshift(["build", k.join(",") || "no cache"]);
@@ -2798,6 +2803,7 @@
 
   /* ================= boot wiring ================= */
   function init() {
+    if (isIOS()) document.documentElement.classList.add("ios");
     applyTheme();
     watchInstall();
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);

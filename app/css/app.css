@@ -141,12 +141,16 @@ label.fieldlabel { display: block; font-size: .8rem; color: var(--ink-dim); marg
    above the bottom of the screen. dvh follows the viewport that is actually
    visible; browsers without it fall back to inset:0. */
 .app { position: fixed; inset: 0; height: 100dvh; display: flex; flex-direction: column; }
-/* Installed there is no toolbar to chase, so the dvh workaround has nothing
-   to do and inset:0 is the unambiguous answer. Belt and braces only - this
-   was NOT what floated the bar on the home screen. That was
-   apple-mobile-web-app-status-bar-style, see the note in index.html. */
+/* Installed there is no toolbar to chase, so dvh has nothing left to track -
+   except on iOS, where apple-mobile-web-app-status-bar-style=black-translucent
+   (see index.html) makes dvh/innerHeight exclude the status-bar height while
+   the page still renders full-screen underneath it. 100dvh then falls exactly
+   that far short of the real bottom. .ios is set at boot by ui.js; on other
+   platforms env(safe-area-inset-top) and the fallback both resolve to 0px, so
+   this is a no-op there. */
 @media (display-mode: standalone) {
-  .app { height: auto; }
+  .app { height: 100dvh; }
+  :root.ios .app { height: calc(100dvh + env(safe-area-inset-top, 0px)); }
 }
 .topbar {
   padding-top: var(--sat);

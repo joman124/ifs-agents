@@ -366,5 +366,81 @@
     } };
   }
 
-  window.IFS.md = { serialize: serialize, parse: parse, extractProfiles: extractProfiles, analyze: analyze };
+  /* ================= table meetings =================
+     A meeting turn arrives as one blob of text with "**Name:**" markers in
+     it. Splitting it is what turns a wall of prose into a room with people
+     in it - the chat renders these as separate bubbles, and the summary card
+     reads the same segments back to find what each part ended up saying. */
+  function splitVoices(text) {
+    var re = /\*\*([^*\n]{1,48}?):?\*\*:?\s*/g;
+    var segs = [];
+    var current = null, last = 0, m;
+    var src = String(text == null ? "" : text);
+    while ((m = re.exec(src)) !== null) {
+      var chunk = src.slice(last, m.index);
+      if (current) current.text += chunk;
+      else if (chunk.trim()) segs.push({ name: null, text: chunk });
+      current = { name: m[1].replace(/:$/, "").trim(), text: "" };
+      segs.push(current);
+      last = re.lastIndex;
+    }
+    var tail = src.slice(last);
+    if (current) current.text += tail;
+    else if (tail.trim()) segs.push({ name: null, text: tail });
+    return segs.filter(function (s) { return s.name || s.text.trim(); });
+  }
+
+  /* Trim a part's words down to something that fits on a card without
+     ending mid-word. Sentence boundaries first, a hard cap as backstop. */
+  function firstSentences(text, count, cap) {
+    var s = String(text == null ? "" : text).replace(/\s+/g, " ").trim();
+    if (!s) return "";
+    var out = [], re = /[^.!?]+[.!?]*/g, m;
+    while ((m = re.exec(s)) !== null && out.length < count) {
+      var piece = m[0].trim();
+      if (piece) out.push(piece);
+    }
+    var joined = out.join(" ") || s;
+    if (joined.length > cap) joined = joined.slice(0, cap - 1).replace(/\s+\S*$/, "").trim() + "…";
+    return joined;
+  }
+
+  /* A part's closing turn often opens with a concession fragment - "Fine.",
+     "Alright.", "I suppose." - which is a real thing to say in a room and a
+     poor thing to lead a summary card with. Drop leading scraps as long as
+     there is something more substantial behind them. */
+  function dropFillerLead(text) {
+    var s = String(text == null ? "" : text).replace(/\s+/g, " ").trim();
+    var re = /^[^.!?]{1,14}[.!?]\s+(?=\S)/, m;
+    while ((m = re.exec(s)) !== null && s.length - m[0].length > 20) s = s.slice(m[0].length);
+    return s;
+  }
+
+  /* Build the summary a meeting leaves behind on the Table tab.
+     The *last* thing a part said is the one worth keeping: a meeting that
+     went anywhere ends closer to agreement than it started, so a part's
+     closing line carries where it landed rather than where it came in.
+     Self is pulled out separately - it chairs, so its final word is the
+     synthesis rather than another voice in the list. */
+  function summarizeMeeting(turns, names) {
+    var segs = [];
+    (turns || []).forEach(function (t) { segs = segs.concat(splitVoices(t)); });
+    var byName = {};
+    segs.forEach(function (s) {
+      if (!s.name || !s.text.trim()) return;
+      byName[s.name.toLowerCase().trim()] = s.text;   // later turns overwrite earlier
+    });
+    var voices = [];
+    (names || []).forEach(function (n) {
+      var t = byName[String(n).toLowerCase().trim()];
+      if (t) voices.push({ name: n, line: firstSentences(dropFillerLead(t), 2, 160) });
+    });
+    var self = byName["self"];
+    return { voices: voices, synthesis: self ? firstSentences(dropFillerLead(self), 3, 260) : "" };
+  }
+
+  window.IFS.md = {
+    serialize: serialize, parse: parse, extractProfiles: extractProfiles, analyze: analyze,
+    splitVoices: splitVoices, firstSentences: firstSentences, summarizeMeeting: summarizeMeeting
+  };
 })();

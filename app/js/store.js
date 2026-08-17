@@ -25,7 +25,8 @@
         tools: [],      // [{id, label, note}] - agreed tools in the room
         agreements: [], // ["only the part holding the stick speaks", ...]
         seats: {},      // slug -> "table" | "room" | "adjoining" | "away"
-        log: []         // [{date, answers:{key:text}, note}] closing reflections
+        log: [],        // [{date, answers:{key:text}, note}] closing reflections
+        meetings: []    // [{id, date, topic, parts:[slugs], voices:[{name,line}], synthesis, transcript}]
       },
       settings: {
         onboarded: false,
@@ -48,7 +49,16 @@
         haptics: true,
         lastBackup: "",          // ISO date of last full export
         backupSnooze: "",        // ISO date the backup reminder was dismissed
-        installSnooze: ""        // ISO date the add-to-home-screen nudge was dismissed
+        installSnooze: "",       // ISO date the add-to-home-screen nudge was dismissed
+        /* First-run teaching. Only ever switched on by a fresh onboarding or a
+           signup, so someone who has been using the app for months does not
+           suddenly get taught what a part is. `taught` records which cues have
+           already fired; each one shows once and never again. */
+        coachOn: false,
+        taught: {},
+        firstRun: "",            // ISO date the first run began; it lasts that day
+        lastOpen: "",            // ISO date of the previous app open
+        ritualDay: ""            // ISO date the daily check-in was answered or dismissed
       }
     };
   }
@@ -245,6 +255,16 @@
     save();
   }
 
+  /* A meeting leaves a card behind on the Table tab. Capped like transcripts:
+     the room keeps its history, but not without limit. */
+  function addMeeting(m) {
+    m.id = "m" + Math.random().toString(36).slice(2, 10);
+    state.table.meetings.push(m);
+    if (state.table.meetings.length > 60) state.table.meetings = state.table.meetings.slice(-60);
+    save();
+    return m.id;
+  }
+
   function addTranscript(t) {
     t.id = "t" + Math.random().toString(36).slice(2, 10);
     state.transcripts.unshift(t);
@@ -285,6 +305,17 @@
       if (Array.isArray(d.agreements)) tb.agreements = d.agreements.filter(function (x) { return typeof x === "string"; });
       if (d.seats && typeof d.seats === "object" && !Array.isArray(d.seats)) tb.seats = d.seats;
       if (Array.isArray(d.log)) tb.log = d.log.filter(function (x) { return x && x.date; });
+      if (Array.isArray(d.meetings)) {
+        // meetings are history, so a restore adds to what is here rather than
+        // replacing it - same rule the transcripts below follow
+        var haveM = {};
+        state.table.meetings.forEach(function (m) { haveM[m.id] = 1; });
+        d.meetings.forEach(function (m) {
+          if (m && m.id && m.date && !haveM[m.id]) { haveM[m.id] = 1; state.table.meetings.push(m); }
+        });
+        state.table.meetings.sort(function (x, y) { return String(x.date).localeCompare(String(y.date)); });
+        tb.meetings = state.table.meetings;
+      }
       // built only counts if there is actually a room, or buildTable can loop
       tb.built = !!(tb.room || state.table.room);
       Object.assign(state.table, tb);
@@ -509,6 +540,7 @@
     absorbPart: absorbPart,
     deletePart: deletePart,
     addTranscript: addTranscript,
+    addMeeting: addMeeting,
     deleteTranscript: deleteTranscript,
     exportAll: exportAll,
     importAll: importAll,

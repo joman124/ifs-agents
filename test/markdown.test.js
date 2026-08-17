@@ -112,4 +112,69 @@ module.exports = function (t) {
   t.eq(Object.keys(critic.coverage).length, 9, "with a full coverage block");
   t.ok(!!critic.positive_intent, "and a positive intent");
   t.eq(MD.extractProfiles(raw).length, 1, "and imports through the paste path too");
+
+  /* --- table meetings: turning one blob of prose into a room of people ---
+     splitVoices feeds both the group-chat bubbles and the summary card that
+     stays on the Table tab, so a change here shows up in both places. */
+  var turn =
+    "**The Critic:** This plan has three holes in it. I can name them.\n\n" +
+    "**The Dreamer:** You always can. That is not the same as being right.\n\n" +
+    "**Self:** Both of you are trying to protect the same thing.";
+  var segs = MD.splitVoices(turn);
+  t.eq(segs.length, 3, "each **Name:** marker starts a new voice");
+  t.eq(segs.map(function (s) { return s.name; }), ["The Critic", "The Dreamer", "Self"],
+    "and the names come through without their markers");
+  t.ok(/three holes/.test(segs[0].text), "with the words that followed attached to the right speaker");
+
+  t.eq(MD.splitVoices("just prose, nobody named").length, 1, "unmarked prose is one nameless segment");
+  t.eq(MD.splitVoices("just prose, nobody named")[0].name, null, "and it is explicitly nameless");
+  t.eq(MD.splitVoices("").length, 0, "an empty turn has no voices");
+  t.eq(MD.splitVoices(null).length, 0, "and neither does a missing one");
+
+  var lead = MD.splitVoices("The room settles.\n\n**Self:** Let's begin.");
+  t.eq(lead.length, 2, "prose before the first name survives as its own segment");
+  t.eq(lead[0].name, null, "as narration");
+  t.eq(lead[1].name, "Self", "ahead of the first speaker");
+
+  t.eq(MD.firstSentences("One. Two. Three. Four.", 2, 200), "One. Two.",
+    "firstSentences stops at the sentence count asked for");
+  t.ok(MD.firstSentences("a ".repeat(200), 3, 40).length <= 41,
+    "and the hard cap holds when there is no sentence boundary");
+  t.ok(/…$/.test(MD.firstSentences("a ".repeat(200), 3, 40)), "marking that it was cut");
+  t.eq(MD.firstSentences("", 2, 100), "", "nothing in, nothing out");
+
+  /* --- the summary card: where each part landed, not where it came in --- */
+  var turns = [
+    "**The Critic:** I refuse. This is sloppy.\n\n**The Dreamer:** You always say that.",
+    "**The Critic:** Fine. I will hold the standard without swinging it. That is my offer.\n\n" +
+    "**Self:** You are both guarding the same thing, from opposite ends."
+  ];
+  var sum = MD.summarizeMeeting(turns, ["The Critic", "The Dreamer"]);
+  t.eq(sum.voices.length, 2, "one line per named part at the table");
+  t.eq(sum.voices[0].name, "The Critic", "in the order the parts were seated");
+  t.ok(/without swinging it/.test(sum.voices[0].line),
+    "and it is the part's LAST word that is kept, not its first");
+  t.ok(!/I refuse/.test(sum.voices[0].line), "so an opening refusal does not stand as the outcome");
+  t.ok(/opposite ends/.test(sum.synthesis), "Self's closing read becomes the synthesis");
+  t.ok(!sum.voices.some(function (v) { return /^self$/i.test(v.name); }),
+    "and Self is not also listed as one of the parts");
+
+  /* A card that leads with "Fine." has wasted the only two sentences it gets. */
+  var concede = MD.summarizeMeeting(
+    ["**The Critic:** Fine. I am afraid that if I stop, nobody catches it and we are humiliated again. " +
+     "I will hold the standard without swinging it."], ["The Critic"]);
+  t.ok(/^I am afraid/.test(concede.voices[0].line),
+    "a concession fragment does not get to headline the summary line");
+  t.ok(/without swinging it/.test(concede.voices[0].line),
+    "so the part's actual position fits on the card");
+
+  var allShort = MD.summarizeMeeting(["**The Critic:** No. Never."], ["The Critic"]);
+  t.ok(allShort.voices[0].line.length > 0,
+    "but a turn that is nothing but short sentences is not trimmed to nothing");
+
+  var noSelf = MD.summarizeMeeting(["**The Critic:** Alone in here."], ["The Critic"]);
+  t.eq(noSelf.synthesis, "", "a meeting Self never closed has no synthesis");
+  var absent = MD.summarizeMeeting(["**The Critic:** Only me."], ["The Critic", "The Ghost"]);
+  t.eq(absent.voices.length, 1, "a seated part that never spoke contributes no line");
+  t.eq(MD.summarizeMeeting([], ["The Critic"]).voices.length, 0, "an empty meeting summarises to nothing");
 };

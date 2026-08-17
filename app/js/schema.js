@@ -332,6 +332,82 @@
     return d.getFullYear() + "-" + m + "-" + day;
   }
 
+  /* Whole days between two YYYY-MM-DD dates. Parsed at UTC midnight on both
+     sides so the answer is a count of calendar days rather than a duration
+     that drifts by an hour twice a year. */
+  function daysBetween(fromISO, toISO) {
+    var a = Date.parse(String(fromISO || "") + "T00:00:00Z");
+    var b = Date.parse(String(toISO || todayISO()) + "T00:00:00Z");
+    if (isNaN(a) || isNaN(b)) return 0;
+    return Math.round((b - a) / 86400000);
+  }
+
+  function lastSessionISO(part) {
+    var ss = (part && part.sessions) || [];
+    var latest = "";
+    ss.forEach(function (s) {
+      if (s && s.date && String(s.date) > latest) latest = String(s.date);
+    });
+    return latest;
+  }
+
+  /* ---- Recency, as a number the map and the daily ritual can both read ----
+     A part is not only more or less developed, it is more or less *present*:
+     one you sat with yesterday is live in a way one you last met in March is
+     not. Heat decays from 1 on the day of a session to a floor over HEAT_DAYS,
+     so a system left alone visibly cools rather than looking identical to the
+     day it was built. A part that has never been interviewed sits just above
+     the floor - it is not cold from neglect, it was simply never warm. */
+  var HEAT_DAYS = 30;
+  var HEAT_FLOOR = 0.12;
+  var HEAT_NEW = 0.2;
+
+  function partHeat(part, today) {
+    var last = lastSessionISO(part);
+    if (!last) return HEAT_NEW;
+    var d = daysBetween(last, today);
+    if (d <= 0) return 1;
+    if (d >= HEAT_DAYS) return HEAT_FLOOR;
+    return 1 - (d / HEAT_DAYS) * (1 - HEAT_FLOOR);
+  }
+
+  /* ---- How much has actually been said about a relationship ----
+     Two parts can be "mapped" because someone tapped a thread once and picked
+     a type, or because both of them have described what the other does to
+     them. On the map those should not be the same line. Mapped at all earns a
+     base; the depth of each side's note earns most of the rest; both sides
+     having spoken earns the last of it - a relationship only one part
+     describes is a claim, not yet a mutual account. Returns 0 for a pair
+     nobody has mapped, which is what keeps the faint threads faint. */
+  function edgeWeight(a, b) {
+    if (!a || !b || !a.slug || !b.slug) return 0;
+    var depth = 0, sides = 0;
+    [[a, b.slug], [b, a.slug]].forEach(function (pair) {
+      var r = (pair[0].relationships || []).filter(function (x) { return x.part === pair[1]; })[0];
+      if (!r) return;
+      sides++;
+      depth += signalWeight(r.notes);
+    });
+    if (!sides) return 0;
+    return Math.min(1, 0.3 + (depth / 2) * 0.55 + (sides === 2 ? 0.15 : 0));
+  }
+
+  /* Which part has gone quietest - the one the daily ritual offers first.
+     Coldest wins; where two are equally cold the less developed one is the
+     more useful invitation, because it has more left to say. */
+  function quietestPart(parts, today) {
+    var best = null, bestHeat = 2, bestScore = 2;
+    (parts || []).forEach(function (p) {
+      if (!p) return;
+      var h = partHeat(p, today);
+      var sc = coverageScore(p);
+      if (h < bestHeat || (h === bestHeat && sc < bestScore)) {
+        best = p; bestHeat = h; bestScore = sc;
+      }
+    });
+    return best;
+  }
+
   window.IFS = window.IFS || {};
   window.IFS.schema = {
     CATEGORIES: CATEGORIES,
@@ -355,6 +431,12 @@
     mergeParts: mergeParts,
     mergeDuplicate: mergeDuplicate,
     normalizePart: normalizePart,
-    todayISO: todayISO
+    todayISO: todayISO,
+    daysBetween: daysBetween,
+    lastSessionISO: lastSessionISO,
+    HEAT_DAYS: HEAT_DAYS,
+    partHeat: partHeat,
+    edgeWeight: edgeWeight,
+    quietestPart: quietestPart
   };
 })();

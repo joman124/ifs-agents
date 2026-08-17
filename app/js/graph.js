@@ -42,11 +42,20 @@
   var HAIRBALL = 18;
 
   function buildGraph(parts) {
-    var nodes = [{ id: "self", label: "Self", self: true }];
+    var S = window.IFS.schema;
+    var today = S.todayISO();
+    var bySlug = {};
+    parts.forEach(function (p) { bySlug[p.slug] = p; });
+
+    /* Self is always present, so it is always at full heat. Every other node
+       carries how recently it was sat with, which is what lets the map show
+       a system cooling rather than a diagram that looks identical whether it
+       was touched yesterday or last spring. */
+    var nodes = [{ id: "self", label: "Self", self: true, heat: 1 }];
     var idx = { self: 0 };
     parts.forEach(function (p) {
       idx[p.slug] = nodes.length;
-      nodes.push({ id: p.slug, label: p.name, type: p.type });
+      nodes.push({ id: p.slug, label: p.name, type: p.type, heat: S.partHeat(p, today) });
     });
     var edges = [];
     var seen = {};
@@ -63,7 +72,10 @@
                                    : t + "|" + [a, b].sort().join("|");
         if (seen[key]) return;
         seen[key] = 1;
-        edges.push({ a: idx[a], b: idx[b], type: t, from: a, to: b });
+        // symmetric: how much both parts have said about each other, which
+        // is what the thread's thickness reads out
+        edges.push({ a: idx[a], b: idx[b], type: t, from: a, to: b,
+                     weight: S.edgeWeight(bySlug[p.slug], bySlug[r.part]) });
       });
     });
 
@@ -79,7 +91,7 @@
           if (mapped[pairKey(parts[i].slug, parts[j].slug)]) continue;
           edges.push({
             a: idx[parts[i].slug], b: idx[parts[j].slug],
-            type: "unknown", implicit: true,
+            type: "unknown", implicit: true, weight: 0,
             from: parts[i].slug, to: parts[j].slug
           });
         }
@@ -156,6 +168,12 @@
       var line = document.createElementNS(NS, "line");
       line.setAttribute("class", "edge " + e.type + (e.implicit ? " implicit" : ""));
       line.style.color = "var(--manager)";
+      /* Thickness is how much has actually been said about this pair. A
+         thread someone tapped once to pick a type and a thread both parts
+         have described are not the same relationship, and the map should not
+         draw them the same. Set as a style rather than an attribute, or the
+         stylesheet's stroke-width would win. */
+      if (!e.implicit) line.style.strokeWidth = (1.5 + e.weight * 2.8).toFixed(2) + "px";
       edgeLayer.appendChild(line);
       // a fat invisible line under the thin one: a 2px stroke is not a touch target
       var hit = document.createElementNS(NS, "line");
@@ -177,6 +195,11 @@
        legend tone is switched on. An edge shows only if it passes both. */
     var implicitCount = g.edges.filter(function (e) { return e.implicit; }).length;
 
+    /* A thread is as present as the livelier of the two parts it joins: a
+       relationship between two parts nobody has visited in months should
+       recede, and it should come back the moment either end is sat with. */
+    function edgeHeat(e) { return Math.max(g.nodes[e.a].heat, g.nodes[e.b].heat); }
+
     function applySelection() {
       var tone = opts.tone && opts.tone();
       // too many unmapped threads to show at rest - unless the person has
@@ -188,7 +211,7 @@
         var el = edgeEls[i];
         var op;
         if (!inTone) op = 0;
-        else if (selected == null) op = e.implicit ? (crowded ? 0 : .3) : 1;
+        else if (selected == null) op = e.implicit ? (crowded ? 0 : .3) : (.45 + .55 * edgeHeat(e));
         else if (touches) op = 1;
         else op = e.implicit ? 0 : .12;
         el.line.style.opacity = op;
@@ -201,7 +224,10 @@
         var neighbor = selected == null || i === selected || g.edges.some(function (e) {
           return (e.a === selected && e.b === i) || (e.b === selected && e.a === i);
         });
-        nodeEls[i].style.opacity = neighbor ? "1" : ".22";
+        // a part that has gone quiet sits back without disappearing; the one
+        // being looked at is always full strength
+        var base = (n.self || i === selected) ? 1 : (.55 + .45 * n.heat);
+        nodeEls[i].style.opacity = neighbor ? String(base) : ".22";
       });
       if (opts.onSelect) opts.onSelect(selected == null ? null : g.nodes[selected]);
     }
@@ -214,7 +240,10 @@
 
     var nodeEls = g.nodes.map(function (n, ni) {
       var grp = document.createElementNS(NS, "g");
-      grp.setAttribute("class", "node" + (n.self ? " self" : ""));
+      // "warm" is a part sat with in the last few days - it gets a slow glow,
+      // so opening the map after a session shows you where you have just been
+      grp.setAttribute("class", "node" + (n.self ? " self" : "") +
+        (!n.self && n.heat >= .8 ? " warm" : ""));
       grp.style.transition = "opacity .2s";
       var r = n.self ? 26 : 22;
       var c = document.createElementNS(NS, "circle");

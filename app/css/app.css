@@ -208,7 +208,7 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   font-weight: 700; font-size: 1.15rem; font-family: Georgia, serif;
 }
 .part-card-main { flex: 1; min-width: 0; }
-.part-card-name { font-weight: 650; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
+.part-card-name { font-weight: 650; font-size: 1.05rem; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
 .part-card-sub { color: var(--ink-dim); font-size: .82rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .badge {
   font-size: .64rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
@@ -363,7 +363,9 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 /* relative: anchors the absolutely-positioned "ground me" button inside the
    chat area - without it the button lands on the panel header's End & save */
 .chat { position: relative; display: flex; flex-direction: column; height: 100%; }
-.chat-scroll { flex: 1; overflow-y: auto; padding: 16px 14px 8px; -webkit-overflow-scrolling: touch; }
+/* padding-top clears the floating "ground me" button, which used to sit on
+   top of the first line of the session note */
+.chat-scroll { flex: 1; overflow-y: auto; padding: 46px 14px 8px; -webkit-overflow-scrolling: touch; }
 .msg { max-width: 86%; margin-bottom: 12px; animation: fadeUp .25s ease; }
 .msg .bubble {
   padding: 11px 14px; border-radius: 18px; font-size: .96rem; white-space: pre-wrap;
@@ -379,7 +381,7 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .typing i:nth-child(3) { animation-delay: .4s; }
 @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
 
-/* meeting: each part's voice is its own bubble with a name chip */
+/* meeting: a group chat, where each part speaks under its own name and face */
 .msg .voice {
   background: var(--surface); border: 1px solid var(--line);
   border-left: 3px solid var(--vc, var(--accent));
@@ -388,10 +390,20 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   font-size: .96rem; white-space: pre-wrap; overflow-wrap: break-word;
 }
 .msg .voice:last-child { margin-bottom: 0; }
-.msg .voice .vname {
-  display: block; font-size: .7rem; font-weight: 700; letter-spacing: .07em;
-  text-transform: uppercase; color: var(--vc, var(--accent)); margin-bottom: 3px;
+.msg .voice .vhead { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.msg .voice .vava {
+  width: 21px; height: 21px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: Georgia, serif; font-weight: 700; font-size: .66rem;
+  background: color-mix(in srgb, var(--vc, var(--accent)) 20%, transparent);
+  color: var(--vc, var(--accent));
+  border: 1px solid color-mix(in srgb, var(--vc, var(--accent)) 55%, transparent);
 }
+.msg .voice .vname {
+  font-size: .7rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--vc, var(--accent));
+}
+.msg .voice .vbody { display: block; }
 .msg .voice.self-voice { background: var(--accent-soft); border-color: color-mix(in srgb, var(--self) 40%, transparent); }
 
 .chat-input {
@@ -467,6 +479,12 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .swarm .node text { fill: var(--ink); font-size: 12px; font-weight: 600; text-anchor: middle; }
 .swarm .node.self circle { fill: var(--accent-soft); stroke: var(--self); }
 .swarm .node.self text { fill: var(--self); }
+/* a part sat with in the last few days still has a light on in it */
+.swarm .node.warm circle { animation: nodeWarm 3.6s ease-in-out infinite; }
+@keyframes nodeWarm {
+  0%, 100% { filter: none; }
+  50% { filter: drop-shadow(0 0 5px var(--accent)); }
+}
 .map-legend {
   position: absolute; left: 12px; bottom: calc(var(--tabbar-h) + var(--sab) + 12px);
   display: flex; flex-direction: column; gap: 5px;
@@ -642,6 +660,126 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   font-size: .72rem; font-weight: 700; flex: none;
 }
 .menu-item.tool.on .mi-icon { color: var(--good); }
+
+/* ---------- meeting summary cards ---------- */
+.meetcard {
+  background: var(--surface2); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 10px;
+  cursor: pointer; transition: border-color .15s ease;
+}
+.meetcard:last-child { margin-bottom: 0; }
+.meetcard:active { border-color: var(--accent); }
+.meetcard .mt-top {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: .72rem; color: var(--ink-faint); margin-bottom: 6px;
+}
+.meetcard .mt-topic { font-size: .86rem; color: var(--ink-dim); font-style: italic; margin-bottom: 10px; }
+.mt-voice {
+  border-left: 2px solid var(--vc, var(--accent));
+  padding: 2px 0 2px 10px; margin-bottom: 9px;
+  font-size: .87rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word;
+}
+.mt-voice:last-child { margin-bottom: 0; }
+.mt-voice .mt-name {
+  display: block; font-size: .64rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--vc, var(--accent)); margin-bottom: 2px;
+}
+.logrow { cursor: pointer; }
+.logrow:active { background: var(--surface2); }
+.logq { font-size: .95rem; font-weight: 600; line-height: 1.45; margin-bottom: 8px; }
+
+/* ---------- the seating ceremony ---------- */
+/* The one moment where the whole system sits down together, given the pause
+   it deserves before the conversation starts. Skipped outright for anyone who
+   has asked for reduced motion - see seatingCeremony() in ui.js. */
+.seating {
+  position: fixed; inset: 0; z-index: 65; background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn .3s ease;
+}
+.seating-inner { text-align: center; padding: 30px 24px; max-width: 430px; width: 100%; }
+.seating-room { font-size: 1.45rem; opacity: 0; }
+.seating.go .seating-room { animation: fadeUp .5s ease forwards; }
+.seating-table { font-size: 44px; margin: 16px 0 24px; opacity: 0; }
+.seating-table .glyph { width: auto; height: auto; font-size: 44px; line-height: 1; }
+.seating.go .seating-table { animation: fadeUp .6s ease .12s forwards; }
+.seating-chairs {
+  display: flex; flex-wrap: wrap; gap: 12px 10px; justify-content: center; min-height: 78px;
+}
+.seating-chairs .chair {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  width: 78px; opacity: 0; transform: translateY(12px);
+}
+.seating.go .chair { animation: chairIn .5s cubic-bezier(.3,.9,.3,1) var(--d, 0ms) forwards; }
+@keyframes chairIn { to { opacity: 1; transform: none; } }
+.chair-i {
+  width: 42px; height: 42px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+  border: 2px solid var(--accent);
+  font-family: Georgia, serif; font-weight: 700; font-size: 1.02rem;
+}
+.chair-n { font-size: .7rem; color: var(--ink-dim); line-height: 1.25; overflow-wrap: anywhere; }
+.seating-line {
+  margin-top: 24px; min-height: 20px;
+  font-size: .78rem; color: var(--ink-dim); letter-spacing: .08em; text-transform: lowercase;
+}
+.seating-skip {
+  position: absolute; right: 16px; top: calc(14px + var(--sat));
+  font-size: .74rem; color: var(--ink-faint); padding: 8px 12px;
+}
+
+/* ---------- coach cues (first run only) ---------- */
+.coach {
+  position: relative;
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius); padding: 14px 42px 14px 16px;
+  margin-bottom: 14px; animation: fadeUp .3s ease;
+}
+.coach-title { font-size: 1.02rem; margin-bottom: 5px; }
+.coach-text { font-size: .87rem; color: var(--ink-dim); line-height: 1.55; }
+.coach-more { margin-top: 10px; font-size: .8rem; font-weight: 650; color: var(--accent); padding: 4px 0; }
+.coach-x {
+  position: absolute; right: 7px; top: 7px;
+  width: 30px; height: 30px; border-radius: 50%;
+  color: var(--ink-faint); font-size: .8rem; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.coach-x:active { background: var(--surface2); }
+/* on the map there is no document flow to sit in, so it floats over the swarm */
+.coach-float { position: absolute; left: 12px; right: 12px; top: 38px; z-index: 4; }
+.coach-float .coach { background: var(--bg2); box-shadow: var(--shadow); margin-bottom: 0; }
+.chat-coach .coach { margin: 0 0 10px; }
+
+/* ---------- the daily check-in ---------- */
+.ritual {
+  position: relative;
+  background: linear-gradient(158deg, var(--accent-soft), transparent 68%), var(--surface);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  border-radius: var(--radius); padding: 18px 42px 16px 18px;
+  margin-bottom: 14px; box-shadow: var(--shadow); animation: fadeUp .35s ease;
+}
+.ritual-q { font-size: 1.16rem; line-height: 1.4; }
+.ritual-part { display: flex; align-items: center; gap: 11px; margin: 14px 0; }
+.ritual-part .rt-i {
+  width: 38px; height: 38px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  font-family: Georgia, serif; font-weight: 700;
+}
+.ritual-part .rt-main { min-width: 0; }
+.ritual-part .rt-sub { display: block; font-size: .76rem; color: var(--ink-dim); }
+.ritual-cta { display: flex; gap: 8px; }
+.ritual-cta .btn { flex: 1; padding: 11px 12px; font-size: .88rem; }
+
+/* how long a part has been left alone, on its card in the library */
+.quiettag {
+  font-size: .64rem; font-weight: 600; letter-spacing: .04em; white-space: nowrap;
+  color: var(--ink-faint); border: 1px solid var(--line);
+  padding: 2px 7px; border-radius: 999px;
+}
 
 /* ---------- the reference library ---------- */
 .learn h3 {

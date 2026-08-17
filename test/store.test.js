@@ -145,4 +145,50 @@ module.exports = function (t) {
   h.add("A Part I Already Had");
   t.eq(h.IFS.store.seedStarters(), 0, "a store with parts in it is left alone");
   t.eq(h.IFS.store.listParts().length, 1, "and keeps only what was there");
+
+  /* --- meeting summary cards live on the table and survive a backup --- */
+  var mk = fresh();
+  var MS = mk.IFS.store;
+  t.eq(MS.state.table.meetings, [], "a fresh table has no meetings behind it");
+  t.eq(MS.state.settings.coachOn, false,
+    "and the first-run coach is off by default, so an existing user is never re-taught");
+  t.eq(MS.state.settings.taught, {}, "with nothing yet marked as taught");
+
+  var id = MS.addMeeting({
+    date: "2026-08-17", topic: "whether to take the job",
+    parts: ["the-critic"], voices: [{ name: "The Critic", line: "I will hold the standard." }],
+    synthesis: "Both are guarding the same thing.", transcript: ""
+  });
+  t.ok(!!id, "addMeeting hands back an id");
+  t.eq(MS.state.table.meetings.length, 1, "and the card is on the table");
+  t.eq(MS.state.table.meetings[0].id, id, "under that id");
+
+  for (var mi = 0; mi < 70; mi++) {
+    MS.addMeeting({ date: "2026-08-17", topic: "n" + mi, parts: [], voices: [], synthesis: "" });
+  }
+  t.eq(MS.state.table.meetings.length, 60, "the room keeps its history, but not without limit");
+  t.eq(MS.state.table.meetings[59].topic, "n69", "and it is the oldest that falls off, not the newest");
+
+  /* A restore adds to the meetings already here rather than replacing them -
+     the same rule transcripts follow, because both are history. */
+  MS.saveTable({ built: true, room: "a long library table under a window" });
+  var backup = JSON.parse(MS.exportAll());
+  var re = fresh();
+  re.IFS.store.addMeeting({ date: "2026-08-01", topic: "kept", parts: [], voices: [], synthesis: "" });
+  var mine = re.IFS.store.state.table.meetings[0].id;
+  re.IFS.store.importAll(JSON.stringify(backup));
+  var ids = re.IFS.store.state.table.meetings.map(function (m) { return m.id; });
+  t.ok(ids.indexOf(mine) >= 0, "a restore does not throw away a meeting this device already had");
+  t.ok(ids.length > 1, "and the backup's meetings arrive beside it");
+  re.IFS.store.importAll(JSON.stringify(backup));
+  t.eq(re.IFS.store.state.table.meetings.length, ids.length,
+    "importing the same backup twice does not duplicate the cards");
+
+  /* An older backup, written before meetings existed, must still restore. */
+  var legacy = fresh();
+  delete backup.table.meetings;
+  legacy.IFS.store.importAll(JSON.stringify(backup));
+  t.eq(legacy.IFS.store.state.table.meetings, [],
+    "a backup from before meetings existed restores with an empty shelf, not a crash");
+  t.ok(legacy.IFS.store.state.table.built, "and the rest of the room still comes back");
 };

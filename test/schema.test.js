@@ -206,4 +206,70 @@ module.exports = function (t) {
 
   t.eq(S.initial("The Final Boss"), "F", "the ring letter skips a leading article");
   t.eq(S.slugify("  Won't Stop!  "), "wont-stop", "slugify strips punctuation and edges");
+
+  /* --- recency: what the map dims and the daily check-in picks --- */
+  var TODAY = "2026-08-17";
+  function seen(name, dates) {
+    return part(name, {
+      sessions: (dates || []).map(function (d) { return { date: d, mode: "checkin", categories: [], note: "" }; })
+    });
+  }
+
+  t.eq(S.daysBetween("2026-08-10", TODAY), 7, "daysBetween counts calendar days");
+  t.eq(S.daysBetween(TODAY, TODAY), 0, "the same day is zero days apart");
+  t.eq(S.daysBetween("", TODAY), 0, "a missing date does not produce NaN");
+  t.eq(S.lastSessionISO(seen("A", ["2026-06-01", "2026-08-01", "2026-07-01"])), "2026-08-01",
+    "the last session is the newest one, not the last one appended");
+  t.eq(S.lastSessionISO(part("Untouched")), "", "a part with no sessions has no last session");
+
+  t.eq(S.partHeat(seen("Today", [TODAY]), TODAY), 1, "a part sat with today is at full heat");
+  t.ok(S.partHeat(seen("Old", ["2026-01-01"]), TODAY) <= 0.12,
+    "a part left alone for months sits at the floor");
+  t.ok(S.partHeat(seen("Week", ["2026-08-10"]), TODAY) < S.partHeat(seen("Day", ["2026-08-16"]), TODAY),
+    "heat decays with the days since the last session");
+  t.ok(S.partHeat(part("New"), TODAY) > 0.12,
+    "a part never interviewed is not cold from neglect - it was never warm");
+  /* a stored date in the future (a clock skew, a hand-edited backup) must not
+     read as hotter than today or the ring and the map disagree with reality */
+  t.eq(S.partHeat(seen("Ahead", ["2026-12-01"]), TODAY), 1, "a future date is clamped to full, not beyond it");
+
+  /* --- edge weight: how much has actually been said about a pair --- */
+  function pair(aNotes, bNotes) {
+    var x = part("A"), y = part("B");
+    x.slug = "a"; y.slug = "b";
+    if (aNotes != null) x.relationships = [{ part: "b", type: "polarized-with", notes: aNotes }];
+    if (bNotes != null) y.relationships = [{ part: "a", type: "polarized-with", notes: bNotes }];
+    return [x, y];
+  }
+  var unmapped = pair(null, null);
+  t.eq(S.edgeWeight(unmapped[0], unmapped[1]), 0, "a pair nobody has mapped carries no weight");
+
+  var oneSide = pair("", null);
+  var bothBare = pair("", "");
+  var bothDeep = pair(
+    "Every time it eases off I have to work twice as hard to cover for us, and it never notices.",
+    "It never stops pushing, and somebody has to give us a way out of the pressure it builds.");
+  t.ok(S.edgeWeight(oneSide[0], oneSide[1]) > 0, "one side naming the relationship is still mapped");
+  t.ok(S.edgeWeight(bothBare[0], bothBare[1]) > S.edgeWeight(oneSide[0], oneSide[1]),
+    "both parts naming it outweighs one part doing all the talking");
+  t.ok(S.edgeWeight(bothDeep[0], bothDeep[1]) > S.edgeWeight(bothBare[0], bothBare[1]),
+    "two described accounts outweigh two bare type-picks");
+  t.eq(S.edgeWeight(bothDeep[0], bothDeep[1]), 1, "a fully mutual, fully described pair tops out at 1");
+  t.eq(S.edgeWeight(bothDeep[1], bothDeep[0]), S.edgeWeight(bothDeep[0], bothDeep[1]),
+    "weight is symmetric - a thread has one thickness from either end");
+
+  /* --- who the daily check-in offers first --- */
+  var quiet = seen("Quiet", ["2026-02-01"]);
+  var recent = seen("Recent", [TODAY]);
+  t.eq(S.quietestPart([recent, quiet], TODAY).name, "Quiet", "the coldest part is the one offered");
+  t.eq(S.quietestPart([], TODAY), null, "an empty library offers nobody");
+
+  /* equally cold, so the less developed one is the more useful invitation */
+  var coldBare = seen("Bare", ["2026-02-01"]);
+  var coldFull = seen("Full", ["2026-02-01"]);
+  coldFull.positive_intent = "keep us from being humiliated again";
+  coldFull.emotions = ["vigilance", "contempt worn as armour", "a tiredness it will not admit to"];
+  coldFull.narrative.origin_story = "It arrived the year of the school move, and never left.";
+  t.eq(S.quietestPart([coldFull, coldBare], TODAY).name, "Bare",
+    "between two equally quiet parts, the one with more left to say wins");
 };

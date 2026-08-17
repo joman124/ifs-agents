@@ -42,7 +42,7 @@ app/                 the webapp (this is what deploys)
   sw.js              service worker, cache-first shell — bump CACHE on every deploy
   manifest.webmanifest
   js/                see the table below
-test/                node test/run.js — 127 assertions, no dependencies
+test/                node test/run.js — 317 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
@@ -59,29 +59,36 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 
 | File | Lines | What it owns |
 |---|--:|---|
-| `schema.js` | 249 | Part shape, the 9 coverage categories, 5 edge types, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `initial` |
+| `schema.js` | 442 | Part shape, the 9 coverage categories, 5 edge types, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `initial` |
 | `questions.js` | 130 | The IFS question bank (33 questions), `nextCategory`, `applyAnswers` |
-| `reference.js` | 154 | Fraser's Table protocol (build/tools/seats/closing) + the 8-page reference library |
-| `markdown.js` | 361 | `parts/<slug>.md` ⇄ object. Frontmatter parser, `splitDocs`, `analyze` |
-| `store.js` | 363 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart` |
+| `reference.js` | 207 | Fraser's Table protocol (build/tools/seats/closing), the 8-page reference library, the first-run coach cues and the daily check-in prompts |
+| `markdown.js` | 446 | `parts/<slug>.md` ⇄ object. Frontmatter parser, `splitDocs`, `analyze`, `splitVoices`/`summarizeMeeting` |
+| `store.js` | 550 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart` |
 | `templates.js` | 383 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
 | `llm.js` | 260 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
 | `voice.js` | 178 | Web Speech dictation + TTS, optional ElevenLabs voice |
-| `graph.js` | 387 | Force-directed SVG swarm map, implicit threads, seating forces |
-| `ui.js` | 2454 | Every view, sheet, panel and flow. The big one. |
+| `graph.js` | 486 | Force-directed SVG swarm map, implicit threads, seating forces, thread weight and recency heat |
+| `ui.js` | 3216 | Every view, sheet, panel and flow. The big one. |
 | `app.js` | 40 | Boot, SW registration, storage persistence |
 
 ## The four tabs
 
-1. **Parts** — library with coverage rings and readiness dots. A profile page has
-   a single primary next-step CTA, tap-to-edit fields, and per-category coverage.
+1. **Parts** — library with coverage rings and readiness dots, headed by the
+   **daily check-in**: once a day it asks one rotating question and offers the
+   part that has gone quietest, with a way straight into a session. A profile
+   page has a single primary next-step CTA, tap-to-edit fields, and
+   per-category coverage.
 2. **Map** — every pair of parts is drawn as a faint thread ("you already relate,
    you just haven't named it"). Tap a thread to name it; tap a part to focus it.
    Three-tone legend (supportive / in tension / not mapped) doubles as a filter.
-   Once a table exists, seating becomes distance from Self.
+   Once a table exists, seating becomes distance from Self. Thread thickness is
+   how much both parts have said about each other; parts fade as they go quiet
+   and the recently-visited one keeps a light on.
 3. **Table** — Fraser's Table. Build the room through the source document's own
    questions, invite parts to one of four seats, add tools and agreements, hold a
-   meeting, close with the reflection.
+   meeting, close with the reflection. A meeting opens with the parts taking
+   their seats, runs as a group chat with one named bubble per voice, and
+   leaves a summary card behind on the tab.
 4. **Settings** — provider keys, voice, theme, backup/restore, transcripts.
    "Find my voices" lists the ElevenLabs account's own voices (clones first) so
    no ID is copied by hand; "Test this key" does a live round-trip for
@@ -112,8 +119,13 @@ How it relates to other parts / What it needs / Session notes*.
 { built, name, room, details,
   tools: [{id,label,note}], agreements: [str],
   seats: { <slug>: "table"|"room"|"adjoining"|"away" },
-  log: [{date, answers, note}] }
+  log: [{date, answers, note}],
+  meetings: [{id, date, topic, parts:[slug],
+              voices: [{name, line, color}], synthesis, transcript}] }
 ```
+
+`meetings` is capped at 60 and, like transcripts, a restore **adds to** what is
+already there rather than replacing it — both are history.
 
 Included in backups. A deleted part gives up its chair as well as its edges.
 
@@ -271,7 +283,7 @@ Everything is in `localStorage` with an IndexedDB mirror. Risks worth closing:
 
 ### 3. Commit the test harness — **done**
 
-`test/` now holds 127 assertions over the pure logic, run with
+`test/` now holds 317 assertions over the pure logic, run with
 `node test/run.js`. See *Running and verifying locally* above for what is
 and isn't covered. What's left here is smaller: DOM-level coverage of the
 sheet/panel flows, and wiring the runner into a pre-commit hook.
@@ -283,8 +295,17 @@ refused. `extractProfiles` now drops a leading comment before giving up.
 
 ### 4. Table follow-ons
 
-- The closing reflection can't be reopened or edited after the fact.
-- `log[].answers` is stored but only the first answer is surfaced in the UI.
+- ~~The closing reflection can't be reopened after the fact.~~ ~~`log[].answers`
+  is stored but only the first answer is surfaced in the UI.~~ A row under
+  **Closing reflections** now opens every answer it holds, question by
+  question (`openClosingLog`). Editing one after the fact is still not
+  possible — reopening only reads.
+- A finished meeting now leaves a **summary card** on the tab
+  (`table.meetings[]`): who was seated, what was on the table, the line each
+  part ended on, and Self's closing read. It is built from the transcript by
+  `MD.summarizeMeeting`, so it costs no extra model call, and it links through
+  to the full transcript. Meetings also open with a short seating ceremony,
+  and each part speaks in its own named, coloured bubble.
 - The source doc suggests a notebook left in the room for parts to leave
   messages between meetings — the tool exists as a label but does nothing.
 - Meetings still require an API key or copy-prompt mode. A no-AI structured
@@ -294,18 +315,24 @@ refused. `extractProfiles` now drops a leading comment before giving up.
 ### 5. Smaller
 
 - Session transcripts are reachable but plain; the panel has no empty state.
-- The reference library has no search, and is not linked from the places its
-  content is relevant (e.g. the 6 Fs from a check-in).
-- `ui.js` is 2454 lines. Splitting the Table and Learn sections out would help,
+- ~~The reference library is not linked from the places its content is
+  relevant (e.g. the 6 Fs from a check-in).~~ Five **coach cues**
+  (`reference.js` `COACH`) now surface it in place: on the Parts, Map and
+  Table tabs, and at the top of a first interview and a first meeting. Each
+  is one paragraph with a **Read more** into the full page, fires once, and
+  runs only during an account's first day (`settings.coachOn` / `taught`).
+  The library still has no search.
+- `ui.js` is 3216 lines. Splitting the Table and Learn sections out would help,
   but only worth doing alongside the test harness.
 
 ---
 
 ## Questions for the owner
 
-1. **Is this for you, or for other people too?** Everything so far assumes a
-   single private user. Sharing it changes onboarding, the safety copy, the
-   default provider story, and whether an install prompt is worth building.
+1. ~~**Is this for you, or for other people too?**~~ **Answered: other people
+   too.** Sign-up and login make this a multi-user platform, and the first-run
+   experience is built on that — a fresh account gets the coach cues, an
+   established one gets the daily check-in.
 2. **Which phone?** iOS and Android need different install work, and iOS is
    where the icon and storage-eviction problems bite.
 3. **Do you want a no-AI path all the way through?** The questionnaire, map and
@@ -313,9 +340,12 @@ refused. `extractProfiles` now drops a leading comment before giving up.
    the copy-prompt detour. Closing that gap makes the app fully usable offline.
 4. **Should the slug drift in the private repo be fixed?** Seven edges currently
    don't draw. It is a mechanical fix to five files, and it is your data.
-5. **How much should the app teach?** The reference library is currently opt-in
-   via the ⓘ. It could surface contextually — the 6 Fs during a check-in, legacy
-   burdens when a part looks inherited — at the cost of being chattier.
+5. ~~**How much should the app teach?**~~ **Answered:** contextually, but only
+   at the start. Five coach cues surface the library where its content is
+   relevant, each once, and only during an account's first day — after that
+   the ⓘ is the path again and the daily check-in takes the space. Whether to
+   extend this to later moments (legacy burdens when a part looks inherited)
+   is still open.
 6. **Is anything else meant to be in here?** A previous session mentioned code
    from another AI tool that was never found; every commit in this repo is
    accounted for by you or Claude.

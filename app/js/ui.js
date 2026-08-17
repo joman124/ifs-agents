@@ -258,6 +258,134 @@
     });
   }
 
+  /* ================= coach cues =================
+     The reference library holds the explanations that make this framework
+     legible, and it opens only if someone taps the ⓘ - which means it is
+     there when a person is already comfortable and absent when they are not.
+     These are the same explanations, one paragraph each, placed at the moment
+     the confusion actually happens. They run for an account's first day only,
+     each fires once, and every one offers the full page behind it. */
+  function coachPending(id) {
+    var s = ST.state.settings;
+    if (!s.coachOn) return null;
+    if (s.taught && s.taught[id]) return null;
+    return R.coach(id);
+  }
+
+  function markTaught(id) {
+    var s = ST.state.settings;
+    s.taught = s.taught || {};
+    if (s.taught[id]) return;
+    s.taught[id] = true;
+    // nothing left to teach: stop checking on every render, and never revive
+    var done = R.COACH.every(function (c) { return s.taught[c.id]; });
+    if (done) s.coachOn = false;
+    ST.save();
+  }
+
+  function coachHTML(id) {
+    var c = coachPending(id);
+    if (!c) return "";
+    return '<div class="coach">' +
+      '<button class="coach-x" data-coach-dismiss aria-label="Dismiss">&#10005;</button>' +
+      '<div class="coach-title serif">' + esc(c.title) + "</div>" +
+      '<div class="coach-text">' + esc(c.text) + "</div>" +
+      '<button class="coach-more" data-coach-learn="' + esc(c.learn) + '">Read more &rsaquo;</button>' +
+      "</div>";
+  }
+
+  /* Put a cue in a container if one is due, and wire its two exits. Both of
+     them count as taught: a cue that has been read and closed has done its
+     job, and one that sent someone to the full page has more than done it. */
+  function mountCoach(el, id) {
+    if (!el) return false;
+    var html = coachHTML(id);
+    el.innerHTML = html;
+    if (!html) return false;
+    var clear = function () { el.innerHTML = ""; markTaught(id); };
+    el.querySelector("[data-coach-dismiss]").addEventListener("click", function () {
+      clear(); buzz();
+    });
+    el.querySelector("[data-coach-learn]").addEventListener("click", function (e) {
+      var page = e.currentTarget.dataset.coachLearn;
+      clear(); buzz();
+      learnPage(page);
+    });
+    return true;
+  }
+
+  function renderCoach(sel, id) { return mountCoach($(sel), id); }
+
+  /* ================= the daily check-in =================
+     The app opened onto a library of finished profiles, which gives a
+     returning person nothing to do and no reason to come back. This is the
+     loop: one question, one part that has gone quiet, and a way in. Once a
+     day, and never during the first run - a new account has not had time to
+     leave anything alone yet, and is being taught instead. */
+  function ritualDue() {
+    var s = ST.state.settings;
+    if (s.coachOn) return false;
+    if (s.ritualDay === S.todayISO()) return false;
+    // an unfinished session is the better invitation, and its banner is
+    // already sitting directly below this one
+    var d = ST.state.draft;
+    if (d && d.messages && d.messages.length) return false;
+    return ST.listParts().length > 0;
+  }
+
+  function dismissRitual() {
+    ST.state.settings.ritualDay = S.todayISO();
+    ST.save();
+  }
+
+  /* How long a part has been left alone, in the roughest unit that is still
+     true - "quiet for 6 weeks" lands where "quiet for 43 days" reads as a
+     number to feel bad about. */
+  function quietLabel(p) {
+    var last = S.lastSessionISO(p);
+    if (!last) return "not yet interviewed";
+    var d = S.daysBetween(last, S.todayISO());
+    if (d <= 0) return "you sat with it today";
+    if (d === 1) return "quiet since yesterday";
+    if (d < 14) return "quiet for " + d + " days";
+    if (d < 60) return "quiet for " + Math.round(d / 7) + " weeks";
+    return "quiet for months";
+  }
+
+  function renderRitual() {
+    var el = $("#ritual");
+    if (!el) return;
+    if (!ritualDue()) { el.innerHTML = ""; return; }
+    var today = S.todayISO();
+    var p = S.quietestPart(ST.listParts(), today);
+    if (!p) { el.innerHTML = ""; return; }
+
+    el.innerHTML =
+      '<div class="ritual">' +
+      '<button class="coach-x" id="rtSkip" aria-label="Not today">&#10005;</button>' +
+      '<div class="ritual-q serif">' + esc(R.ritualPrompt(today)) + "</div>" +
+      '<div class="ritual-part">' +
+      '<span class="rt-i">' + esc(S.initial(p.name)) + "</span>" +
+      '<span class="rt-main"><b>' + esc(p.name) + "</b>" +
+      '<span class="rt-sub">' + esc(quietLabel(p)) + "</span></span></div>" +
+      '<div class="ritual-cta">' +
+      '<button class="btn btn-primary" id="rtGo">Check in</button>' +
+      '<button class="btn btn-soft" id="rtOther">Someone else</button>' +
+      "</div></div>";
+
+    bind("#rtSkip", function () { dismissRitual(); renderParts(); buzz(); });
+    bind("#rtGo", function () {
+      dismissRitual(); renderParts(); buzz(12);
+      startSession("checkin", [p.slug]);
+    });
+    bind("#rtOther", function () {
+      dismissRitual(); renderParts(); buzz();
+      pickPart("Who would you like to sit with?", function (slug) {
+        startSession("checkin", [slug]);
+      });
+    });
+  }
+
   function renderBanners() {
     var el = $("#partsBanner");
     if (!el) return;
@@ -298,8 +426,11 @@
   }
 
   function renderParts() {
+    renderCoach("#partsCoach", "parts");
+    renderRitual();
     renderBanners();
     var parts = ST.listParts();
+    var today = S.todayISO();
     var list = $("#partsList");
     $("#partsEmpty").classList.toggle("hidden", parts.length > 0);
     list.innerHTML = parts.map(function (p) {
@@ -307,11 +438,16 @@
       var score = S.coverageScore(p);
       var last = p.sessions.length ? p.sessions[p.sessions.length - 1] : null;
       var sub = p.positive_intent || (last ? "last session " + last.date : "not yet interviewed");
+      // a part left alone long enough to have gone quiet says so, so the
+      // library reads as a system with a pulse rather than a set of files
+      var lastISO = S.lastSessionISO(p);
+      var quiet = lastISO && S.daysBetween(lastISO, today) >= 14;
       return '<div class="part-card" data-slug="' + esc(p.slug) + '">' +
         ringSVG(score, S.initial(p.name)) +
         '<div class="part-card-main">' +
         '<div class="part-card-name">' + esc(p.name) +
-        ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
+        ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span>" +
+        (quiet ? ' <span class="quiettag">' + esc(quietLabel(p)) + "</span>" : "") + "</div>" +
         '<div class="part-card-sub">' + esc(sub) + "</div></div>" +
         '<span class="readydot' + (rd.ready ? " ready" : "") + '" title="' + (rd.ready ? "ready for meetings" : "needs more check-ins") + '"></span>' +
         "</div>";
@@ -1334,6 +1470,56 @@
     return ST.state.settings.voiceOn ? sys + "\n\n" + T.voicePacing() : sys;
   }
 
+  /* ---------- the parts take their seats ----------
+     A meeting is the one thing in this app where several parts are in the
+     room at once, and it used to begin the way every other screen begins -
+     a panel slides in and a model starts typing. This is the pause before
+     that: the room is named, the parts arrive one at a time, and only then
+     does the conversation open. It is short, skippable, and skipped entirely
+     for anyone who has asked for reduced motion. */
+  function seatingCeremony(slugs, done) {
+    var t = ST.state.table;
+    var parts = slugs.map(ST.getPart).filter(Boolean);
+    var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!parts.length || reduced) { done(); return; }
+
+    var el = $("#seating");
+    var timers = [];
+    var finished = false;
+    function finish() {
+      if (finished) return;
+      finished = true;
+      timers.forEach(clearTimeout);
+      el.classList.add("hidden");
+      el.classList.remove("go");
+      done();
+    }
+
+    $("#seatingRoom").textContent = t.name || "The room";
+    $("#seatingLine").textContent = "";
+    $("#seatingChairs").innerHTML = parts.map(function (p, i) {
+      return '<span class="chair" style="--d:' + (i * 340 + 260) + 'ms">' +
+        '<span class="chair-i">' + esc(S.initial(p.name)) + "</span>" +
+        '<span class="chair-n">' + esc(p.name) + "</span></span>";
+    }).join("");
+
+    el.classList.remove("hidden");
+    // next frame, so the entrance animations actually run from their start
+    requestAnimationFrame(function () { el.classList.add("go"); });
+    buzz(14);
+
+    var last = parts.length * 340 + 260;
+    timers.push(setTimeout(function () {
+      $("#seatingLine").textContent = parts.length === 1
+        ? "one part is here"
+        : "everyone is seated";
+    }, last));
+    timers.push(setTimeout(finish, last + 900));
+
+    el.onclick = finish;
+    $("#seatingSkip").onclick = function (e) { e.stopPropagation(); finish(); };
+  }
+
   function startSession(mode, slugs, material) {
     closeSheet();
     var s = ST.state.settings;
@@ -1341,12 +1527,16 @@
       manualSession(mode, slugs, material);
       return;
     }
-    session = {
-      mode: mode, slugs: slugs, material: material || "",
-      system: buildSystem(mode, slugs, material),
-      messages: [], busy: false, closed: false
+    var begin = function () {
+      session = {
+        mode: mode, slugs: slugs, material: material || "",
+        system: buildSystem(mode, slugs, material),
+        messages: [], busy: false, closed: false
+      };
+      openChatPanel(session, false);
     };
-    openChatPanel(session, false);
+    if (mode === "meeting") seatingCeremony(slugs, begin);
+    else begin();
   }
 
   /* Rebuild a checkpointed session (drafts survive tab death / app close). */
@@ -1447,6 +1637,14 @@
       }
     });
 
+    /* First time in a live session, say what is about to happen before it
+       happens - a meeting and an interview ask different things of the person
+       sitting there, so they get different cues. */
+    var cue = document.createElement("div");
+    cue.className = "chat-coach";
+    $("#chatScroll").appendChild(cue);
+    if (!mountCoach(cue, sess.mode === "meeting" ? "meeting" : "session")) cue.remove();
+
     if (replay) {
       sess.messages.forEach(function (m) {
         if (!m.hidden) addMsg(m.role, m.role === "assistant" ? stripFences(m.text) : m.text);
@@ -1498,33 +1696,35 @@
     return VOICE_PALETTE[h % VOICE_PALETTE.length];
   }
 
+  /* A meeting reads as a group chat: every part's initial and name sit above
+     its own message, in that part's colour, the way a room full of people
+     talking is legible and a wall of prose is not. Two lines in a row from
+     the same speaker merge under one header rather than repeating it.
+     No entrance animation here on purpose - this re-runs on every streamed
+     chunk, and anything that animates would restart on each one. */
   function renderVoices(text) {
-    var re = /\*\*([^*\n]{1,48}?):?\*\*:?\s*/g;
-    var segs = [];
-    var current = null, last = 0, m;
-    while ((m = re.exec(text)) !== null) {
-      var chunk = text.slice(last, m.index);
-      if (current) current.text += chunk;
-      else if (chunk.trim()) segs.push({ name: null, text: chunk });
-      current = { name: m[1].replace(/:$/, "").trim(), text: "" };
-      segs.push(current);
-      last = re.lastIndex;
+    var segs = MD.splitVoices(text);
+    if (!segs.some(function (s) { return s.name; })) {
+      return '<div class="bubble">' + esc(text) + "</div>";
     }
-    var tail = text.slice(last);
-    if (current) current.text += tail;
-    else if (tail.trim()) segs.push({ name: null, text: tail });
-
-    var hasVoices = segs.some(function (s) { return s.name; });
-    if (!hasVoices) {
-      var plain = document.createElement("div");
-      plain.textContent = text;
-      return '<div class="bubble">' + plain.innerHTML + "</div>";
-    }
-    return segs.filter(function (s) { return s.name || s.text.trim(); }).map(function (s) {
-      if (!s.name) return '<div class="bubble">' + esc(s.text.trim()) + "</div>";
-      var selfV = /^self$/i.test(s.name);
-      return '<div class="voice' + (selfV ? " self-voice" : "") + '" style="--vc:' + voiceColor(s.name) + '">' +
-        '<span class="vname">' + esc(s.name) + "</span>" + esc(s.text.trim()) + "</div>";
+    var groups = [];
+    segs.forEach(function (s) {
+      var body = s.text.trim();
+      if (s.name && !body) return;              // a name with nothing after it yet
+      var prev = groups[groups.length - 1];
+      if (prev && prev.name && s.name && prev.name.toLowerCase() === s.name.toLowerCase()) {
+        prev.text += "\n\n" + body;
+        return;
+      }
+      groups.push({ name: s.name, text: body });
+    });
+    return groups.filter(function (g) { return g.name || g.text; }).map(function (g) {
+      if (!g.name) return '<div class="bubble">' + esc(g.text) + "</div>";
+      var selfV = /^self$/i.test(g.name);
+      return '<div class="voice' + (selfV ? " self-voice" : "") + '" style="--vc:' + voiceColor(g.name) + '">' +
+        '<span class="vhead"><span class="vava">' + esc(S.initial(g.name)) + "</span>" +
+        '<span class="vname">' + esc(g.name) + "</span></span>" +
+        '<span class="vbody">' + esc(g.text) + "</span></div>";
     }).join("");
   }
 
@@ -1760,21 +1960,49 @@
 
     // save transcript
     var visible = sess.messages.filter(function (m) { return !m.hidden; });
+    var transcriptId = "";
     if (visible.length) {
       var text = visible.map(function (m) {
         return (m.role === "user" ? "YOU: " : "GUIDE: ") + m.text;
       }).join("\n\n");
-      ST.addTranscript({
+      transcriptId = ST.addTranscript({
         date: S.todayISO(), mode: sess.mode,
         title: MODE_TITLES[sess.mode] + (sess.slugs.length ? " · " + sess.slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; }).join(", ") : ""),
         parts: sess.slugs, text: text
       });
     }
+
+    /* A meeting used to leave nothing behind but a transcript filed away
+       under Settings, so the one event where the whole system sat down
+       together was also the one that vanished fastest. Keep a card: who was
+       there, what was on the table, where each part landed, and what Self
+       made of it. Built from the transcript, so it costs no extra call.
+       Colours are resolved while `session` is still live, which is what makes
+       the card match the meeting the person just watched. */
+    if (sess.mode === "meeting") {
+      var names = sess.slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; });
+      var turns = sess.messages.filter(function (m) { return m.role === "assistant" && !m.hidden; })
+        .map(function (m) { return stripFences(m.text); });
+      var sum = MD.summarizeMeeting(turns, names);
+      if (sum.voices.length || sum.synthesis) {
+        sum.voices.forEach(function (v) { v.color = voiceColor(v.name); });
+        ST.addMeeting({
+          date: S.todayISO(),
+          topic: MD.firstSentences(sess.material, 1, 90),
+          parts: sess.slugs.slice(),
+          voices: sum.voices,
+          synthesis: sum.synthesis,
+          transcript: transcriptId
+        });
+      }
+    }
     ST.clearDraft();
+    var wasMeeting = sess.mode === "meeting";
     session = null;
     panelOnClose = null;
     closePanel();
     renderParts();
+    if (wasMeeting) renderTable();   // the new card belongs on the tab behind this
 
     if (!incoming.length) {
       toast(interviewish ? "Transcript saved - extract it anytime from Settings" : "Session saved");
@@ -1879,13 +2107,17 @@
     var parts = ST.listParts();
     var svg = $("#swarmSvg");
     var has = parts.length > 0;
+    // the threads only make sense once there is more than one part to string
+    // them between, so the cue waits for the map to have something to say
+    if (parts.length > 1) renderCoach("#mapCoach", "map");
+    else $("#mapCoach").innerHTML = "";
     mapTone = null;
     $("#mapEmpty").classList.toggle("hidden", has);
     $("#mapLegend").classList.toggle("hidden", !has);
     $("#mapHint").classList.toggle("hidden", !has);
     $("#mapCard").classList.add("hidden");
     $("#mapHint").textContent = parts.length > 1
-      ? "tap a part to focus it · tap a line to name that relationship"
+      ? "tap a thread to name it · thicker means more said"
       : "tap a part · drag to move · pinch to zoom";
     if (has) {
       renderLegend(parts);
@@ -2044,6 +2276,7 @@
   function renderTable() {
     var t = ST.state.table;
     var parts = ST.listParts();
+    renderCoach("#tableCoach", "table");
     $("#tableEmpty").classList.toggle("hidden", !!t.built);
     $("#tablePane").classList.toggle("hidden", !t.built);
     if (!t.built) return;
@@ -2092,10 +2325,16 @@
         : '<div class="prose none">what would help everyone feel more at ease?</div>') +
       "</div>" +
 
+      (t.meetings.length
+        ? '<div class="card"><h3>What happened here</h3>' +
+          t.meetings.slice().reverse().map(meetingCardHTML).join("") + "</div>"
+        : "") +
+
       (t.log.length
-        ? '<div class="card"><h3>Past meetings</h3>' + t.log.slice().reverse().map(function (m) {
-            return '<div class="sessionrow"><span class="sr-date">' + esc(m.date) +
-              "</span><span>" + esc(m.note || "closing reflection") + "</span></div>";
+        ? '<div class="card"><h3>Closing reflections</h3>' + t.log.slice().reverse().map(function (m, i) {
+            return '<div class="sessionrow logrow" data-log="' + (t.log.length - 1 - i) + '">' +
+              '<span class="sr-date">' + esc(m.date) + "</span><span>" +
+              esc(m.note || "closing reflection") + "</span></div>";
           }).join("") + "</div>"
         : "") +
 
@@ -2108,6 +2347,12 @@
     document.querySelectorAll("#tablePane [data-seat-slug]").forEach(function (el) {
       el.addEventListener("click", function () { seatSheet(el.dataset.seatSlug); });
     });
+    document.querySelectorAll("#tablePane [data-meeting]").forEach(function (el) {
+      el.addEventListener("click", function () { openMeeting(el.dataset.meeting); });
+    });
+    document.querySelectorAll("#tablePane [data-log]").forEach(function (el) {
+      el.addEventListener("click", function () { openClosingLog(+el.dataset.log); });
+    });
     bind("#tbEditRoom", function () { buildTable(true); });
     bind("#tbInvite", invitePartsSheet);
     bind("#tbTools", toolsSheet);
@@ -2116,6 +2361,79 @@
     bind("#tbMeet", function () {
       askMaterial("meeting", seated.map(function (p) { return p.slug; }));
     });
+  }
+
+  /* A colour off a stored meeting card ends up inside a style attribute, and
+     backups are hand-editable JSON, so it is checked rather than trusted. */
+  function safeColor(c, fallback) {
+    return /^(#[0-9a-fA-F]{3,8}|var\(--[a-z-]+\))$/.test(String(c || "")) ? String(c) : fallback;
+  }
+
+  function voiceLineHTML(v) {
+    return '<div class="mt-voice" style="--vc:' + safeColor(v.color, "var(--accent)") + '">' +
+      '<span class="mt-name">' + esc(v.name) + "</span>" + esc(v.line) + "</div>";
+  }
+
+  /* The meeting, kept. Enough of it to bring the room back without reopening
+     the transcript: who was there, what was on the table, the line each part
+     ended on, and what Self made of it. */
+  function meetingCardHTML(m) {
+    var who = (m.parts || []).length;
+    return '<div class="meetcard" data-meeting="' + esc(m.id) + '">' +
+      '<div class="mt-top"><span class="mt-date">' + esc(m.date) + "</span>" +
+      '<span class="mt-count">' + who + (who === 1 ? " part" : " parts") + " at the table</span></div>" +
+      (m.topic ? '<div class="mt-topic">' + esc(m.topic) + "</div>" : "") +
+      (m.voices || []).map(voiceLineHTML).join("") +
+      (m.synthesis
+        ? voiceLineHTML({ name: "Self", line: m.synthesis, color: "var(--self)" })
+        : "") +
+      "</div>";
+  }
+
+  function openMeeting(id) {
+    var m = ST.state.table.meetings.filter(function (x) { return x.id === id; })[0];
+    if (!m) return;
+    var t = m.transcript
+      ? ST.state.transcripts.filter(function (x) { return x.id === m.transcript; })[0]
+      : null;
+    openPanel("Table meeting", m.date,
+      '<div class="profile">' +
+      (m.topic ? '<div class="card"><h3>On the table</h3><div class="prose">' + esc(m.topic) + "</div></div>" : "") +
+      '<div class="card"><h3>Where each part landed</h3>' +
+      ((m.voices || []).length
+        ? m.voices.map(voiceLineHTML).join("")
+        : '<div class="prose none">nothing was recorded from this one</div>') +
+      "</div>" +
+      (m.synthesis ? '<div class="card"><h3>Self</h3><div class="prose">' + esc(m.synthesis) + "</div></div>" : "") +
+      '<div class="profile-cta">' +
+      (t ? '<button class="btn btn-soft btn-big" id="mtFull">Read the full transcript</button>' : "") +
+      '<button class="btn btn-danger btn-big" id="mtDel">Remove this card</button>' +
+      "</div></div>");
+    if (t) bind("#mtFull", function () {
+      closePanel(); setTimeout(function () { openTranscript(t); }, 220);
+    });
+    bind("#mtDel", function () {
+      var kept = ST.state.table.meetings.filter(function (x) { return x.id !== id; });
+      ST.saveTable({ meetings: kept });
+      closePanel(); renderTable(); buzz();
+      toast(t ? "Card removed - the transcript is still in Settings" : "Card removed");
+    });
+  }
+
+  /* The closing reflection asks seven questions and the list row could only
+     ever show the first answer. This is the rest of it. */
+  function openClosingLog(idx) {
+    var entry = ST.state.table.log[idx];
+    if (!entry) return;
+    var answers = entry.answers || {};
+    var rows = R.CLOSING.filter(function (q) { return answers[q.key]; }).map(function (q) {
+      return '<div class="card"><div class="logq">' + esc(q.q) + "</div>" +
+        '<div class="prose">' + esc(answers[q.key]) + "</div></div>";
+    }).join("");
+    openPanel("Closing reflection", entry.date,
+      '<div class="profile">' +
+      (rows || '<div class="card"><div class="prose none">nothing was written down</div></div>') +
+      "</div>");
   }
 
   /* Walk the document's "Developing the Table" questions, one per screen. */
@@ -2411,22 +2729,27 @@
     document.querySelectorAll(".sess-card").forEach(function (el) {
       el.addEventListener("click", function () {
         var t = ST.state.transcripts.filter(function (x) { return x.id === el.dataset.id; })[0];
-        if (!t) return;
-        var interviewish = ["intake", "checkin", "mapping"].indexOf(t.mode) >= 0;
-        var canExtract = interviewish && LLM.configured(ST.state.settings);
-        openPanel(t.title, t.date,
-          '<div class="transcript">' +
-          (canExtract ? '<button class="btn btn-primary btn-big" id="extractT" style="margin-bottom:6px">Extract the profile from this transcript</button>' +
-            '<p class="dim" style="margin:0 0 14px">Rebuilds the part profile from what was said - useful if a session closed without saving one.</p>' : "") +
-          '<pre>' + esc(t.text) + "</pre>" +
-          '<button class="btn btn-danger btn-big" id="delT">Delete transcript</button></div>');
-        $("#delT").addEventListener("click", function () {
-          ST.deleteTranscript(t.id); closePanel(); renderSessions(); toast("Deleted");
-        });
-        var ex = $("#extractT");
-        if (ex) ex.addEventListener("click", function () { extractFromTranscript(t, ex); });
+        if (t) openTranscript(t);
       });
     });
+  }
+
+  /* Also reached from a meeting card on the Table tab, which is why this is
+     its own function rather than living inside the list's click handler. */
+  function openTranscript(t) {
+    var interviewish = ["intake", "checkin", "mapping"].indexOf(t.mode) >= 0;
+    var canExtract = interviewish && LLM.configured(ST.state.settings);
+    openPanel(t.title, t.date,
+      '<div class="transcript">' +
+      (canExtract ? '<button class="btn btn-primary btn-big" id="extractT" style="margin-bottom:6px">Extract the profile from this transcript</button>' +
+        '<p class="dim" style="margin:0 0 14px">Rebuilds the part profile from what was said - useful if a session closed without saving one.</p>' : "") +
+      '<pre>' + esc(t.text) + "</pre>" +
+      '<button class="btn btn-danger btn-big" id="delT">Delete transcript</button></div>');
+    $("#delT").addEventListener("click", function () {
+      ST.deleteTranscript(t.id); closePanel(); renderSessions(); renderTable(); toast("Deleted");
+    });
+    var ex = $("#extractT");
+    if (ex) ex.addEventListener("click", function () { extractFromTranscript(t, ex); });
   }
 
   /* Rebuild profile(s) from a saved transcript, then hand the result to the
@@ -2727,7 +3050,12 @@
       });
     });
     $("#onboardDone").addEventListener("click", function () {
-      ST.state.settings.onboarded = true;
+      var s = ST.state.settings;
+      s.onboarded = true;
+      // the three slides say what this is and what it will not do; the coach
+      // cues pick up from there and say how each part of it actually works
+      s.coachOn = true;
+      s.firstRun = S.todayISO();
       ST.save();
       $("#onboarding").classList.add("hidden");
       $("#app").classList.remove("hidden");
@@ -2774,7 +3102,15 @@
       // seed only after the pull, so an account that already has parts
       // somewhere else never gets three examples dropped in beside them
       var seeded = signupMode ? ST.seedStarters() : 0;
-      if (seeded) refresh("Three example parts to start from - rename or delete them");
+      if (seeded) {
+        // a brand new account starts its first run here rather than at
+        // onboarding: this is the first screen with anything on it
+        var st = ST.state.settings;
+        st.coachOn = true;
+        st.firstRun = S.todayISO();
+        ST.save();
+        refresh("Three example parts to start from - rename or delete them");
+      }
       else if (changed) refresh("Synced with your other device");
     } catch (e) {
       err.textContent = e.message || (signupMode ? "Could not create that account" : "Sign in failed");
@@ -2801,9 +3137,21 @@
     showLogin();
   }
 
+  /* Once per open. The first run is one calendar day long: on it the coach
+     cues explain the framework, and from the next open onwards the daily
+     check-in is what greets a returning person instead. */
+  function openTick() {
+    var s = ST.state.settings;
+    var today = S.todayISO();
+    if (s.coachOn && s.firstRun && S.daysBetween(s.firstRun, today) >= 1) s.coachOn = false;
+    s.lastOpen = today;
+    ST.save();
+  }
+
   /* ================= boot wiring ================= */
   function init() {
     if (isIOS()) document.documentElement.classList.add("ios");
+    openTick();
     applyTheme();
     watchInstall();
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);

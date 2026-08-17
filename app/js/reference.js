@@ -143,9 +143,62 @@
       ] }
   ];
 
+  /* ---- Coach cues: the library, brought to the moment ----
+     The reference library above only opens if someone taps the ⓘ, which means
+     it is available exactly when a person is already comfortable and absent
+     exactly when they are not. These are the same explanations, one line each,
+     placed where the confusion actually happens: the first time a tab is
+     opened, the first time a session starts. Each fires once, only for an
+     account in its first run, and each offers the full page behind it. */
+  var COACH = [
+    { id: "parts", learn: "types",
+      title: "There are no bad parts",
+      text: "Every part here — even one whose methods cost you something — is trying to protect you with the best strategy it has. Managers get ahead of the pain, firefighters put it out once it lands, exiles carry it." },
+    { id: "map", learn: "rules",
+      title: "The faint threads are questions",
+      text: "Any two parts in the same system already relate somehow; the dotted lines are the pairs you haven't named yet. Tap one to say how they get along — supportive, in tension, or still unknown." },
+    { id: "table", learn: "table",
+      title: "Nobody is made to sit",
+      text: "You build a safe, neutral room and invite parts into it. A part that stays at the side, watches through a window, or declines outright is participating — this tab records that as an answer, not a gap." },
+    { id: "session", learn: "6fs",
+      title: "How a session goes",
+      text: "Find it in your body, turn toward it, let it describe itself, then notice how you feel about it. Warmth and curiosity mean you have room for it. Anything can be declined, and stopping early is a fine outcome." },
+    { id: "meeting", learn: "self",
+      title: "You chair this",
+      text: "In a meeting you sit as Self, not as any one part. The test is how you feel toward the parts at the table: curious and calm means Self is home. Flooded or hostile means a part has blended in — ask it for a little space." }
+  ];
+
+  /* ---- The daily invitation ----
+     Rotated by date so the app asks the same question all day and a different
+     one tomorrow. Deliberately open questions rather than tasks: the check-in
+     is a door, not a streak to maintain. */
+  var RITUAL_PROMPTS = [
+    "Who is loudest in there today?",
+    "Which part has been running the show this week?",
+    "Is there a part that has been waiting for your attention?",
+    "What showed up today that you recognise?",
+    "Who came with you into this morning?",
+    "Is anyone in there carrying more than usual right now?",
+    "Which part would speak first if you gave it the floor?",
+    "Has anything shifted since the last time you sat down with this?"
+  ];
+
+  /* Same prompt for the whole day, a different one tomorrow. Derived from the
+     date itself so it survives a reload and needs nothing stored. */
+  function ritualPrompt(iso) {
+    var s = String(iso || "");
+    var h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return RITUAL_PROMPTS[h % RITUAL_PROMPTS.length];
+  }
+
   window.IFS.reference = {
     BUILD: BUILD, TOOLS: TOOLS, SEATS: SEATS, CLOSING: CLOSING,
     FAREWELL: FAREWELL, LEARN: LEARN,
+    COACH: COACH, RITUAL_PROMPTS: RITUAL_PROMPTS, ritualPrompt: ritualPrompt,
+    coach: function (id) {
+      return COACH.filter(function (x) { return x.id === id; })[0] || null;
+    },
     seatLabel: function (id) {
       var s = SEATS.filter(function (x) { return x.id === id; })[0];
       return s ? s.label : SEATS[3].label;

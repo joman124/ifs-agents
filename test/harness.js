@@ -67,6 +67,8 @@ function load(modules, extra) {
     setInterval: function () { return 0; },
     clearInterval: function () {},
     console: console,
+    atob: global.atob,
+    btoa: global.btoa,
     fetch: function () { return Promise.reject(new Error("no network in tests")); }
   };
   Object.keys(extra || {}).forEach(function (k) { win[k] = extra[k]; });
@@ -102,8 +104,33 @@ function fakeRecognition() {
   return Fake;
 }
 
+/* A speech synthesiser that says nothing and finishes when a test says so.
+   voice.js hands the floor over when the reply has been spoken, so a test
+   about turn-taking needs to control that moment exactly. */
+function fakeSpeech() {
+  var api = {
+    spoken: [], speaking: false, pending: false, cutOff: 0, last: null,
+    speak: function (u) { api.spoken.push(u.text); api.speaking = true; api.last = u; },
+    /* cancelling an idle synthesiser is a no-op in a browser, so only a
+       cancel that lands on live speech counts as being cut off */
+    cancel: function () { if (api.speaking) api.cutOff++; api.speaking = false; },
+    /* the utterance reaching its end, the way the browser reports it */
+    finish: function () {
+      api.speaking = false;
+      if (api.last && api.last.onend) api.last.onend();
+    }
+  };
+  api.Utterance = function (text) { this.text = text; this.rate = 1; };
+  return api;
+}
+
 function readExample(rel) {
   return fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
 }
 
-module.exports = { load: load, fakeRecognition: fakeRecognition, readExample: readExample };
+module.exports = {
+  load: load,
+  fakeRecognition: fakeRecognition,
+  fakeSpeech: fakeSpeech,
+  readExample: readExample
+};

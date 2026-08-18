@@ -42,7 +42,7 @@ app/                 the webapp (this is what deploys)
   sw.js              service worker, cache-first shell — bump CACHE on every deploy
   manifest.webmanifest
   js/                see the table below
-test/                node test/run.js — 317 assertions, no dependencies
+test/                node test/run.js — 407 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
@@ -63,12 +63,13 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `questions.js` | 130 | The IFS question bank (33 questions), `nextCategory`, `applyAnswers` |
 | `reference.js` | 207 | Fraser's Table protocol (build/tools/seats/closing), the 8-page reference library, the first-run coach cues and the daily check-in prompts |
 | `markdown.js` | 446 | `parts/<slug>.md` ⇄ object. Frontmatter parser, `splitDocs`, `analyze`, `splitVoices`/`summarizeMeeting` |
-| `store.js` | 550 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart` |
+| `store.js` | 560 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart` |
 | `templates.js` | 383 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
-| `llm.js` | 260 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
-| `voice.js` | 178 | Web Speech dictation + TTS, optional ElevenLabs voice |
+| `llm.js` | 275 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
+| `gemini-voice.js` | 429 | Gemini TTS + transcription on the chat key, the echo-cancelled mic, the loudness turn detector (`makeVad`), WAV containers |
+| `voice.js` | 626 | Whose turn it is: the floor, echo rejection, barge-in rules, engine choice for speaking and listening |
 | `graph.js` | 486 | Force-directed SVG swarm map, implicit threads, seating forces, thread weight and recency heat |
-| `ui.js` | 3216 | Every view, sheet, panel and flow. The big one. |
+| `ui.js` | 3362 | Every view, sheet, panel and flow. The big one. |
 | `app.js` | 40 | Boot, SW registration, storage persistence |
 
 ## The four tabs
@@ -89,10 +90,13 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
    meeting, close with the reflection. A meeting opens with the parts taking
    their seats, runs as a group chat with one named bubble per voice, and
    leaves a summary card behind on the tab.
-4. **Settings** — provider keys, voice, theme, backup/restore, transcripts.
-   "Find my voices" lists the ElevenLabs account's own voices (clones first) so
-   no ID is copied by hand; "Test this key" does a live round-trip for
-   whichever LLM provider is active instead of failing silently mid-session.
+4. **Settings** — provider keys, voice, turn-taking, theme, backup/restore,
+   transcripts. **Voice** picks who speaks (Gemini on the free chat key,
+   ElevenLabs, or the browser) and shows only that engine's fields; "Find my
+   voices" lists the ElevenLabs account's own voices (clones first) so no ID is
+   copied by hand. **Taking turns** chooses one-at-a-time or cutting in, and
+   which microphone. "Test this key" does a live round-trip for whichever LLM
+   provider is active instead of failing silently mid-session.
 
 The **ⓘ in the topbar** opens the reference library from anywhere.
 
@@ -148,6 +152,13 @@ These are not style preferences; several were fixed *because* they were broken.
    `/parts/` and `/sessions/`. Real data belongs in `ifs-agents-jm` (private).
 8. **Escape user text.** `esc()` before any `innerHTML` interpolation.
 9. **Bump `CACHE` in `sw.js`** on every deploy or installed clients serve stale files.
+10. **A session never listens to itself.** While a reply is being spoken the mic
+    is closed (or, with cutting in allowed, everything it hears is held to the
+    barge-in bar), and it stays closed through a short tail afterwards — the
+    room and the recogniser both hand back the last syllable after the audio
+    element has said "ended". Voice mode interrupting itself is what the whole
+    floor state machine in `voice.js` exists to prevent; don't reintroduce an
+    open mic during playback without echo cancellation behind it.
 
 ## Running and verifying locally
 
@@ -172,7 +183,8 @@ it will not catch a button that stopped working. Run it before every push.
 
 `test/harness.js` runs the real browser modules unchanged — they are IIFEs
 hanging off `window.IFS`, so a Node `vm` context with just enough browser in it
-(a `localStorage` object, a `navigator`, a fake `SpeechRecognition`) loads them
+(a `localStorage` object, a `navigator`, a fake `SpeechRecognition`, a fake
+`speechSynthesis` whose utterances finish when a test says so) loads them
 with nothing to keep in sync. It also supplies a **virtual clock**: `voice.js`
 decides a spoken turn is over with four- and nine-second timers, and a suite
 that really waits nine seconds is a suite nobody runs. `clock.tick(ms)` fires
@@ -182,8 +194,11 @@ Covered: `parts/<slug>.md` round trips including the committed example and the
 awkward cases (`#` inside a quoted value, concatenated files, an unnamed part),
 both merge paths, untrusted backups, the question bank's routing and its
 refusal to re-ask a declined category, the store defects from the review
-(rename carrying edges and seats, collision refusal, absorb, delete), and mic
-turn-taking.
+(rename carrying edges and seats, collision refusal, absorb, delete), and
+turn-taking: the mic staying shut while a reply is spoken and through its
+echo tail, what counts as a barge-in and what is just the loudspeaker, which
+engine ends up speaking and listening, and the Gemini speech request/response
+shapes plus the loudness turn detector.
 
 It earned its place immediately — the first run found that
 `examples/parts/the-critic.md`, the repo's own worked example, could not be
@@ -283,7 +298,7 @@ Everything is in `localStorage` with an IndexedDB mirror. Risks worth closing:
 
 ### 3. Commit the test harness — **done**
 
-`test/` now holds 317 assertions over the pure logic, run with
+`test/` now holds 407 assertions over the pure logic, run with
 `node test/run.js`. See *Running and verifying locally* above for what is
 and isn't covered. What's left here is smaller: DOM-level coverage of the
 sheet/panel flows, and wiring the runner into a pre-commit hook.

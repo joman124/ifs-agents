@@ -1583,7 +1583,7 @@
       '<div class="chat-scroll" id="chatScroll">' +
       '<div class="msg system-note">Private session · ' + esc(s.provider) + " · saved as you go · you can stop anytime</div>" +
       "</div>" +
-      '<div class="voice-orb idle" id="voiceOrb" aria-live="polite"><i></i><span class="vo-label"></span></div>' +
+      '<div class="voice-orb idle" id="voiceOrb" aria-live="polite" role="button" tabindex="0" title="Tap to take the floor"><i></i><span class="vo-label"></span></div>' +
       '<div class="chat-input">' +
       (V.canListen() ? '<button class="micbtn" id="chatMic" aria-label="Dictate">&#127908;</button>' : "") +
       '<textarea id="chatBox" rows="1" placeholder="Speak as yourself or as the part..."></textarea>' +
@@ -1619,6 +1619,22 @@
       if (V.isListening()) { V.stopListening(); micState(false); }
       else startDictation(false);
     });
+    /* Taking the floor by hand, either way round: while the reply is playing
+       this stops it and opens the mic; while the mic is open it ends the turn
+       and sends. Nobody has to wait out a sentence they have already heard,
+       or a four-second silence they know they have finished. */
+    var orb = $("#voiceOrb");
+    if (orb) {
+      var takeFloor = function () {
+        if (!ST.state.settings.voiceOn) return;
+        if (V.speaking()) { buzz(12); V.takeFloor(); return; }
+        if (V.isListening()) { buzz(); V.stopListening(); }
+      };
+      orb.addEventListener("click", takeFloor);
+      orb.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); takeFloor(); }
+      });
+    }
     var vt = $("#voiceToggle");
     if (vt) vt.addEventListener("click", function () {
       s.voiceOn = !s.voiceOn; ST.save();
@@ -1628,8 +1644,9 @@
          has to rebuild it or the model keeps the cadence it started with */
       if (session) session.system = buildSystem(session.mode, session.slugs, session.material);
       if (s.voiceOn) {
-        toast(V.canListen() ? "Voice mode: replies are spoken, mic opens after each one"
-                            : "Voice mode: replies are spoken aloud (no mic support in this browser)");
+        toast(!V.canListen() ? "Voice mode: replies are spoken aloud (no mic support in this browser)"
+          : V.engines().duplex === "open" ? "Voice mode: the mic stays open - cut in whenever"
+                                          : "Voice mode: replies are spoken, then the mic opens");
         if (V.canListen() && !session.busy) startDictation(true);
       } else {
         V.stopSpeaking(); V.stopListening(); micState(false);
@@ -1745,14 +1762,23 @@
         var box = $("#chatBox");
         if (box && session === sess) { box.value = t; box.dispatchEvent(new Event("input")); }
       },
+      /* The Gemini mic has no live words - the transcript lands in one piece
+         once the turn is over - so say we are working on it rather than
+         going blank for a second and a half. */
+      onThinking: function () { if (session === sess && ST.state.settings.voiceOn) voiceState("thinking"); },
       onEnd: function (finalText) {
         micState(false);
         if (session !== sess) return;
+        if (ST.state.settings.voiceOn) voiceState("idle");
         var box = $("#chatBox");
         if (box && finalText) { box.value = finalText; box.dispatchEvent(new Event("input")); }
         if (autoSend && finalText && ST.state.settings.voiceOn && !sess.busy) sendChat();
       },
-      onError: function (msg) { micState(false); toast(msg); },
+      onError: function (msg) {
+        micState(false);
+        if (session === sess && ST.state.settings.voiceOn) voiceState("idle");
+        toast(msg);
+      },
       onInterrupt: function () { toast("Heard that - the mic will wait longer before it closes"); }
     });
     if (!ok) micState(false);
@@ -2781,6 +2807,104 @@
     }
   }
 
+  /* ---------- which voice, and which microphone ---------- */
+
+  var SPOKEN_BY = {
+    gemini: "Generating a sample in the Gemini voice...",
+    eleven: "Generating a sample in your ElevenLabs voice...",
+    browser: "This is the browser's built-in voice",
+    none: "Nothing on this device can speak"
+  };
+  var MIC_BY = {
+    gemini: "the Gemini microphone",
+    web: "your browser's dictation",
+    none: "no microphone"
+  };
+
+  /* Four settings decide what actually happens in a session, and "Auto" hides
+     three of them. Say the outcome in one plain line instead. */
+  function enginesLine() {
+    var e = V.engines();
+    var speaks = e.speak === "gemini" ? "Gemini speaks the replies"
+      : e.speak === "eleven" ? "ElevenLabs speaks the replies"
+      : e.speak === "browser" ? "The browser's own voice speaks the replies"
+      : "Nothing on this device can speak replies aloud";
+    return esc(speaks + ", " + MIC_BY[e.listen] + " hears you, and you " +
+      (e.duplex === "open" ? "can cut in while it is talking." : "each take a turn."));
+  }
+
+  /* Only the fields for whichever engine is actually going to speak. In Auto
+     that is a deliberate invitation: with nothing set up it shows the Gemini
+     fields, because a free key someone already has for sessions is one paste
+     away from a real voice. */
+  function renderVoiceFields() {
+    var s = ST.state.settings;
+    var el = $("#voiceFields");
+    if (!el) return;
+    var want = s.voiceEngine || "auto";
+    var live = V.engines().speak;
+    var showEleven = want === "eleven" || (want === "auto" && live === "eleven");
+    var showGemini = want === "gemini" || (want === "auto" && live !== "eleven");
+    var G = window.IFS.geminiVoice;
+    var voice = (G.VOICES.filter(function (v) { return v.id === s.geminiVoice; })[0]);
+
+    el.innerHTML =
+      (showGemini
+        ? '<label class="fieldlabel">Gemini API key</label>' +
+          '<input type="password" id="gvKey" autocomplete="off" placeholder="AIza..." value="' + esc(s.geminiKey) + '">' +
+          '<label class="fieldlabel">Voice</label>' +
+          '<button class="btn btn-soft" id="gvPick" style="width:100%;justify-content:center">' +
+          esc(s.geminiVoice || G.VOICES[0].id) + (voice ? " &middot; " + esc(voice.note) : "") + "</button>" +
+          '<p class="dim" style="margin:10px 2px 2px">The same free key as the Gemini provider &mdash; one key does the talking and the thinking. Free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a>. Reply text is sent to Google to be spoken; if it fails, the session falls back to the browser voice rather than going silent.</p>'
+        : "") +
+      (showEleven
+        ? '<label class="fieldlabel">ElevenLabs API key</label>' +
+          '<input type="password" id="elKey" autocomplete="off" placeholder="sk_..." value="' + esc(s.elevenKey) + '">' +
+          '<label class="fieldlabel">Voice ID</label>' +
+          '<input id="elVoice" autocomplete="off" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" value="' + esc(s.elevenVoiceId) + '">' +
+          '<button class="btn btn-soft" id="elFind" style="margin-top:8px">Find my voices</button>' +
+          '<label class="fieldlabel">Model</label>' +
+          '<input id="elModel" autocomplete="off" value="' + esc(s.elevenModel) + '">' +
+          '<p class="dim" style="margin:10px 2px 2px">Speaks in an ElevenLabs voice &mdash; e.g. your own professional clone. Paste the key, then <b>Find my voices</b> lists the account&rsquo;s own voices so there is no ID to copy by hand. For a professional clone, <code>eleven_multilingual_v2</code> is the most faithful and <code>eleven_flash_v2_5</code> the quickest to start speaking. Reply text is sent to ElevenLabs and billed per character. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>'
+        : "") +
+      (!showGemini && !showEleven
+        ? '<p class="dim" style="margin:10px 2px 2px">The voice built into this browser. Nothing is sent anywhere to speak a reply, and the voice is whichever one the device ships with.</p>'
+        : "");
+
+    if (showGemini) {
+      $("#gvKey").addEventListener("input", function (e) { s.geminiKey = e.target.value.trim(); ST.save(); });
+      bind("#gvPick", pickGeminiVoice);
+    }
+    if (showEleven) {
+      $("#elKey").addEventListener("input", function (e) { s.elevenKey = e.target.value.trim(); ST.save(); });
+      $("#elVoice").addEventListener("input", function (e) { s.elevenVoiceId = e.target.value.trim(); ST.save(); });
+      $("#elModel").addEventListener("input", function (e) { s.elevenModel = e.target.value.trim(); ST.save(); });
+      bind("#elFind", pickElevenVoice);
+    }
+  }
+
+  /* Gemini's voices are a fixed list with one-word characters, and the whole
+     point of choosing one is hearing it - so picking speaks a line. */
+  function pickGeminiVoice() {
+    var s = ST.state.settings;
+    openSheet('<h2 class="sheet-title serif">Gemini voices</h2>' +
+      '<p class="dim">Tap one to hear it. Sessions keep the last one you tapped &mdash; currently <b>' +
+      esc(s.geminiVoice || "") + "</b>.</p>" +
+      window.IFS.geminiVoice.VOICES.map(function (v) {
+        return '<button class="menu-item" data-gv="' + esc(v.id) + '">' +
+          '<span class="mi-icon">&#9834;</span><span class="mi-main">' + esc(v.id) +
+          '<span class="mi-sub">' + esc(v.note) + "</span></span></button>";
+      }).join(""));
+    document.querySelectorAll("#sheetBody [data-gv]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        s.geminiVoice = b.dataset.gv;
+        ST.save();
+        renderSettings();
+        V.speak("This is how your sessions will sound. Take all the time you need.", null);
+      });
+    });
+  }
+
   /* Copying a voice ID out of the ElevenLabs dashboard by hand is the step
      people get wrong, and a wrong ID only shows up as a 404 mid-session. List
      the account's own voices instead. Professional and instant clones sort
@@ -2880,13 +3004,12 @@
 
       '<div class="set-group"><h3>Voice</h3>' +
       '<div class="set-pad">' +
-      '<label class="fieldlabel">ElevenLabs API key (optional)</label>' +
-      '<input type="password" id="elKey" autocomplete="off" placeholder="sk_..." value="' + esc(s.elevenKey) + '">' +
-      '<label class="fieldlabel">Voice ID</label>' +
-      '<input id="elVoice" autocomplete="off" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" value="' + esc(s.elevenVoiceId) + '">' +
-      '<button class="btn btn-soft" id="elFind" style="margin-top:8px">Find my voices</button>' +
-      '<label class="fieldlabel">Model</label>' +
-      '<input id="elModel" autocomplete="off" value="' + esc(s.elevenModel) + '">' +
+      '<label class="fieldlabel">Who speaks the replies</label>' +
+      '<div class="seg" id="vengSeg">' +
+      segBtn("auto", "Auto", s.voiceEngine) + segBtn("gemini", "Gemini", s.voiceEngine) +
+      segBtn("eleven", "ElevenLabs", s.voiceEngine) + segBtn("browser", "Browser", s.voiceEngine) +
+      "</div>" +
+      '<div id="voiceFields"></div>' +
       '<label class="fieldlabel">Speaking pace</label>' +
       '<div class="seg" id="rateSeg">' +
       segBtn("0.8", "Unhurried", String(s.speechRate)) +
@@ -2894,7 +3017,21 @@
       segBtn("1", "Normal", String(s.speechRate)) +
       "</div>" +
       '<button class="btn btn-soft" id="elTest" style="margin-top:12px">Hear a sample</button>' +
-      '<p class="dim" style="margin:12px 2px 2px">With a key and voice ID, voice mode speaks in that ElevenLabs voice &mdash; e.g. your own professional clone &mdash; instead of the built-in one. Paste the key, then <b>Find my voices</b> lists the account&rsquo;s voices so there is no ID to copy by hand. For a professional clone, <code>eleven_multilingual_v2</code> is the most faithful and <code>eleven_flash_v2_5</code> the quickest to start speaking. Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
+      '<p class="dim" style="margin:12px 2px 2px">' + enginesLine() + "</p>" +
+      "</div></div>" +
+
+      '<div class="set-group"><h3>Taking turns</h3>' +
+      '<div class="set-pad">' +
+      '<div class="seg" id="turnSeg">' +
+      segBtn("hold", "One at a time", s.turnTaking) + segBtn("open", "Let me cut in", s.turnTaking) +
+      "</div>" +
+      '<p class="dim" style="margin:10px 2px 0"><b>One at a time</b> keeps the microphone shut while a reply is being spoken, so a session can never hear its own voice and stop mid-sentence thinking you had started. Tap the dot above the message box to take the floor early, or to end your turn without waiting out the pause. <b>Let me cut in</b> leaves the mic open through the reply and it takes real words to interrupt &mdash; best with headphones, or with the Gemini microphone below.</p>' +
+      '<label class="fieldlabel">Microphone</label>' +
+      '<div class="seg" id="micSeg">' +
+      segBtn("auto", "Auto", s.micEngine) + segBtn("gemini", "Gemini mic", s.micEngine) +
+      segBtn("browser", "Browser", s.micEngine) +
+      "</div>" +
+      '<p class="dim" style="margin:10px 2px 2px">The browser&rsquo;s own dictation is instant and costs nothing, but only Chrome and Edge have it. The <b>Gemini microphone</b> records with echo cancellation and sends each turn to Google to transcribe &mdash; slower by a beat, and the reason cutting in works next to a loudspeaker. It is also the only voice input at all in Safari and Firefox. Either way your voice leaves this device: browser dictation goes to the browser&rsquo;s maker, the Gemini mic to Google.</p>' +
       "</div></div>" +
 
       '<div class="set-group"><h3>Appearance</h3>' +
@@ -2944,10 +3081,19 @@
       var b = e.target.closest("button"); if (!b) return;
       s.theme = b.dataset.val; ST.save(); applyTheme(); renderSettings(); buzz();
     });
-    $("#elKey").addEventListener("input", function (e) { s.elevenKey = e.target.value.trim(); ST.save(); });
-    $("#elVoice").addEventListener("input", function (e) { s.elevenVoiceId = e.target.value.trim(); ST.save(); });
-    $("#elModel").addEventListener("input", function (e) { s.elevenModel = e.target.value.trim(); ST.save(); });
-    bind("#elFind", pickElevenVoice);
+    renderVoiceFields();
+    $("#vengSeg").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      s.voiceEngine = b.dataset.val; ST.save(); renderSettings(); buzz();
+    });
+    $("#turnSeg").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      s.turnTaking = b.dataset.val; ST.save(); renderSettings(); buzz();
+    });
+    $("#micSeg").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      s.micEngine = b.dataset.val; ST.save(); renderSettings(); buzz();
+    });
     $("#rateSeg").addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
       s.speechRate = parseFloat(b.dataset.val); ST.save(); renderSettings(); buzz();
@@ -2955,7 +3101,7 @@
     });
     $("#elTest").addEventListener("click", function () {
       buzz();
-      toast(s.elevenKey && s.elevenVoiceId ? "Generating a sample in your voice..." : "No ElevenLabs key set - this is the browser voice");
+      toast(SPOKEN_BY[V.engines().speak] || "Nothing on this device can speak");
       V.speak("Hi, this is how your sessions will sound. Take all the time you need.", null);
     });
     $("#hapt").addEventListener("change", function (e) { s.haptics = e.target.checked; ST.save(); buzz(); });

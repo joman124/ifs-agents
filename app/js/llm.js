@@ -268,5 +268,8 @@
     return chat(settings, system, messages);
   }
 
-  window.IFS.llm = { chat: chat, chatStream: chatStream, configured: configured };
+  /* `friendly` is exported because gemini-voice.js talks to the same API with
+     the same key, and one wrong key should read the same whether it failed
+     mid-sentence or mid-thought. */
+  window.IFS.llm = { chat: chat, chatStream: chatStream, configured: configured, friendly: friendly };
 })();

@@ -101,17 +101,26 @@ It follows one spine — **add a part → gather → integrate → connect**:
   the portable prompt for any chat you already use, and imports the result back.
 - **Voice first**: sessions are spoken by default where the browser supports
   it. The answer to an IFS question arrives in the pause, spoken, long before
-  anyone would type it. The microphone stays open *through* the reply, so you
-  can cut in mid-sentence the way you would with someone in the room — the
-  voice stops and the floor is yours — and when a reply ends the turn simply
-  passes, with no button. The reply coming back off the speaker is filtered
-  out rather than heard as an interruption. A dot above the composer says
-  whose turn it is: speaking, thinking, listening. Typing works throughout.
-- **Voice setup**: Settings &rarr;
-  Voice takes an ElevenLabs key and **Find my voices** lists that account's own
-  voices — professional clones first — so a cloned voice is one tap, not an ID
-  copied by hand. Without a key it uses the browser voice; if ElevenLabs fails
+  anyone would type it. You take turns: while a reply is being spoken the
+  microphone is *shut*, so a session can never hear its own voice through the
+  speaker and cut itself off mid-sentence; the floor passes the moment the
+  words (and their echo) are gone, with no button to press. Tap the dot above
+  the composer to take the floor early, or to end your turn without waiting
+  out the pause — and that dot always says whose turn it is: speaking,
+  thinking, listening. **Let me cut in** (Settings → Taking turns) keeps the
+  mic open through the reply instead; it takes real words to interrupt.
+  Typing works throughout.
+- **Voice setup**: Settings → Voice. With the free **Gemini** key sessions
+  already use, Gemini speaks the replies in one of a dozen voices — one key
+  for the talking and the thinking. An **ElevenLabs** key instead speaks in
+  that account's own voices (**Find my voices** lists them, professional
+  clones first, so a cloned voice is one tap rather than an ID copied by
+  hand). With neither, the browser's built-in voice; if a paid engine fails
   mid-session it falls back rather than going silent.
+- **The Gemini microphone**: Settings → Taking turns can record your side with
+  the browser's echo cancellation and have Gemini transcribe it. That is what
+  makes cutting in safe next to a loudspeaker — and it is voice input at all
+  in Safari and Firefox, which have no dictation of their own.
 - **Round-trip markdown**: profiles import/export in the exact
   `parts/<slug>.md` format, so the webapp and the Claude Code skills below
   interoperate on the same files.

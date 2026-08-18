@@ -42,6 +42,16 @@
            arrives spoken, in the pause, long before anyone would type it.
            On where it is supported; the toggle is one tap away in-session. */
         voiceOn: true,           // speak replies + hands-free mic in sessions
+        /* Turn-taking. "hold" is one at a time: the mic is shut while the
+           reply is spoken, so the app can never hear itself and mistake it
+           for the person. "open" leaves it open so they can cut in - better
+           with headphones, or with the Gemini mic's echo cancellation. */
+        turnTaking: "hold",      // hold | open
+        voiceEngine: "auto",     // auto | gemini | eleven | browser
+        micEngine: "auto",       // auto | gemini | browser
+        geminiVoice: "Achernar", // a Gemini prebuilt voice, on the chat key
+        geminiTtsModel: "gemini-2.5-flash-preview-tts",
+        geminiSttModel: "gemini-2.5-flash",
         elevenKey: "",           // optional: ElevenLabs TTS for a personal voice
         elevenVoiceId: "",
         elevenModel: "eleven_flash_v2_5",

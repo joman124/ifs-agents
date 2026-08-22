@@ -103,6 +103,37 @@ module.exports = function (t) {
   t.eq(two.map(function (x) { return x.slug; }), ["the-watchman", "the-planner"],
     "and one file's body does not swallow the next");
 
+  /* --- a --- in a body is a horizontal rule, not the next file ---
+     Every marker after the first frontmatter closed used to start a new
+     document, so an ordinary markdown rule cut the profile in half: the
+     sections after it parsed as nothing and were dropped, while the import
+     still announced success. Silent loss of the person's own words is the
+     worst failure this file can have. */
+  var ruled = S.blankPart("The Ruler");
+  ruled.positive_intent = "hold the line";
+  S.NARRATIVE_SECTIONS.forEach(function (sec, i) { ruled.narrative[sec.key] = "Section " + (i + 1) + " body."; });
+  var cut = MD.serialize(ruled).replace("## " + S.NARRATIVE_SECTIONS[2].title,
+    "---\n\n## " + S.NARRATIVE_SECTIONS[2].title);
+  var kept = MD.extractProfiles(cut);
+  t.eq(kept.length, 1, "a horizontal rule in a body does not split one profile into two");
+  t.eq(kept[0].narrative[S.NARRATIVE_SECTIONS[5].key], "Section 6 body.",
+    "and every section after the rule survives");
+  t.eq(S.NARRATIVE_SECTIONS.filter(function (sec) { return !kept[0].narrative[sec.key]; }).length, 0,
+    "with nothing at all dropped on the way in");
+
+  /* Two real files still have to separate, rule or no rule. */
+  var pair = MD.extractProfiles(cut + "\n" + MD.serialize(S.blankPart("The Planner")));
+  t.eq(pair.map(function (x) { return x.slug; }), ["the-ruler", "the-planner"],
+    "and a genuine second file still starts its own profile");
+
+  /* --- an invisible character is not a reason to refuse a profile ---
+     A trailing space on the opening --- dropped a clean file into the
+     degraded salvage path, for something nobody can see in an editor. */
+  var spaced = MD.serialize(p).replace(/^---/, "--- ");
+  t.eq(MD.analyze(spaced).profiles.length, 1,
+    "a trailing space on the opening --- still imports cleanly");
+  t.eq(MD.parse(spaced).slug, "the-watchman", "and parses to the same part");
+
   /* --- the committed example still imports ---
      It opens with an HTML comment saying it is fictional, and frontmatter has
      to come first. That is the case the first run of this suite found. */

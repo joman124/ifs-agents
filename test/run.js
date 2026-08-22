@@ -3,7 +3,7 @@
    takes an assert object and calls it as many times as it likes. */
 "use strict";
 
-var SUITES = ["schema", "markdown", "questions", "reference", "store", "voice", "auth", "sync"];
+var SUITES = ["schema", "markdown", "files", "questions", "reference", "store", "voice", "auth", "sync"];
 
 var pass = 0;
 var failures = [];

@@ -12,6 +12,7 @@
   var R = window.IFS.reference;
   var AUTH = window.IFS.auth;
   var SY = window.IFS.sync;
+  var F = window.IFS.files;
 
   var $ = function (sel) { return document.querySelector(sel); };
   var esc = function (s) {
@@ -150,10 +151,7 @@
   function isStandalone() {
     return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
   }
-  function isIOS() {
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  }
+  var isIOS = F.isIOS;
   function installHint() {
     if (deferredInstall) return "opens like an app and works offline";
     if (isIOS()) return "tap Share, then <b>Add to Home Screen</b>";
@@ -992,21 +990,30 @@
       $("#importGo").addEventListener("click", function () { reviewImport($("#importBox").value); });
       $("#importByHand").addEventListener("click", function () { createPartSheet(""); });
       $("#importFile").addEventListener("click", function () {
-        var inp = document.createElement("input");
-        inp.type = "file"; inp.multiple = true;
-        inp.accept = ".md,.txt,text/markdown,text/plain";
-        inp.addEventListener("change", function () {
-          var files = Array.prototype.slice.call(inp.files);
-          if (!files.length) return;
-          // analyze() already reads many profiles out of one blob - so a whole
-          // parts/ folder imports by concatenating the files
-          Promise.all(files.map(function (f) { return f.text(); })).then(function (texts) {
-            var txt = texts.join("\n\n");
-            var box = $("#importBox");
-            if (box) { box.value = txt; reviewImport(txt); }
-          });
+        // analyze() already reads many profiles out of one blob - so a whole
+        // parts/ folder imports by concatenating the files
+        F.pickTextFiles({ accept: F.TEXT_ACCEPT, multiple: true, onStart: function (files) {
+          var res = $("#importResult");
+          if (res) {
+            res.innerHTML = '<div class="readiness ok" style="margin-top:14px">Reading ' +
+              files.length + (files.length === 1 ? " file" : " files") + "&hellip;</div>";
+          }
+        } }, function (r) {
+          var res = $("#importResult");
+          if (!res) return;                        // sheet closed while reading
+          var trouble = F.trouble(r);
+          if (!r.text.trim()) {
+            res.innerHTML =
+              '<div class="readiness no" style="margin-top:14px">' +
+              esc(trouble || "That file came through empty.") + "</div>" +
+              '<p class="dim" style="margin:8px 2px">If it lives in iCloud or Drive, open it there once so this device has its own copy, then try again &mdash; or open the file and paste the text into the box above.</p>';
+            return;
+          }
+          var box = $("#importBox");
+          if (box) box.value = r.text;
+          reviewImport(r.text);
+          if (trouble) toast(trouble);
         });
-        inp.click();
       });
     }, 240);
   }
@@ -2978,16 +2985,11 @@
     });
     $("#expAll").addEventListener("click", doExportBackup);
     $("#impAll").addEventListener("click", function () {
-      var inp = document.createElement("input");
-      inp.type = "file"; inp.accept = ".json,application/json";
-      inp.addEventListener("change", function () {
-        var f = inp.files[0]; if (!f) return;
-        f.text().then(function (txt) {
-          try { var n = ST.importAll(txt); renderParts(); toast("Imported " + n + " part(s)"); }
-          catch (e) { toast("Import failed: " + e.message); }
-        });
+      F.pickTextFiles({ accept: ".json,application/json" }, function (r) {
+        if (!r.text.trim()) { toast(F.trouble(r) || "That backup came through empty"); return; }
+        try { var n = ST.importAll(r.text); renderParts(); toast("Imported " + n + " part(s)"); }
+        catch (e) { toast("Import failed: " + e.message); }
       });
-      inp.click();
     });
     $("#wipeAll").addEventListener("click", function () {
       openSheet('<h2 class="sheet-title serif">Erase everything?</h2><p class="dim">All parts, transcripts, and settings on this device. There is no undo.</p>' +

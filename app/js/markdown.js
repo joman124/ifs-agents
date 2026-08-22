@@ -225,7 +225,10 @@
 
   function parse(markdown) {
     markdown = stripLeadingComments(markdown);
-    var m = markdown.match(/^﻿?\s*---\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
+    // [ \t]* after the opening marker: an editor that left a trailing space on
+    // the --- line still wrote a profile, and refusing it drops a clean import
+    // into the degraded salvage path for a character nobody can see.
+    var m = markdown.match(/^﻿?\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
     if (!m) throw new Error("No YAML frontmatter found. Expected a profile in the parts/<slug>.md format.");
     return buildPart(parseFrontmatter(m[1]), m[2]);
   }
@@ -282,18 +285,37 @@
      inside frontmatter keeps the closing --- from being mistaken for it.
      Without this, picking a whole parts/ folder parses as a single part whose
      body has swallowed every other file. */
+  /* Does the --- on line i open a profile, or is it a markdown horizontal
+     rule sitting in a narrative body? Frontmatter's first line is a YAML key;
+     a rule is followed by prose, a heading, or the end of the file. Without
+     this test every rule read as the start of a new document, and the tail it
+     cut off - every section after it - parsed as nothing and was dropped,
+     while the import still reported success. */
+  function opensFrontmatter(lines, i) {
+    for (var j = i + 1; j < lines.length; j++) {
+      if (!lines[j].trim()) continue;
+      if (/^---[ \t]*$/.test(lines[j])) return false;
+      return /^[A-Za-z_][A-Za-z0-9_]*:(\s|$)/.test(lines[j]);
+    }
+    return false;
+  }
+
   function splitDocs(text) {
     var lines = text.split(/\r?\n/);
     var docs = [], cur = [], inFM = false, closedFM = false;
-    lines.forEach(function (line) {
-      var marker = /^---\s*$/.test(line);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var marker = /^---[ \t]*$/.test(line);
+      // outside frontmatter, a --- that opens nothing is the person's own
+      // horizontal rule: it belongs to the body, not to a new document
+      if (marker && !inFM && !opensFrontmatter(lines, i)) { cur.push(line); continue; }
       if (marker && !inFM && closedFM) {   // a fresh document starts here
         docs.push(cur.join("\n"));
         cur = []; closedFM = false;
       }
       if (marker) { if (inFM) { inFM = false; closedFM = true; } else inFM = true; }
       cur.push(line);
-    });
+    }
     docs.push(cur.join("\n"));
     return docs.filter(function (d) { return d.trim(); });
   }

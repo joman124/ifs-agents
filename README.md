@@ -77,7 +77,9 @@ your phone and Add to Home Screen):
 It follows one spine — **add a part → gather → integrate → connect**:
 
 - **Add** — upload a whole `parts/` folder at once, paste raw journaling, or
-  create by hand with just a name.
+  create by hand with just a name. Parts already listed in a spreadsheet come
+  in through the [`part-development`](skills/part-development/) skill, which
+  turns each row into an uploadable profile.
 - **Gather** — the question bank from
   [`docs/source/`](docs/source/) ships in the app. Tap any coverage category to
   work through its real IFS questions one per screen, answering, skipping, or
@@ -178,6 +180,7 @@ any project directory:
 
 ```
 /part-intake                      # meet a new part → parts/<name>.md
+/part-development <sheet.xlsx>    # spreadsheet rows → parts/<name>.md, one file per row
 /part-checkin <name>              # short ongoing session; deepens the profile
 /part-map                         # map relationships between two parts + swarm graph
 /part-compile <name>              # profile → .claude/agents/part-<name>.md

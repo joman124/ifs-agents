@@ -10,22 +10,9 @@
    plaintext history file that would keep it forever. */
 "use strict";
 var crypto = require("crypto");
-var fs = require("fs");
-var path = require("path");
 var readline = require("readline");
 
-/* Read .env.local (what `vercel env pull` writes) so the Upstash token never
-   has to be pasted into a shell. Real env vars still win. */
-function loadEnvFile() {
-  var file = path.join(__dirname, "..", ".env.local");
-  if (!fs.existsSync(file)) return;
-  fs.readFileSync(file, "utf8").split("\n").forEach(function (line) {
-    var m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
-    if (!m || process.env[m[1]]) return;
-    process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-  });
-}
-loadEnvFile();
+require("./env.js")();
 
 var REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 var REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;

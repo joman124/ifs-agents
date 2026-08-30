@@ -30,6 +30,12 @@
   function defaults() {
     return {
       parts: {},        // slug -> part object
+      /* Deletions, remembered. Sync merges rather than replaces, so a part
+         simply missing from an incoming blob means nothing - the other device
+         may just not have it yet. Without a record that a deletion happened,
+         every other signed-in device pushed the part straight back and the
+         delete undid itself. A tombstone is that record, and it travels. */
+      deleted: { parts: {}, transcripts: {} },  // slug/id -> ISO time of deletion
       transcripts: [],  // {id, date, mode, title, parts:[slugs], text}
       draft: null,      // in-progress session checkpoint {mode, slugs, material, messages, updated}
       table: {          // Fraser's Table: the room, built once and edited after
@@ -81,6 +87,10 @@
   function adopt(parsed) {
     state = defaults();
     if (parsed.parts) state.parts = parsed.parts;
+    if (parsed.deleted && typeof parsed.deleted === "object") {
+      if (parsed.deleted.parts) state.deleted.parts = parsed.deleted.parts;
+      if (parsed.deleted.transcripts) state.deleted.transcripts = parsed.deleted.transcripts;
+    }
     if (parsed.transcripts) state.transcripts = parsed.transcripts;
     if (parsed.draft) state.draft = parsed.draft;
     if (parsed.table) Object.assign(state.table, parsed.table);
@@ -274,8 +284,28 @@
 
   function getPart(slug) { return state.parts[slug] || null; }
 
-  function upsertPart(part) {
+  var nowISO = function () { return new Date().toISOString(); };
+
+  /* keepStamp is for the sync merge, which must not restamp a part just for
+     travelling: the merged part keeps the time it was really last written, so
+     a tombstone made after that still wins. Every other caller is an actual
+     edit and gets stamped now, which is also what lets a deliberate
+     re-creation beat an older deletion. */
+  function upsertPart(part, keepStamp) {
     if (!part || !part.slug) return;
+    var stone = state.deleted.parts[part.slug];
+    if (!keepStamp) {
+      /* Writing a part is the opposite of deleting it, so this write has to
+         read as later than the deletion it overrides. Wall clocks have
+         millisecond resolution and two devices do not share one, so "later"
+         cannot be left to chance: if the stamp would tie with the tombstone,
+         step past it. Otherwise a part deliberately met again could be buried
+         by the ghost of the one deleted moments before. */
+      var stamp = nowISO();
+      if (stone && stamp <= stone) stamp = new Date(Date.parse(stone) + 1).toISOString();
+      part.updated = stamp;
+    }
+    delete state.deleted.parts[part.slug];
     var existing = state.parts[part.slug];
     if (existing) {
       // append-only session history: never lose previously logged sessions
@@ -293,10 +323,10 @@
 
   /* Same as upsertPart, but for profiles that came back from a model or an
      import: fields it left out are kept rather than wiped. */
-  function mergePart(part) {
+  function mergePart(part, keepStamp) {
     if (!part || !part.slug) return part;
     var merged = S.mergeParts(state.parts[part.slug], part);
-    upsertPart(merged);
+    upsertPart(merged, keepStamp);
     return merged;
   }
 
@@ -360,6 +390,7 @@
 
   function deletePart(slug) {
     delete state.parts[slug];
+    state.deleted.parts[slug] = nowISO();   // so every other device honours it
     // drop dangling edges pointing at the deleted part
     Object.keys(state.parts).forEach(function (k) {
       var p = state.parts[k];
@@ -389,6 +420,7 @@
 
   function deleteTranscript(id) {
     state.transcripts = state.transcripts.filter(function (t) { return t.id !== id; });
+    state.deleted.transcripts[id] = nowISO();
     save();
   }
 
@@ -398,19 +430,78 @@
       version: 1,
       exported: new Date().toISOString(),
       parts: state.parts,
+      deleted: state.deleted,
       transcripts: state.transcripts,
       table: state.table
     }, null, 2);
   }
 
-  function importAll(json) {
+  /* Keep the later of two ISO stamps, "" meaning "no idea, treat as ancient". */
+  function laterOf(a, b) { return (a || "") > (b || "") ? (a || "") : (b || ""); }
+
+  /* A tombstone stops mattering long after every device has seen it. A year is
+     far past any plausible offline gap and keeps the record from growing
+     without limit. */
+  var TOMBSTONE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+  function pruneTombstones() {
+    var cutoff = new Date(Date.now() - TOMBSTONE_TTL_MS).toISOString();
+    ["parts", "transcripts"].forEach(function (kind) {
+      var m = state.deleted[kind];
+      Object.keys(m).forEach(function (k) { if (m[k] < cutoff) delete m[k]; });
+    });
+  }
+
+  /* importAll(json)              - a person restoring their own backup file.
+     importAll(json, {sync:true}) - a pull from the server.
+
+     The difference is what a deletion means. Restoring a backup is someone
+     asking for what is in that file, so the file wins and the tombstone for
+     anything in it is lifted. A sync pull is another device's copy of the same
+     account, which may simply not have heard about a deletion yet - so there,
+     tombstones are honoured, and a part comes back only if it was genuinely
+     written again *after* it was deleted. */
+  function importAll(json, opts) {
     var data = JSON.parse(json);
     if (!data || typeof data !== "object" || !data.parts) throw new Error("Not an Inner Table backup file.");
+    var viaSync = !!(opts && opts.sync);
     var count = 0;
+
+    /* Deletions first, from both sides, so everything below already knows what
+       has been deleted. After the merge would be too late: the part would be
+       re-added, and the merge's own bookkeeping would make it look newer than
+       the tombstone that should bury it. */
+    if (viaSync && data.deleted && typeof data.deleted === "object") {
+      ["parts", "transcripts"].forEach(function (kind) {
+        var incoming = data.deleted[kind];
+        if (!incoming || typeof incoming !== "object") return;
+        Object.keys(incoming).forEach(function (k) {
+          if (typeof incoming[k] !== "string") return;
+          state.deleted[kind][k] = laterOf(state.deleted[kind][k], incoming[k]);
+        });
+      });
+      // a deletion made elsewhere that this device had not heard about
+      Object.keys(state.deleted.parts).forEach(function (slug) {
+        var local = state.parts[slug];
+        if (local && laterOf(local.updated, "") <= state.deleted.parts[slug]) delete state.parts[slug];
+      });
+      state.transcripts = state.transcripts.filter(function (t) {
+        return !state.deleted.transcripts[t.id];
+      });
+    }
+
     Object.keys(data.parts).forEach(function (k) {
       var p = data.parts[k];
       var clean = S.normalizePart(p);   // a hand-edited file must not brick the app
-      if (clean) { mergePart(clean); count++; }
+      if (!clean) return;
+      if (viaSync) {
+        var stone = state.deleted.parts[clean.slug];
+        // deleted, and not written again since: it stays deleted
+        if (stone && laterOf(clean.updated, "") <= stone) return;
+        mergePart(clean, true);         // travelling is not an edit, so no restamp
+      } else {
+        mergePart(clean);               // a restore is an explicit re-add
+      }
+      count++;
     });
     if (data.table && typeof data.table === "object") {
       var d = data.table, tb = {};
@@ -437,9 +528,15 @@
     if (Array.isArray(data.transcripts)) {
       var have = {};
       state.transcripts.forEach(function (t) { have[t.id] = 1; });
-      data.transcripts.forEach(function (t) { if (t && t.id && !have[t.id]) state.transcripts.push(t); });
+      data.transcripts.forEach(function (t) {
+        if (!t || !t.id || have[t.id]) return;
+        if (viaSync && state.deleted.transcripts[t.id]) return;   // deleted on another device
+        if (!viaSync) delete state.deleted.transcripts[t.id];     // a restore asks for it back
+        state.transcripts.push(t);
+      });
       state.transcripts.sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
     }
+    pruneTombstones();
     save();
     return count;
   }

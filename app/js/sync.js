@@ -60,7 +60,9 @@
         return false;
       }
       suppressPush = true;
-      try { ST.importAll(data.state); }
+      // a pull is another device's copy of this same account, so deletions
+      // it has not heard about must not undo ones made here
+      try { ST.importAll(data.state, { sync: true }); }
       finally { suppressPush = false; }
       // importAll merges rather than replaces, so local now holds the union
       // of both devices - send that back so the server has it too

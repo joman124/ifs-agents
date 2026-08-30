@@ -603,7 +603,11 @@
     $("#pfDelete").addEventListener("click", function () {
       openSheet(
         '<h2 class="sheet-title serif">Delete ' + esc(p.name) + "?</h2>" +
-        '<p class="dim">This removes the profile and its relationship edges from this device. Export it first if you want to keep it.</p>' +
+        '<p class="dim">This removes the profile and its relationship edges ' +
+        (AUTH.isLoggedIn()
+          ? "from your account &mdash; every device you are signed in on, not just this one"
+          : "from this device") +
+        '. Export it first if you want to keep it.</p>' +
         '<button class="btn btn-danger btn-big" id="delYes">Delete forever</button>' +
         '<button class="btn btn-ghost btn-big" id="delNo">Keep it</button>'
       );

@@ -80,6 +80,11 @@
     return {
       slug: slugify(name || ""),
       name: name || "",
+      /* When this part was last written. A deletion is recorded as a
+         tombstone with its own time, so the two together decide whether a
+         part that arrives from another device is a copy of something already
+         deleted or a genuine re-creation made since. */
+      updated: "",
       type: "unknown",
       age: "",
       location: "",
@@ -218,6 +223,9 @@
     if (!base) return incoming;
     var out = JSON.parse(JSON.stringify(incoming));
 
+    // the result is as recent as whichever side was written last
+    out.updated = (base.updated || "") > (out.updated || "") ? base.updated : out.updated;
+
     ["name", "age", "location", "appearance", "origin", "positive_intent", "unburdened_vision"]
       .forEach(function (k) { if (!out[k]) out[k] = base[k]; });
     if (out.type === "unknown") out.type = base.type;
@@ -286,7 +294,7 @@
     var p = blankPart(raw.name);
     p.slug = (typeof raw.slug === "string" && raw.slug) ? raw.slug : slugify(raw.name);
     ["type", "age", "location", "appearance", "origin", "positive_intent",
-     "unburdened_vision", "trust_in_self"].forEach(function (k) {
+     "unburdened_vision", "trust_in_self", "updated"].forEach(function (k) {
       if (typeof raw[k] === "string") p[k] = raw[k];
     });
     if (PART_TYPES.indexOf(p.type) < 0) p.type = "unknown";

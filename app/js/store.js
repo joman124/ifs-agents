@@ -3,9 +3,24 @@
 (function () {
   "use strict";
   var S = window.IFS.schema;
+  /* The device store: what a signed-out person builds on this device, and
+     where every install kept its data before accounts existed. */
   var KEY = "innertable.v1";
+  /* Who, if anyone, has already taken the device store into their account.
+     A device store that has been claimed is never offered to a second
+     account - that offer is exactly how one person's parts reached another's
+     library. */
+  var CLAIM_KEY = "innertable.v1.claimedBy";
+
+  /* Signed in, a person's parts live under their own key and nowhere else.
+     One global key was the whole bug: sign-out deliberately leaves the data
+     on the device, so the next account to sign in merged whatever the last
+     one left behind and pushed the union up under its own name. */
+  function keyFor(owner) { return owner ? KEY + ".u." + owner : KEY; }
+  function idbKeyFor(owner) { return owner ? "state:u:" + owner : "state"; }
 
   var state = null;
+  var owner = null;          // null = the device store, else a username
   var listeners = [];
 
   /* Fires after every save() - lets sync.js push without store.js knowing
@@ -78,14 +93,98 @@
     return state.table;
   }
 
-  function load() {
+  /* load(null) opens the device store; load("john") opens john's. Nothing is
+     inherited across the boundary - an account with no store yet starts
+     empty, and only an explicit claimDeviceStore() can change that. */
+  function load(who) {
+    owner = who || null;
+    var key = keyFor(owner);
     try {
-      var raw = localStorage.getItem(KEY);
+      var raw = localStorage.getItem(key);
       if (raw) { adopt(JSON.parse(raw)); return; }
     } catch (e) { /* corrupted store: start fresh but keep old blob for rescue */
-      try { localStorage.setItem(KEY + ".rescue", localStorage.getItem(KEY) || ""); } catch (e2) {}
+      try { localStorage.setItem(key + ".rescue", localStorage.getItem(key) || ""); } catch (e2) {}
     }
     state = defaults();
+    if (owner) inheritDeviceChrome();
+  }
+
+  /* An account opening for the first time on a device takes that device's
+     look and feel with it - otherwise everyone who was already signed in gets
+     walked through onboarding again by an update. Only chrome crosses: no
+     parts, no transcripts, and no API keys, which are credentials and belong
+     to whoever typed them in. */
+  function inheritDeviceChrome() {
+    var dev = null;
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) dev = JSON.parse(raw);
+    } catch (e) { return; }
+    if (!dev || !dev.settings) return;
+    ["onboarded", "theme", "haptics", "voiceOn", "speechRate"].forEach(function (k) {
+      if (dev.settings[k] !== undefined) state.settings[k] = dev.settings[k];
+    });
+  }
+
+  /* Signing in or out swaps which store is open. It never carries state
+     across: the outgoing owner's data is already saved under its own key,
+     and the incoming one is read from its own. */
+  function switchOwner(who) {
+    if ((who || null) === owner) return false;
+    load(who);
+    idbSwitch();
+    listeners.forEach(function (fn) { fn(); });
+    return true;
+  }
+
+  function currentOwner() { return owner; }
+
+  /* What is sitting in the device store, and whether anyone has taken it.
+     The sign-in flow uses this to decide whether it may offer those parts to
+     the account signing in. */
+  function deviceStore() {
+    var claimedBy = null;
+    try { claimedBy = localStorage.getItem(CLAIM_KEY) || null; } catch (e) {}
+    var parts = 0;
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && d.parts) parts = Object.keys(d.parts).length;
+      }
+    } catch (e) {}
+    return { parts: parts, claimedBy: claimedBy };
+  }
+
+  /* Take the device store into the account that is open now - the person
+     saying "yes, those are mine". The device store is emptied and marked
+     claimed, so the same parts are never offered to anyone else. */
+  function claimDeviceStore() {
+    if (!owner) return 0;
+    var raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return 0; }
+    if (!raw) return 0;
+    var n = 0;
+    try {
+      n = importAll(raw);
+      // they just said this device's library is theirs, so their own settings
+      // - provider keys included - come across with it
+      var dev = JSON.parse(raw);
+      if (dev && dev.settings) { Object.assign(state.settings, dev.settings); save(); }
+    } catch (e) { return 0; }
+    try {
+      localStorage.removeItem(KEY);
+      localStorage.setItem(CLAIM_KEY, owner);
+    } catch (e) {}
+    return n;
+  }
+
+  /* "Not mine" - the device store keeps its parts for signed-out use, but is
+     marked resolved so no account is ever offered them again. Declining is
+     recorded for the same reason accepting is: the offer must happen once. */
+  function leaveDeviceStore() {
+    if (!owner) return;
+    try { localStorage.setItem(CLAIM_KEY, owner); } catch (e) {}
   }
 
   /* ---- IndexedDB mirror: a second copy of the state, restored from when
@@ -101,45 +200,60 @@
       } catch (e) { res(null); }
     });
   }
+  /* The mirror is keyed by owner too. A single "state" record would undo the
+     whole separation: it restores whenever the open store looks empty, so a
+     fresh account on a shared device would be handed the last person's parts
+     by the backup rather than by sync. */
   function idbWrite() {
     if (!idb) return;
-    try { idb.transaction("kv", "readwrite").objectStore("kv").put(JSON.stringify(state), "state"); }
+    try { idb.transaction("kv", "readwrite").objectStore("kv").put(JSON.stringify(state), idbKeyFor(owner)); }
     catch (e) { /* mirror is best-effort */ }
   }
-  function idbRead() {
+  function idbRead(who) {
     return new Promise(function (res) {
       if (!idb) return res(null);
       try {
-        var rq = idb.transaction("kv", "readonly").objectStore("kv").get("state");
+        var rq = idb.transaction("kv", "readonly").objectStore("kv").get(idbKeyFor(who));
         rq.onsuccess = function () { res(rq.result || null); };
         rq.onerror = function () { res(null); };
       } catch (e) { res(null); }
     });
   }
+
+  /* Mirror the open store, or restore it if it is empty and the mirror for
+     this same owner has something. cb(true) when a restore actually landed. */
+  function mirrorSync(cb) {
+    if (!idb) return;
+    var who = owner;
+    var empty = !Object.keys(state.parts).length && !state.transcripts.length;
+    if (!empty) { idbWrite(); return; }
+    idbRead(who).then(function (raw) {
+      if (!raw || who !== owner) return;   // owner changed while we were reading
+      try {
+        var parsed = JSON.parse(raw);
+        if (parsed && parsed.parts && Object.keys(parsed.parts).length) {
+          adopt(parsed);
+          save();
+          if (cb) cb(true);
+        }
+      } catch (e) {}
+    });
+  }
+
+  function idbSwitch() { mirrorSync(null); }
+
   /* Call once at boot, after load(). If local state is empty but the mirror
      has real data, restore from the mirror and invoke cb(true). */
   function initMirror(cb) {
     if (!("indexedDB" in window)) return;
     idbOpen().then(function (db) {
       idb = db;
-      var empty = !Object.keys(state.parts).length && !state.transcripts.length;
-      if (!empty) { idbWrite(); return; }
-      idbRead().then(function (raw) {
-        if (!raw) return;
-        try {
-          var parsed = JSON.parse(raw);
-          if (parsed && parsed.parts && Object.keys(parsed.parts).length) {
-            adopt(parsed);
-            save();
-            if (cb) cb(true);
-          }
-        } catch (e) {}
-      });
+      mirrorSync(cb);
     });
   }
 
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); }
+    try { localStorage.setItem(keyFor(owner), JSON.stringify(state)); }
     catch (e) { console.error("save failed", e); }
     idbWrite();
     listeners.forEach(function (fn) { fn(); });
@@ -523,6 +637,11 @@
 
   window.IFS.store = {
     load: load,
+    switchOwner: switchOwner,
+    owner: currentOwner,
+    deviceStore: deviceStore,
+    claimDeviceStore: claimDeviceStore,
+    leaveDeviceStore: leaveDeviceStore,
     save: save,
     onChange: onChange,
     seedStarters: seedStarters,

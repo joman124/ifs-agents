@@ -18,6 +18,10 @@
      come back. Signing out clears it, so a second account never inherits
      the first one's permission to write. */
   var reconciled = false;
+  /* ...and it is permission to write *as one account*. Holding the username
+     the pull answered for means a push queued moments before an account
+     switch can never land in the new account's slot. */
+  var reconciledFor = null;
 
   function authHeaders() {
     return { "Content-Type": "application/json", "Authorization": "Bearer " + AUTH.getToken() };
@@ -31,6 +35,7 @@
 
   async function push() {
     if (!AUTH.isLoggedIn() || !reconciled) return;
+    if (AUTH.getUsername() !== reconciledFor) return;   // account changed under us
     try {
       var r = await fetch("/api/sync", { method: "POST", headers: authHeaders(), body: JSON.stringify({ state: ST.exportAll() }) });
       lastStatus = r.ok ? "synced" : "sync failed";
@@ -48,6 +53,7 @@
       if (!r.ok) { lastStatus = "sync failed"; return false; }
       var data = await r.json();
       reconciled = true;          // we now know what the server holds
+      reconciledFor = AUTH.getUsername();
       lastStatus = "synced";
       if (!data.state) {          // nothing up there yet: seed it from here
         schedulePush();
@@ -64,7 +70,7 @@
   }
 
   /* Signing out must also drop the permission to write. */
-  function reset() { reconciled = false; clearTimeout(pushTimer); lastStatus = ""; }
+  function reset() { reconciled = false; reconciledFor = null; clearTimeout(pushTimer); lastStatus = ""; }
 
   function status() { return lastStatus; }
 

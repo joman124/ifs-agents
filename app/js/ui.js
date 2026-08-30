@@ -2970,7 +2970,11 @@
     bind("#signOutBtn", function () {
       AUTH.logout();
       SY.reset();
-      toast("Signed out - your parts are still on this device");
+      // the account's parts stay under its own key, closed until it signs
+      // back in; what is on screen now is this device's own store
+      ST.switchOwner(null);
+      toast("Signed out - your account's parts are closed until you sign back in");
+      renderParts();
       renderSettings();
     });
     bind("#syncNowBtn", syncNow);
@@ -3095,11 +3099,14 @@
     btn.disabled = true;
     btn.textContent = signupMode ? "Creating…" : "Signing in…";
     try {
-      if (signupMode) await AUTH.signup(user, pass);
-      else await AUTH.login(user, pass);
+      var who = signupMode ? await AUTH.signup(user, pass) : await AUTH.login(user, pass);
       localStorage.removeItem(SKIP_KEY);
       $("#login").classList.add("hidden");
       toast(signupMode ? "Welcome, " + user : "Signed in as " + user);
+      // Open this account's own store first. Everything below - the pull that
+      // merges, the push that follows it - must happen inside that account,
+      // never on top of whatever the last person to use this device left.
+      ST.switchOwner(who);
       var changed = await SY.pull();
       // seed only after the pull, so an account that already has parts
       // somewhere else never gets three examples dropped in beside them
@@ -3114,12 +3121,49 @@
         refresh("Three example parts to start from - rename or delete them");
       }
       else if (changed) refresh("Synced with your other device");
+      offerDeviceParts(who);
     } catch (e) {
       err.textContent = e.message || (signupMode ? "Could not create that account" : "Sign in failed");
       err.classList.remove("hidden");
     }
     btn.disabled = false;
     btn.textContent = label;
+  }
+
+  /* Parts built on this device while signed out belong to whoever built them,
+     and this app cannot know who that was. So they are offered exactly once,
+     to the first account that signs in, and the answer is recorded: after
+     that the device store is claimed and a second account is never shown it.
+
+     Silently adopting them is what put one person's parts in another's
+     library, and silently dropping them would lose the work of anyone who
+     used the app before signing up. Asking is the only honest option. */
+  function offerDeviceParts(who) {
+    if (!who) return;
+    var dev = ST.deviceStore();
+    if (!dev.parts || dev.claimedBy) return;
+    var n = dev.parts;
+    var many = n === 1 ? "1 part" : n + " parts";
+    openSheet(
+      '<h2 class="sheet-title serif">Bring ' + esc(many) + ' into ' + esc(who) + "?</h2>" +
+      '<p class="dim">' + esc(many) + " on this device " +
+      "is not attached to any account yet. If that is your work, bring it in &mdash; " +
+      "it will sync to your other devices. If it belongs to whoever used this device " +
+      "before you, leave it where it is.</p>" +
+      '<p class="dim">Asked once. Either way, no other account will be offered these parts.</p>' +
+      '<button class="btn btn-primary btn-big" id="devAdopt">Yes, they are mine</button>' +
+      '<button class="btn btn-ghost btn-big" id="devLeave">No, leave them on the device</button>'
+    );
+    $("#devAdopt").addEventListener("click", function () {
+      var got = ST.claimDeviceStore();
+      closeSheet(); renderParts(); buzz(12);
+      toast(got ? "Brought in " + got + " part(s)" : "Nothing to bring in");
+    });
+    $("#devLeave").addEventListener("click", function () {
+      ST.leaveDeviceStore();
+      closeSheet();
+      toast("Left on this device - they stay out of your account");
+    });
   }
 
   function bindLoginForm() {
@@ -3172,6 +3216,15 @@
       if (session) endSession();
     });
     bindLoginForm();
+
+    /* Everyone who was already signed in when this shipped has their parts in
+       the device store, because that is where every install kept them before
+       accounts had their own. Their account store opens empty, so offer them
+       the claim at boot as well as at sign-in - otherwise the first thing they
+       see after the update is an empty library. */
+    if (AUTH.isLoggedIn()) {
+      setTimeout(function () { offerDeviceParts(AUTH.getUsername()); }, 900);
+    }
 
     // swipe-down on the sheet grip
     var sheet = $("#sheet");

@@ -1,7 +1,9 @@
 /* Inner Table - boot. */
 (function () {
   "use strict";
-  window.IFS.store.load();
+  // open the store belonging to whoever is signed in on this device - the
+  // device store only when nobody is
+  window.IFS.store.load(window.IFS.auth.isLoggedIn() ? window.IFS.auth.getUsername() : null);
   window.IFS.ui.init();
 
   // durability: mirror state into IndexedDB (restores if localStorage was

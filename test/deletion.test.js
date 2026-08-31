@@ -57,6 +57,52 @@ function account() {
   return api;
 }
 
+
+/* One browser, shared by whoever signs in on it, against a server of many
+   accounts. Deletions are recorded per account, so this is where that has to
+   prove itself: the two people can easily have a part with the same name, and
+   a slug is derived from the name. */
+function sharedBrowser(server) {
+  var who = null;
+  var env = H.load(["schema", "markdown", "store", "auth", "sync"], {
+    fetch: function (url, opts) {
+      if (opts && opts.method === "POST") {
+        server[who] = JSON.parse(opts.body).state;
+        return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ ok: true }); } });
+      }
+      return Promise.resolve({
+        ok: true, json: function () { return Promise.resolve({ state: server[who] || null }); }
+      });
+    }
+  });
+  var b = { env: env, ST: env.IFS.store, SY: env.IFS.sync, AUTH: env.IFS.auth };
+  b.ST.load(null);
+  b.settle = async function () { env.clock.tick(5000); await flush(); return b; };
+  b.sync = async function () { await b.SY.pull(); await b.settle(); return b; };
+  b.signIn = function (u) {
+    who = u;
+    env.storage.setItem("innertable.session",
+      JSON.stringify({ token: "t." + u, username: u, exp: Date.now() + 6e7 }));
+    b.ST.switchOwner(u);
+    return b;
+  };
+  b.signOut = function () {
+    b.AUTH.logout(); b.SY.reset(); b.ST.switchOwner(null); who = null;
+    return b;
+  };
+  b.add = function (name, extra) {
+    var part = env.IFS.schema.blankPart(name);
+    Object.keys(extra || {}).forEach(function (k) { part[k] = extra[k]; });
+    b.ST.upsertPart(part);
+    return part;
+  };
+  b.slugs = function () { return b.ST.listParts().map(function (p) { return p.slug; }).sort(); };
+  b.originOf = function (slug) { var p = b.ST.getPart(slug); return p ? p.origin : null; };
+  return b;
+}
+
+function heldSlugs(raw) { return raw ? Object.keys(JSON.parse(raw).parts).sort() : null; }
+
 module.exports = async function (t) {
 
   /* ---- a delete on one device holds on the other ---- */
@@ -159,4 +205,71 @@ module.exports = async function (t) {
   old.ST.importAll(JSON.stringify({ parts: {}, transcripts: [] }), { sync: true });
   t.eq(old.ST.state.deleted.parts.ancient, undefined,
     "a tombstone older than any plausible offline gap is pruned");
+
+  /* ---- two accounts on one device ----
+     A deletion has to reach every device of the account that made it and stop
+     dead at the edge of that account. Both halves are tested with the same
+     slug on both sides, which is the case most likely to break: two people
+     each meet an inner critic, and "The Critic" slugifies the same either way. */
+  var shared = {};
+  var browser = sharedBrowser(shared);
+  var johnsLaptop = sharedBrowser(shared);
+
+  browser.signIn("john");
+  browser.add("The Critic", { origin: "johns critic" });
+  browser.add("The Planner", { origin: "johns planner" });
+  await browser.sync();
+  await johnsLaptop.signIn("john").sync();
+  t.eq(johnsLaptop.originOf("the-critic"), "johns critic", "john's own second device has john's critic");
+
+  browser.signOut().signIn("scottfisk");
+  browser.add("The Critic", { origin: "scotts critic" });
+  await browser.sync();
+  t.eq(browser.originOf("the-critic"), "scotts critic",
+    "scottfisk's critic is his own, despite sharing a slug with john's");
+
+  browser.ST.deletePart("the-critic");
+  await browser.settle();
+  t.eq(browser.slugs(), [], "he can delete it");
+  t.eq(heldSlugs(shared.scottfisk), [], "and his account loses it");
+  t.eq(heldSlugs(shared.john), ["the-critic", "the-planner"],
+    "while john's account is untouched by a deletion made in another account");
+
+  browser.signOut().signIn("john");
+  await browser.sync();
+  t.eq(browser.slugs(), ["the-critic", "the-planner"],
+    "john signs back in on the same device and his critic is still there");
+  t.eq(browser.originOf("the-critic"), "johns critic",
+    "and it is his critic, not the ghost of the one deleted in the other account");
+  await johnsLaptop.sync();
+  t.eq(johnsLaptop.slugs(), ["the-critic", "the-planner"],
+    "his other device never hears about the other account's deletion either");
+
+  /* The other direction: john deleting must not disturb scottfisk. */
+  johnsLaptop.ST.deletePart("the-critic");
+  await johnsLaptop.settle();
+  await browser.sync();
+  t.eq(browser.slugs(), ["the-planner"], "john's deletion reaches john's other device");
+  browser.signOut().signIn("scottfisk");
+  await browser.sync();
+  t.eq(browser.slugs(), [], "and scottfisk's account is where he left it");
+
+  /* And a tombstone in one account never suppresses a part in another: scott
+     meets a critic of his own after john deleted his. */
+  browser.add("The Critic", { origin: "scotts new critic" });
+  await browser.settle();
+  t.eq(browser.originOf("the-critic"), "scotts new critic",
+    "a part made in one account is not buried by another account's tombstone");
+  t.eq(heldSlugs(shared.scottfisk), ["the-critic"], "and it reaches his own slot");
+  t.eq(heldSlugs(shared.john), ["the-planner"], "leaving john's deletion standing in john's");
+
+  /* ---- deleting while signed out stays on the device ---- */
+  var solo2 = sharedBrowser({});
+  solo2.add("Private", { origin: "made signed out" });
+  solo2.ST.deletePart("private");
+  t.eq(solo2.ST.state.deleted.parts.private !== undefined, true,
+    "a signed-out deletion is recorded in the device store");
+  solo2.signIn("newcomer");
+  t.eq(solo2.ST.state.deleted.parts.private, undefined,
+    "and does not follow the person into an account that never held that part");
 };

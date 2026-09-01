@@ -259,7 +259,7 @@ Ordered by value against "a web app people save to their phones for local use".
   banner with a real **Install** button on Android/desktop; on iOS, where no such
   event exists, the same banner says *tap Share, then Add to Home Screen*.
   Dismissing snoozes it for 30 days (`settings.installSnooze`). Settings →
-  **This app** is the permanent path, and reads *Installed* once it is.
+  **About** is the permanent path, and reads *Installed* once it is.
 - ~~**Manifest polish:** `id`, `categories`, maskable PNG.~~ Still missing:
   `screenshots`, which is what gives Android the richer install card. It needs
   real device-sized PNG screenshots, which nothing in this repo can generate.
@@ -274,9 +274,10 @@ Everything is in `localStorage` with an IndexedDB mirror. Risks worth closing:
 
 - ~~Safari can evict script-writable storage after ~7 days of no interaction for
   sites not on the home screen. `navigator.storage.persist()` is already
-  requested; surface whether it was *granted* and warn if not.~~ Settings →
-  **This app** now reports the real `navigator.storage.persisted()` answer, and
-  says "export backups" when it is false (which it is on a plain desktop tab).
+  requested; surface whether it was *granted* and warn if not.~~ Persistence is
+  still requested at boot. The passive status row was removed in the settings
+  cleanup; the "export backups" nudge now rides on the backup reminder and the
+  **Your data** section instead of a standalone line.
 - The backup reminder only nags after 3 weeks. Consider a first-run prompt and
   a "your data is only on this device" line in onboarding.
 - No import/export of the table alone; only the whole-backup JSON.

@@ -178,84 +178,6 @@
     });
   }
 
-  /* app.js asks for persistent storage at boot; this reports whether the
-     browser actually granted it. Safari can evict a site that was never
-     granted and never installed, so silence here would be a lie. */
-  function showStorageStatus() {
-    var el = $("#storeStat");
-    if (!el) return;
-    if (!navigator.storage || !navigator.storage.persisted) {
-      el.textContent = "this browser cannot say - export a backup regularly";
-      return;
-    }
-    navigator.storage.persisted().then(function (ok) {
-      var e2 = $("#storeStat");
-      if (!e2) return;
-      e2.textContent = ok
-        ? "protected - the browser has agreed not to clear this site"
-        : "not protected - browsers can clear site data, so export backups";
-    });
-  }
-
-  /* An installed PWA has no address bar and no console, so when the shell
-     lays out wrong on a phone there is no way to see why from a desk. This
-     reports what the device actually measured. Reads only geometry the page
-     already exposes - nothing here leaves the phone unless you tap Copy. */
-  function layoutReport() {
-    var css = getComputedStyle(document.documentElement);
-    var app = $(".app"), bar = $(".tabbar");
-    var a = app ? app.getBoundingClientRect() : null;
-    var b = bar ? bar.getBoundingClientRect() : null;
-    var vv = window.visualViewport;
-    var rows = [
-      ["standalone", matchMedia("(display-mode: standalone)").matches +
-        " / navigator " + (navigator.standalone === true)],
-      [".ios class", document.documentElement.classList.contains("ios")],
-      ["innerHeight", window.innerHeight],
-      ["clientHeight", document.documentElement.clientHeight],
-      ["visualViewport", vv ? Math.round(vv.height) + " @" + Math.round(vv.offsetTop) : "none"],
-      ["screen", screen.width + "x" + screen.height],
-      ["--sat / --sab", css.getPropertyValue("--sat").trim() + " / " + css.getPropertyValue("--sab").trim()],
-      ["app h / bottom", a ? Math.round(a.height) + " / " + Math.round(a.bottom) : "hidden"],
-      ["bar h / bottom", b ? Math.round(b.height) + " / " + Math.round(b.bottom) : "hidden"],
-      ["GAP vs innerHeight", b ? Math.round(window.innerHeight - b.bottom) : "?"],
-      /* innerHeight is itself short by the excluded status-bar height on iOS
-         (see app.css), so a 0 above can still hide a real gap. screen.height
-         is the one number that quirk cannot shrink. */
-      ["GAP vs screen.height", b ? Math.round(screen.height - b.bottom) : "?"]
-    ];
-    return caches.keys().then(function (k) {
-      rows.unshift(["build", k.join(",") || "no cache"]);
-      return rows;
-    }, function () {
-      rows.unshift(["build", "caches unavailable"]);
-      return rows;
-    });
-  }
-
-  function showLayoutReport() {
-    layoutReport().then(function (rows) {
-      var el = $("#layoutStat");
-      if (!el) return;
-      el.innerHTML = rows.map(function (r) {
-        return "<b>" + r[0] + ":</b> " + r[1];
-      }).join("<br>");
-      var btn = $("#showLayout");
-      if (btn) {
-        btn.textContent = "Copy";
-        btn.onclick = function () {
-          var text = rows.map(function (r) { return r[0] + ": " + r[1]; }).join("\n") +
-            "\nUA: " + navigator.userAgent;
-          if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () {
-            toast("Layout report copied");
-          }, function () { toast("Could not copy - screenshot it"); });
-          else toast("Could not copy - screenshot it");
-          buzz();
-        };
-      }
-    });
-  }
-
   /* ================= coach cues =================
      The reference library holds the explanations that make this framework
      legible, and it opens only if someone taps the ⓘ - which means it is
@@ -2881,12 +2803,20 @@
   function renderSettings() {
     var s = ST.state.settings;
     $("#settingsPane").innerHTML =
+      '<div class="set-group"><h3>Account</h3>' +
+      (AUTH.isLoggedIn()
+        ? '<div class="set-row"><span class="sr-main">Signed in as ' + esc(AUTH.getUsername()) + '<span class="sr-sub">your parts follow you to every device you sign in on</span></span><button class="btn btn-soft" id="syncNowBtn">Sync now</button></div>' +
+          '<div class="set-row"><span class="sr-main">Sign out<span class="sr-sub">closes your parts and returns to the sign-in screen</span></span><button class="btn btn-soft" id="signOutBtn">Sign out</button></div>'
+        : '<div class="set-row"><span class="sr-main">Not signed in<span class="sr-sub">sign in to reach your parts</span></span><button class="btn btn-soft" id="signInBtn">Sign in</button></div>') +
+      '<p class="dim" style="margin:12px 14px 14px">Your parts live in your account (encrypted in transit), so every device you sign in on shares them. Anyone else signing in here reaches only their own parts &mdash; never yours.</p>' +
+      "</div>" +
+
       '<div class="set-group"><h3>Live sessions</h3>' +
       '<div class="set-pad"><div class="seg" id="provSeg">' +
       segBtn("manual", "Copy-prompt", s.provider) + segBtn("gemini", "Gemini", s.provider) + segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) +
       "</div>" +
       '<div id="provFields"></div>' +
-      '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent directly to the provider. Anything you share in a session is subject to that provider’s data policies.</p>' +
+      '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent straight to the provider. Anything you share in a session falls under that provider&rsquo;s data policies.</p>' +
       "</div></div>" +
 
       '<div class="set-group"><h3>Voice</h3>' +
@@ -2905,7 +2835,7 @@
       segBtn("1", "Normal", String(s.speechRate)) +
       "</div>" +
       '<button class="btn btn-soft" id="elTest" style="margin-top:12px">Hear a sample</button>' +
-      '<p class="dim" style="margin:12px 2px 2px">With a key and voice ID, voice mode speaks in that ElevenLabs voice &mdash; e.g. your own professional clone &mdash; instead of the built-in one. Paste the key, then <b>Find my voices</b> lists the account&rsquo;s voices so there is no ID to copy by hand. For a professional clone, <code>eleven_multilingual_v2</code> is the most faithful and <code>eleven_flash_v2_5</code> the quickest to start speaking. Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
+      '<p class="dim" style="margin:12px 2px 2px">Optional. With a key and voice ID, sessions speak in that ElevenLabs voice &mdash; e.g. your own clone &mdash; instead of the built-in one. <b>Find my voices</b> fills in the ID for you. Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
       "</div></div>" +
 
       '<div class="set-group"><h3>Appearance</h3>' +
@@ -2915,14 +2845,6 @@
       '<div class="set-row"><span class="sr-main">Haptic feedback<span class="sr-sub">tiny vibrations on taps (where supported)</span></span>' +
       '<input type="checkbox" id="hapt" style="width:auto" ' + (s.haptics ? "checked" : "") + "></div></div>" +
 
-      '<div class="set-group"><h3>Account</h3>' +
-      (AUTH.isLoggedIn()
-        ? '<div class="set-row"><span class="sr-main">Signed in as ' + esc(AUTH.getUsername()) + '<span class="sr-sub">your parts follow you to every device you sign in on</span></span><button class="btn btn-soft" id="syncNowBtn">Sync now</button></div>' +
-          '<div class="set-row"><span class="sr-main">Sign out<span class="sr-sub">closes your parts and returns to the sign-in screen</span></span><button class="btn btn-soft" id="signOutBtn">Sign out</button></div>'
-        : '<div class="set-row"><span class="sr-main">Not signed in<span class="sr-sub">sign in to reach your parts</span></span><button class="btn btn-soft" id="signInBtn">Sign in</button></div>') +
-      '<p class="dim" style="margin:12px 14px 14px">Your parts live in your account, stored (encrypted in transit) on the server so every device you sign in on shares them. Anyone else can sign in on this device to reach their own parts &mdash; never yours.</p>' +
-      "</div>" +
-
       '<div class="set-group"><h3>Your data</h3>' +
       '<div class="set-row"><span class="sr-main">Session transcripts<span class="sr-sub">' + ST.state.transcripts.length + ' saved from live AI sessions</span></span><button class="btn btn-soft" id="openTranscripts">Open</button></div>' +
       '<div class="set-row"><span class="sr-main">Export backup<span class="sr-sub">everything, including the table, as one JSON file</span></span><button class="btn btn-soft" id="expAll">Export</button></div>' +
@@ -2930,7 +2852,7 @@
       '<div class="set-row"><span class="sr-main" style="color:var(--danger)">Erase everything<span class="sr-sub">removes all parts and sessions from this device</span></span><button class="btn btn-danger" id="wipeAll">Erase</button></div>' +
       "</div>" +
 
-      '<div class="set-group"><h3>This app</h3>' +
+      '<div class="set-group"><h3>About</h3>' +
       '<div class="set-row"><span class="sr-main">' +
       (isStandalone()
         ? 'Installed<span class="sr-sub">running from your home screen &middot; works offline</span>'
@@ -2938,11 +2860,6 @@
       "</span>" +
       (!isStandalone() && deferredInstall ? '<button class="btn btn-soft" id="setInstall">Install</button>' : "") +
       "</div>" +
-      '<div class="set-row"><span class="sr-main">On-device storage<span class="sr-sub" id="storeStat">checking&hellip;</span></span></div>' +
-      '<div class="set-row"><span class="sr-main">Layout report<span class="sr-sub" id="layoutStat">what this screen actually measured</span></span><button class="btn btn-soft" id="showLayout">Show</button></div>' +
-      "</div>" +
-
-      '<div class="set-group"><h3>About</h3>' +
       '<div class="set-pad" style="padding-top:12px"><p class="dim" style="margin:0 0 8px"><b>Inner Table</b> is the webapp of the open-source <a href="https://github.com/joman124/ifs-agents" target="_blank" rel="noopener">ifs-agents</a> system, inspired by Internal Family Systems (Richard C. Schwartz). It is a self-exploration and journaling tool, <b>not therapy</b> — no trauma processing, no unburdening. Read the <a href="https://github.com/joman124/ifs-agents/blob/main/docs/safety.md" target="_blank" rel="noopener">safety guide</a>.</p>' +
       '<p class="dim" style="margin:0">In crisis? Call or text <b>988</b> (US) or visit <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p></div></div>';
 
@@ -2983,8 +2900,6 @@
     });
     bind("#syncNowBtn", syncNow);
     bind("#setInstall", doInstall);
-    bind("#showLayout", showLayoutReport);
-    showStorageStatus();
     $("#openTranscripts").addEventListener("click", function () {
       if (!ST.state.transcripts.length) { toast("No transcripts yet - live AI sessions save one each"); return; }
       openPanel("Session transcripts", ST.state.transcripts.length + " saved",

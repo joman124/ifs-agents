@@ -2915,12 +2915,12 @@
       '<div class="set-row"><span class="sr-main">Haptic feedback<span class="sr-sub">tiny vibrations on taps (where supported)</span></span>' +
       '<input type="checkbox" id="hapt" style="width:auto" ' + (s.haptics ? "checked" : "") + "></div></div>" +
 
-      '<div class="set-group"><h3>Sync</h3>' +
+      '<div class="set-group"><h3>Account</h3>' +
       (AUTH.isLoggedIn()
-        ? '<div class="set-row"><span class="sr-main">Signed in as ' + esc(AUTH.getUsername()) + '<span class="sr-sub">changes sync to your other signed-in devices</span></span><button class="btn btn-soft" id="syncNowBtn">Sync now</button></div>' +
-          '<div class="set-row"><span class="sr-main">Sign out<span class="sr-sub">parts already on this device stay here</span></span><button class="btn btn-soft" id="signOutBtn">Sign out</button></div>'
-        : '<div class="set-row"><span class="sr-main">Not signed in<span class="sr-sub">sign in to sync parts between your devices</span></span><button class="btn btn-soft" id="signInBtn">Sign in</button></div>') +
-      '<p class="dim" style="margin:12px 14px 14px">Syncing stores an encrypted-in-transit copy of your parts on the server so your devices can share them. Local-only use never sends anything.</p>' +
+        ? '<div class="set-row"><span class="sr-main">Signed in as ' + esc(AUTH.getUsername()) + '<span class="sr-sub">your parts follow you to every device you sign in on</span></span><button class="btn btn-soft" id="syncNowBtn">Sync now</button></div>' +
+          '<div class="set-row"><span class="sr-main">Sign out<span class="sr-sub">closes your parts and returns to the sign-in screen</span></span><button class="btn btn-soft" id="signOutBtn">Sign out</button></div>'
+        : '<div class="set-row"><span class="sr-main">Not signed in<span class="sr-sub">sign in to reach your parts</span></span><button class="btn btn-soft" id="signInBtn">Sign in</button></div>') +
+      '<p class="dim" style="margin:12px 14px 14px">Your parts live in your account, stored (encrypted in transit) on the server so every device you sign in on shares them. Anyone else can sign in on this device to reach their own parts &mdash; never yours.</p>' +
       "</div>" +
 
       '<div class="set-group"><h3>Your data</h3>' +
@@ -2974,12 +2974,12 @@
     bind("#signOutBtn", function () {
       AUTH.logout();
       SY.reset();
-      // the account's parts stay under its own key, closed until it signs
-      // back in; what is on screen now is this device's own store
+      // parts live in the account; signing out closes them under their own key
+      // and returns to the sign-in gate, leaving nothing of the account on
+      // screen. Another person can now sign in here and reach only their own.
       ST.switchOwner(null);
-      toast("Signed out - your account's parts are closed until you sign back in");
-      renderParts();
-      renderSettings();
+      requireLogin();
+      toast("Signed out - sign in to reach your parts again");
     });
     bind("#syncNowBtn", syncNow);
     bind("#setInstall", doInstall);
@@ -3068,23 +3068,21 @@
       s.firstRun = S.todayISO();
       ST.save();
       $("#onboarding").classList.add("hidden");
-      $("#app").classList.remove("hidden");
-      showView("parts");
-      maybeShowLogin();
+      // sign-in is required before the app opens: parts live in an account
+      requireLogin();
       buzz(15);
     });
   }
 
-  /* ================= login (optional sync gate) ================= */
-  var SKIP_KEY = "innertable.loginSkipped";
+  /* ================= sign-in (required) ================= */
   var signupMode = false;
 
   function setLoginMode(signup) {
     signupMode = signup;
-    $("#loginTitle").textContent = signup ? "Create an account" : "Sign in to sync";
+    $("#loginTitle").textContent = signup ? "Create an account" : "Sign in";
     $("#loginIntro").textContent = signup
-      ? "Pick a name and a password of at least 8 characters. Your parts stay private to this account - nobody else signing in can see them."
-      : "Sign in to sync your parts between your phone and desktop. Your local data works fully without this.";
+      ? "Pick a name and a password of at least 8 characters. Your parts live in this account and follow you to any device you sign in on - nobody else signing in here can see them."
+      : "Your parts live in your account. Sign in to reach them on this device - and on any other device you sign in on.";
     $("#loginSubmit").textContent = signup ? "Create account" : "Sign in";
     $("#loginToggle").textContent = signup ? "I already have an account" : "Create an account";
     // lets a password manager offer to generate one, rather than autofilling
@@ -3104,13 +3102,15 @@
     btn.textContent = signupMode ? "Creating…" : "Signing in…";
     try {
       var who = signupMode ? await AUTH.signup(user, pass) : await AUTH.login(user, pass);
-      localStorage.removeItem(SKIP_KEY);
       $("#login").classList.add("hidden");
       toast(signupMode ? "Welcome, " + user : "Signed in as " + user);
       // Open this account's own store first. Everything below - the pull that
       // merges, the push that follows it - must happen inside that account,
       // never on top of whatever the last person to use this device left.
       ST.switchOwner(who);
+      // an account is open now, so reveal the app behind the sign-in gate
+      $("#app").classList.remove("hidden");
+      showView("parts");
       var changed = await SY.pull();
       // seed only after the pull, so an account that already has parts
       // somewhere else never gets three examples dropped in beside them
@@ -3122,9 +3122,10 @@
         st.coachOn = true;
         st.firstRun = S.todayISO();
         ST.save();
-        refresh("Three example parts to start from - rename or delete them");
+        renderParts();
+        toast("Three example parts to start from - rename or delete them");
       }
-      else if (changed) refresh("Synced with your other device");
+      else if (changed) { renderParts(); toast("Synced with your other device"); }
       offerDeviceParts(who);
     } catch (e) {
       err.textContent = e.message || (signupMode ? "Could not create that account" : "Sign in failed");
@@ -3134,14 +3135,15 @@
     btn.textContent = label;
   }
 
-  /* Parts built on this device while signed out belong to whoever built them,
-     and this app cannot know who that was. So they are offered exactly once,
-     to the first account that signs in, and the answer is recorded: after
-     that the device store is claimed and a second account is never shown it.
+  /* A one-time migration. Parts now live exclusively in an account, but some
+     were built on this device back when the app allowed signed-out use, and
+     this app cannot know who built them. So they are offered exactly once, to
+     the first account that signs in, and the answer is recorded: after that
+     the device store is claimed and a second account is never shown it.
 
-     Silently adopting them is what put one person's parts in another's
-     library, and silently dropping them would lose the work of anyone who
-     used the app before signing up. Asking is the only honest option. */
+     Silently adopting them is what once put one person's parts in another's
+     library, and silently dropping them would lose real work. Asking is the
+     only honest option. */
   function offerDeviceParts(who) {
     if (!who) return;
     var dev = ST.deviceStore();
@@ -3151,12 +3153,12 @@
     openSheet(
       '<h2 class="sheet-title serif">Bring ' + esc(many) + ' into ' + esc(who) + "?</h2>" +
       '<p class="dim">' + esc(many) + " on this device " +
-      "is not attached to any account yet. If that is your work, bring it in &mdash; " +
-      "it will sync to your other devices. If it belongs to whoever used this device " +
-      "before you, leave it where it is.</p>" +
+      "was made before an account was required, so it is not attached to anyone yet. " +
+      "If that is your work, bring it in &mdash; it will sync to every device you " +
+      "sign in on. If it belongs to whoever used this device before you, leave it.</p>" +
       '<p class="dim">Asked once. Either way, no other account will be offered these parts.</p>' +
       '<button class="btn btn-primary btn-big" id="devAdopt">Yes, they are mine</button>' +
-      '<button class="btn btn-ghost btn-big" id="devLeave">No, leave them on the device</button>'
+      '<button class="btn btn-ghost btn-big" id="devLeave">No, they are not mine</button>'
     );
     $("#devAdopt").addEventListener("click", function () {
       var got = ST.claimDeviceStore();
@@ -3166,7 +3168,7 @@
     $("#devLeave").addEventListener("click", function () {
       ST.leaveDeviceStore();
       closeSheet();
-      toast("Left on this device - they stay out of your account");
+      toast("Left alone - they stay out of your account");
     });
   }
 
@@ -3174,16 +3176,22 @@
     $("#loginSubmit").addEventListener("click", doLogin);
     $("#loginPass").addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); });
     $("#loginToggle").addEventListener("click", function () { setLoginMode(!signupMode); buzz(); });
-    $("#loginSkip").addEventListener("click", function () {
-      localStorage.setItem(SKIP_KEY, "1");
-      $("#login").classList.add("hidden");
-    });
   }
 
   function showLogin() { $("#login").classList.remove("hidden"); }
 
-  function maybeShowLogin() {
-    if (AUTH.isLoggedIn() || localStorage.getItem(SKIP_KEY)) return;
+  /* Sign-in is required: parts live in an account and nowhere else. With no
+     session the app stays hidden behind the sign-in gate; a successful sign-in
+     reveals it, and signing out hides it again. */
+  function requireLogin() {
+    if (AUTH.isLoggedIn()) {
+      $("#login").classList.add("hidden");
+      $("#app").classList.remove("hidden");
+      showView("parts");
+      return;
+    }
+    $("#app").classList.add("hidden");
+    setLoginMode(signupMode);
     showLogin();
   }
 
@@ -3256,9 +3264,8 @@
     });
 
     if (ST.state.settings.onboarded) {
-      $("#app").classList.remove("hidden");
-      showView("parts");
-      maybeShowLogin();
+      // sign-in gates the app: signed in reveals it, signed out shows the gate
+      requireLogin();
     } else {
       runOnboarding();
     }

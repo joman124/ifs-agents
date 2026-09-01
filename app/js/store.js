@@ -3,8 +3,13 @@
 (function () {
   "use strict";
   var S = window.IFS.schema;
-  /* The device store: what a signed-out person builds on this device, and
-     where every install kept its data before accounts existed. */
+  /* The device store: where every install kept its data before accounts
+     existed, and where a signed-out person's parts once lived. Parts now live
+     exclusively under an account's own key - the app requires sign-in and no
+     longer writes parts here. What remains is a pre-sign-in holding area:
+     onboarding chrome, and any parts left behind by that older signed-out use,
+     offered once to the first account to sign in (see claimDeviceStore) and
+     then cleared. */
   var KEY = "innertable.v1";
   /* Who, if anyone, has already taken the device store into their account.
      A device store that has been claimed is never offered to a second

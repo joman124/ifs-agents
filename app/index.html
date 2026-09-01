@@ -183,17 +183,16 @@
   </div>
 </div>
 
-<!-- ============ LOGIN (optional - gates cross-device sync only) ============ -->
+<!-- ============ SIGN IN (required - parts live in your account) ============ -->
 <div id="login" class="ground hidden" role="dialog" aria-modal="true">
   <div class="ground-inner">
-    <h2 class="serif" id="loginTitle">Sign in to sync</h2>
-    <p id="loginIntro">Sign in to sync your parts between your phone and desktop. Your local data works fully without this.</p>
+    <h2 class="serif" id="loginTitle">Sign in</h2>
+    <p id="loginIntro">Your parts live in your account. Sign in to reach them on this device &mdash; and on any other device you sign in on.</p>
     <input id="loginUser" autocomplete="username" placeholder="Username" style="margin-bottom:10px">
     <input id="loginPass" type="password" autocomplete="current-password" placeholder="Password" style="margin-bottom:10px">
     <p id="loginError" class="dim hidden" style="color:var(--danger)"></p>
     <button class="btn btn-primary btn-big" id="loginSubmit">Sign in</button>
     <button class="btn btn-soft" id="loginToggle">Create an account</button>
-    <button class="btn btn-ghost" id="loginSkip">Use this device only</button>
   </div>
 </div>
 

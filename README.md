@@ -69,8 +69,9 @@ part has a positive intent; there are no bad parts. Longer version:
 ## Quickstart A — the webapp (Inner Table)
 
 The [`app/`](app/) directory is **Inner Table**, a mobile-first installable
-webapp version of this whole flow — no install, and no account unless you want
-your own devices to sync.
+webapp version of this whole flow. Your parts live in your account, so you sign
+in to reach them — and find the same parts on any device you sign in on, while
+anyone else can sign in on the same device to reach only their own.
 **Live at [ifs-agents.vercel.app](https://ifs-agents.vercel.app)** (open it on
 your phone and Add to Home Screen):
 
@@ -127,11 +128,12 @@ build. They cover data integrity rather than the UI: profile parsing and round
 trips, both merge paths, untrusted backups, the question bank, the store, and
 mic turn-taking.
 
-### Optional: syncing your own devices
+### Accounts and sync
 
-By default nothing leaves the device. Signing in turns on sync, so a part
-edited on your phone shows up on your desktop. It needs three environment
-variables on the Vercel project:
+Parts live in your account, not on the device. You sign in to reach them, and a
+part edited on your phone shows up on your desktop; sign out and the account's
+parts close, so anyone else can sign in on the same device and see only their
+own. The server side needs three environment variables on the Vercel project:
 
 | Variable | Where it comes from |
 |---|---|

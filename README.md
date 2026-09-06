@@ -93,9 +93,11 @@ It follows one spine — **add a part → gather → integrate → connect**:
 - **Connect** — the **swarm map is the editing surface**. Every pair of parts is
   already drawn as a faint thread, because parts sharing a system always relate
   — you just haven't named it yet. Tap a thread to name it, tap a part to focus
-  its threads, and use the three-tone legend (supportive / in tension / not
-  mapped yet) to filter. Edges are written to both profiles, mirrored, with no
-  AI required.
+  its threads, and open the **map key** to read what every thread style, colour
+  and thickness is saying — and to filter by tone (supportive / in tension / not
+  mapped yet). The key stays closed until asked for, then opens as a sheet on a
+  phone or a side panel on a wider screen, so the map keeps the whole canvas.
+  Edges are written to both profiles, mirrored, with no AI required.
 - **Round the table** — a table meeting now ends the way the script does: each
   part is asked, by name, how it is feeling toward each of the others *right
   now* (hostile / wary / neutral / warm / close). Each reading is written to the
@@ -107,7 +109,9 @@ It follows one spine — **add a part → gather → integrate → connect**:
   the morning after one. Parts may pass, and passing records nothing.
   Meetings you already held can still get their round, from the card on the
   Table tab — filed on that meeting's date, and never overwriting a more recent
-  reading with an older one.
+  reading with an older one. The map key spells the whole scale out, alongside
+  a live count of how many readings the system holds and how many pairs have
+  answered in both directions.
 
 - **Parts library** with coverage rings, type badges, and compile-readiness
   indicators; **swarm map** as an interactive touch-draggable graph.

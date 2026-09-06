@@ -493,32 +493,122 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   0%, 100% { filter: none; }
   50% { filter: drop-shadow(0 0 5px var(--accent)); }
 }
-.map-legend {
-  position: absolute; left: 12px; bottom: calc(var(--tabbar-h) + var(--sab) + 12px);
-  display: flex; flex-direction: column; gap: 5px;
-  background: color-mix(in srgb, var(--bg) 80%, transparent);
-  backdrop-filter: blur(8px); border: 1px solid var(--line);
-  padding: 10px 12px; border-radius: 12px; font-size: .68rem; color: var(--ink-dim);
+/* ================= the map key =================
+   It began as three rows pinned open in the bottom corner. There is more to
+   explain now - five thread styles, the five-point scale a round of the table
+   writes onto a thread, and what a part's colour and its fading mean - and
+   none of that belongs permanently on top of a 375px canvas. So the key
+   closed itself and became a button: opened, it is a sheet off the bottom on
+   a phone and a column down the right on anything wider, and the map is whole
+   again the moment it closes. */
+.map-key-btn {
+  /* .map-wrap ends where the tab bar begins, so the offset here is only the
+     gap - the bar carries its own safe-area padding. */
+  position: absolute; left: 12px; bottom: 14px; z-index: 5; display: flex; align-items: center; gap: 7px;
+  font-size: .72rem; font-weight: 650; color: var(--ink-dim);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--line); border-radius: 999px; padding: 7px 13px;
 }
-.map-legend .lg {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  font-size: .68rem; color: var(--ink-dim); text-align: left;
+.map-key-btn:active { background: var(--surface2); }
+/* A filter left switched on is the one thing about the key that has to stay
+   visible once it is closed: a map drawing a third of its threads, with the
+   reason folded away, is a bug report waiting to be filed. */
+.map-key-btn.filtered { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
+.map-key-btn .mk-swatch { display: none; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.map-key-btn.filtered .mk-swatch { display: inline-block; }
+
+/* Tap anywhere off the key to put it away. Dimmed rather than blacked out -
+   the map is what the key is about, and it should stay in view behind it. */
+.legend-scrim {
+  position: absolute; inset: 0; z-index: 6;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  animation: fadeIn .18s ease;
+}
+.map-legend {
+  position: absolute; z-index: 7; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: var(--shadow); overflow: hidden;
+  font-size: .72rem; color: var(--ink-dim);
+  /* phone default: a sheet off the bottom, over the button that opened it */
+  left: 8px; right: 8px; bottom: 8px;
+  max-height: 78%; border-radius: 16px; animation: fadeUp .2s ease;
+}
+/* Room for a side panel: it takes the right-hand column and leaves the map
+   readable next to it, which is the whole point of putting it there. */
+@media (min-width: 700px) {
+  .map-legend {
+    left: auto; right: 0; top: 0; bottom: 0; width: 340px; max-height: none;
+    border-width: 0 0 0 1px; border-radius: 0; animation: panelIn .2s ease;
+  }
+}
+.map-legend .lg-head {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 10px 8px 8px 16px; border-bottom: 1px solid var(--line);
+}
+.map-legend .lg-head h3 { margin: 0; font-size: 1rem; color: var(--ink); }
+.map-legend .lg-head .iconbtn { width: 34px; height: 34px; font-size: 20px; color: var(--ink-dim); }
+.map-legend .lg-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 2px 12px 16px; }
+.map-legend section + section { margin-top: 10px; padding-top: 4px; border-top: 1px solid var(--line); }
+.map-legend h4 {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin: 12px 4px 6px; font-size: .62rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .12em; color: var(--ink-faint);
+}
+.map-legend h4 small { font-size: .66rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.map-legend .lg, .map-legend .lgrow {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  font-size: .72rem; color: var(--ink-dim); text-align: left;
   padding: 5px 7px; border-radius: 8px; border: 1px solid transparent;
 }
 .map-legend .lg:active { background: var(--surface2); }
 .map-legend .lg.on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
-.map-legend .lg i { width: 22px; height: 0; border-top: 2px solid; display: inline-block; flex: none; }
-.map-legend .lg i.faint { border-top: 1px dotted var(--ink-faint); }
-.map-legend .lg span { flex: 1; }
+.map-legend .lg span, .map-legend .lgrow span { flex: 1; }
+.map-legend .lgrow span b { color: var(--ink); font-weight: 650; }
+.map-legend .lgrow small { display: block; font-size: .66rem; color: var(--ink-faint); }
 .map-legend .lg b { font-variant-numeric: tabular-nums; color: var(--ink); }
-.map-legend .lg-hint { font-size: .62rem; color: var(--ink-faint); padding: 2px 7px 0; }
-/* On a phone the legend was taking a fifth of the map. Same three rows,
-   less furniture around them. */
+.map-legend .lg-hint { font-size: .66rem; color: var(--ink-faint); padding: 4px 7px 0; }
+.map-legend .lg-note { margin: 0; padding: 8px 7px 0; font-size: .66rem; line-height: 1.55; color: var(--ink-faint); }
+.map-legend .lg-note b { color: var(--ink-dim); font-weight: 650; }
+
+/* The swatches are the map's own strokes in a 26px box - whatever the key
+   draws has to be the line the person is looking at, not an approximation
+   of it. Keep these in step with .swarm .edge.* above. */
+.map-legend .sw { flex: none; }
+.map-legend .ln { width: 26px; height: 0; border-top: 2px solid var(--ink-faint); position: relative; }
+.map-legend .ln.protects { border-color: var(--good); }
+.map-legend .ln.protects::after {
+  content: ""; position: absolute; right: -2px; top: -4px;
+  border: 4px solid transparent; border-right: 0; border-left: 6px solid var(--good);
+}
+.map-legend .ln.allied { border-color: var(--good); }
+.map-legend .ln.polarized { border-top-style: dashed; border-color: var(--warn); }
+.map-legend .ln.conflicts { border-top-style: dotted; border-color: var(--warn); }
+.map-legend .ln.felt { border-top-style: dashed; border-color: var(--unknown); }
+.map-legend .ln.felt.warm { border-color: var(--good); }
+.map-legend .ln.felt.cool { border-color: var(--warn); }
+.map-legend .ln.faint { border-top: 1px dotted var(--ink-faint); }
+/* Thickness and fade are things that happen *to* a thread rather than kinds
+   of thread, so they get a swatch that shows the range instead of one more
+   flat line pretending to be a category. */
+.map-legend .sw.wedge {
+  width: 26px; height: 9px; background: var(--ink-dim);
+  clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 60%);
+}
+.map-legend .sw.fade { width: 26px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--ink-dim), transparent); }
+/* 7 + 12 + 7 keeps a dot in the same 26px column as the lines above it */
+.map-legend .dot { width: 12px; height: 12px; margin: 0 7px; border-radius: 50%; border: 2px solid var(--unknown); }
+.map-legend .dot.manager { border-color: var(--manager); background: color-mix(in srgb, var(--manager) 25%, transparent); }
+.map-legend .dot.firefighter { border-color: var(--firefighter); background: color-mix(in srgb, var(--firefighter) 25%, transparent); }
+.map-legend .dot.exile { border-color: var(--exile); background: color-mix(in srgb, var(--exile) 25%, transparent); }
+.map-legend .dot.unknown { background: color-mix(in srgb, var(--unknown) 25%, transparent); }
+.map-legend .dot.self { border-color: var(--self); background: var(--accent-soft); }
+.map-legend .dot.lit { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 6px var(--accent); }
+/* The five points of the scale, each in the tone that reading lands on. */
+.map-legend .fdot { width: 10px; height: 10px; margin: 0 8px; border-radius: 50%; background: var(--unknown); }
+.map-legend .fdot.positive { background: var(--good); }
+.map-legend .fdot.negative { background: var(--warn); }
 @media (max-width: 480px) {
-  .map-legend { left: 8px; gap: 2px; padding: 6px 7px; border-radius: 10px; }
-  .map-legend .lg { padding: 4px 6px; gap: 7px; font-size: .64rem; }
-  .map-legend .lg i { width: 16px; }
-  .map-legend .lg-hint { display: none; }
   .map-hint { font-size: .64rem; padding: 3px 10px; }
 }
 .rel-tone {
@@ -543,6 +633,12 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
   font-size: .7rem; color: var(--ink-faint); background: color-mix(in srgb, var(--bg) 75%, transparent);
   padding: 4px 12px; border-radius: 999px; pointer-events: none;
+  transition: transform .2s ease;
+}
+/* The side panel takes the right-hand column of the map, so the hint centres
+   itself over what is left of it rather than sliding under the key. */
+@media (min-width: 700px) {
+  .map-wrap.key-open .map-hint { transform: translateX(calc(-50% - 170px)); }
 }
 
 /* Whose turn it is, for someone not reading the screen. Idle collapses to

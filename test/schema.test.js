@@ -356,6 +356,40 @@ module.exports = function (t) {
   t.eq(S.pairTone(r1, r2), "positive", "an unnamed pair takes its tone from what the parts felt");
   t.eq(S.pairTone(part("X"), part("Y")), "unknown", "and an unasked pair has no tone at all");
 
+  /* --- what the map key counts --- */
+  var kA = part("Key A"), kB = part("Key B"), kC = part("Key C");
+  kA.slug = "ka"; kB.slug = "kb"; kC.slug = "kc";
+  t.eq(S.mapCounts([]).pairs, 0, "no parts, no pairs to count");
+  t.eq(S.mapCounts([kA]).pairs, 0, "one part relates to nobody yet");
+  var fresh = S.mapCounts([kA, kB, kC]);
+  t.eq([fresh.pairs, fresh.unknown, fresh.named, fresh.rated], [3, 3, 0, 0],
+    "three parts start as three unasked pairs");
+
+  kA.relationships = [{ part: "kb", type: "allied-with", notes: "" }];
+  kB.relationships = [{ part: "ka", type: "allied-with", notes: "" }];
+  var namedOne = S.mapCounts([kA, kB, kC]);
+  t.eq([namedOne.positive, namedOne.unknown, namedOne.named], [1, 2, 1],
+    "a mirrored edge is one named pair, counted once from either side");
+
+  S.setFeeling(kA, "kc", 5, TODAY);
+  var oneSided = S.mapCounts([kA, kB, kC]);
+  t.eq([oneSided.positive, oneSided.unknown], [2, 1],
+    "a reading gives an unnamed pair a tone of its own");
+  t.eq([oneSided.rated, oneSided.mutual, oneSided.readings], [1, 0, 1],
+    "one side answering is a rated pair, but not a mutual one");
+  S.setFeeling(kC, "ka", 4, TODAY);
+  var mutual = S.mapCounts([kA, kB, kC]);
+  t.eq([mutual.rated, mutual.mutual, mutual.readings], [1, 1, 2],
+    "the second direction is a second reading on the same pair");
+
+  S.setFeeling(kA, "kb", 1, TODAY);
+  var stillNamed = S.mapCounts([kA, kB, kC]);
+  t.eq(stillNamed.positive, 2, "a hostile reading does not overturn what the pair was named");
+  t.eq([stillNamed.named, stillNamed.rated], [1, 2],
+    "and a pair can be both named and rated - the counts are not exclusive");
+  t.eq(stillNamed.positive + stillNamed.negative + stillNamed.unknown, stillNamed.pairs,
+    "every pair lands in exactly one tone, so the three filters cover the map");
+
   /* Merges must not lose a round: it is a meeting that actually happened. */
   var mBase = part("M"), mIn = part("M");
   mBase.feelings = [{ part: "the-dreamer", rating: 2, date: "2026-08-01", rounds: 3, prev: 1 },

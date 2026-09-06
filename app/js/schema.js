@@ -564,12 +564,44 @@
      is how a meeting can give an unmapped thread a colour without anyone
      inventing an edge type for it. */
   function pairTone(a, b) {
-    if (!a || !b) return "unknown";
-    var r = ((a.relationships || []).filter(function (x) { return x.part === b.slug; })[0]) ||
-            ((b.relationships || []).filter(function (x) { return x.part === a.slug; })[0]);
+    var r = namedEdge(a, b);
     if (r) return EDGE_TONE[r.type] || "unknown";
     var f = pairFeeling(a, b);
     return f.sides ? feelingTone(f.avg) : "unknown";
+  }
+
+  /* The edge either part has written about the other, whichever side it was
+     written from. Edges are mirrored into both profiles, so one is enough. */
+  function namedEdge(a, b) {
+    if (!a || !b) return null;
+    return ((a.relationships || []).filter(function (x) { return x.part === b.slug; })[0]) ||
+           ((b.relationships || []).filter(function (x) { return x.part === a.slug; })[0]) || null;
+  }
+
+  /* One pass over every pair, for the map key. The three tone counts are what
+     the key filters on; the rest is the read the key gives back - how many
+     pairs someone has actually named, how many were rated at a table, and how
+     many of those had both parts answer rather than one. A pair can be
+     counted as named and rated at once: naming it says what they are to each
+     other, a round says how it felt this week. */
+  function mapCounts(parts) {
+    var out = { positive: 0, negative: 0, unknown: 0,
+                pairs: 0, named: 0, rated: 0, mutual: 0, readings: 0 };
+    var list = parts || [];
+    for (var i = 0; i < list.length; i++) {
+      for (var j = i + 1; j < list.length; j++) {
+        var a = list[i], b = list[j];
+        out.pairs++;
+        out[pairTone(a, b)]++;
+        if (namedEdge(a, b)) out.named++;
+        var f = pairFeeling(a, b);
+        if (!f.sides) continue;
+        out.rated++;
+        out.readings += f.sides;
+        if (f.sides === 2) out.mutual++;
+      }
+    }
+    return out;
   }
 
   /* ---- How much has actually been said about a relationship ----
@@ -655,6 +687,8 @@
     pairFeeling: pairFeeling,
     feelingWeight: feelingWeight,
     pairTone: pairTone,
+    namedEdge: namedEdge,
+    mapCounts: mapCounts,
     edgeWeight: edgeWeight,
     quietestPart: quietestPart
   };

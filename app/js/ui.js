@@ -2023,41 +2023,165 @@
   }
 
   /* ================= map ================= */
-  var mapTone = null; // null = show everything, else "positive"|"negative"|"unknown"
+  var mapTone = null;  // null = show everything, else "positive"|"negative"|"unknown"
+  var keyOpen = false; // the key is closed until it is asked for
 
-  /* Three tones, each a filter. Counts come from the parts themselves so the
-     legend doubles as a read on how much of the system is still unmapped. */
+  /* The swatch a tone filter carries, and the dot the key button wears while
+     that filter is the one switched on. Both are the map's own colours. */
+  var TONE_SWATCH = {
+    positive: '<i class="sw ln allied"></i>',
+    negative: '<i class="sw ln polarized"></i>',
+    unknown: '<i class="sw ln faint"></i>'
+  };
+  var TONE_COLOR = { positive: "var(--good)", negative: "var(--warn)", unknown: "var(--ink-faint)" };
+
+  /* One row of the key: a swatch in the same 26px column the lines use, what
+     it means, and a line under it saying why it looks like that. */
+  function keyRow(swatch, label, sub) {
+    return '<div class="lgrow">' + swatch + "<span>" + label +
+      (sub ? "<small>" + sub + "</small>" : "") + "</span></div>";
+  }
+
+  /* The key. Its first section is the three tones, which are filters as well
+     as a read on how much of the system is still unmapped; the rest is the
+     map's vocabulary written out - what each thread style is saying, what a
+     round of the table writes onto a thread that nobody has named, and what a
+     part's colour and its fading mean. Rendered fresh on every open, because
+     every count in it moves. */
   function renderLegend(parts) {
-    var counts = { positive: 0, negative: 0, unknown: 0 };
-    /* Every pair, counted once, in the tone the map actually draws it: a
-       named edge by its type, an unnamed one by what the parts said they
-       felt at the table. Counting only the named ones left the legend
-       disagreeing with the map the moment a round gave a thread a colour. */
-    for (var i = 0; i < parts.length; i++) {
-      for (var j = i + 1; j < parts.length; j++) {
-        counts[S.pairTone(parts[i], parts[j])]++;
-      }
-    }
+    var c = S.mapCounts(parts);
 
-    var row = function (tone, swatch) {
+    var filter = function (tone) {
       return '<button class="lg' + (mapTone === tone ? " on" : "") + '" data-tone="' + tone + '">' +
-        swatch + '<span>' + esc(S.TONE_LABELS[tone]) + "</span>" +
-        '<b>' + counts[tone] + "</b></button>";
+        TONE_SWATCH[tone] + "<span>" + esc(S.TONE_LABELS[tone]) + "</span><b>" + c[tone] + "</b></button>";
     };
-    $("#mapLegend").innerHTML =
-      row("positive", '<i style="color:var(--good)"></i>') +
-      row("negative", '<i style="color:var(--warn);border-top-style:dashed"></i>') +
-      row("unknown", '<i class="faint"></i>') +
-      '<div class="lg-hint">' + (mapTone ? "tap again to show all" : "tap a line to name it") + "</div>";
 
+    /* The five schema edge types, in the order the relationship sheet offers
+       them, plus the thread drawn for a pair nobody has answered for yet. */
+    var named =
+      keyRow('<i class="sw ln protects"></i>', "Protects",
+             "the arrow points at the part being shielded") +
+      keyRow('<i class="sw ln allied"></i>', "Allied",
+             "they work together") +
+      keyRow('<i class="sw ln polarized"></i>', "Polarized",
+             "pulling opposite ways on the same thing") +
+      keyRow('<i class="sw ln conflicts"></i>', "In conflict",
+             "open friction between them") +
+      keyRow('<i class="sw ln faint"></i>', "Not asked yet",
+             "parts sharing a system already relate &mdash; tap the thread to name it") +
+      keyRow('<i class="sw wedge"></i>', "Thicker",
+             "more has been said about the pair &mdash; in a mapping session, at the table, or both") +
+      keyRow('<i class="sw fade"></i>', "Fainter",
+             "neither part, and neither the two together, has been sat with lately");
+
+    /* What a round of the table does to the map: it gives a thread substance
+       and a tone without anyone naming an edge type for it. */
+    var felt =
+      keyRow('<i class="sw ln felt warm"></i>', "Felt warm",
+             "unnamed, and the readings came back warm or close") +
+      keyRow('<i class="sw ln felt cool"></i>', "Felt cool",
+             "unnamed, and the readings came back wary or hostile") +
+      keyRow('<i class="sw ln felt"></i>', "Felt, neither way",
+             "they sat together and it came out neutral, which is an answer");
+
+    var scale = S.FEELINGS.map(function (f) {
+      return keyRow('<i class="sw fdot ' + S.feelingTone(f.val) + '"></i>',
+        "<b>" + esc(f.label) + "</b>", esc(f.blurb));
+    }).join("");
+
+    var readOut = c.readings
+      ? c.readings + (c.readings === 1 ? " reading" : " readings") +
+        " on " + c.rated + " of " + c.pairs + (c.pairs === 1 ? " pair" : " pairs")
+      : "none taken yet";
+
+    var note = '<p class="lg-note">At the end of a table meeting each part is asked, ' +
+      "in its own voice, how it is feeling toward every other part in the room right now. " +
+      "A reading is <b>directed</b> and dated &mdash; never mirrored onto the other part, because " +
+      "what one feels is rarely what comes back &mdash; and it thickens the thread between them a " +
+      "little more with every round, faster when <b>both</b> sides answer. " +
+      (c.mutual
+        ? c.mutual + (c.mutual === 1 ? " pair has" : " pairs have") + " answered both ways."
+        : "A pair only one side has answered for is a claim, not yet an account.") +
+      " A part may pass, and passing records nothing.</p>";
+
+    var partRows =
+      keyRow('<i class="sw dot self"></i>', "Self",
+             "pinned at the top; everything else is arranged around it") +
+      keyRow('<i class="sw dot manager"></i>', "Manager", "a proactive protector") +
+      keyRow('<i class="sw dot firefighter"></i>', "Firefighter", "a reactive protector") +
+      keyRow('<i class="sw dot exile"></i>', "Exile", "a young hurt part the protectors shield") +
+      keyRow('<i class="sw dot unknown"></i>', "Not typed yet", "") +
+      keyRow('<i class="sw dot lit"></i>', "Sat with lately",
+             "it keeps a light on; a part left alone recedes without leaving") +
+      (ST.state.table.built
+        ? keyRow('<i class="sw fade"></i>', "Distance from Self",
+                 "once a table exists, where a part sits is how far out it is drawn")
+        : "");
+
+    $("#mapLegend").innerHTML =
+      '<header class="lg-head"><h3 class="serif" id="mapLegendTitle">Map key</h3>' +
+      '<button class="iconbtn" id="lgClose" aria-label="Close the key">&times;</button></header>' +
+      '<div class="lg-body">' +
+      '<section><h4>Threads <small>tap to filter</small></h4>' +
+      filter("positive") + filter("negative") + filter("unknown") +
+      '<div class="lg-hint">' +
+      (mapTone ? "tap it again to show every thread" : "showing all " + c.pairs +
+        (c.pairs === 1 ? " pair" : " pairs") + " &middot; " + c.named + " named") +
+      "</div></section>" +
+      "<section><h4>What a thread says</h4>" + named + "</section>" +
+      '<section><h4>Round the table <small>' + readOut + "</small></h4>" +
+      felt + scale + note + "</section>" +
+      "<section><h4>Parts</h4>" + partRows + "</section>" +
+      "</div>";
+
+    $("#lgClose").addEventListener("click", closeKey);
     document.querySelectorAll("#mapLegend .lg").forEach(function (el) {
       el.addEventListener("click", function () {
         mapTone = mapTone === el.dataset.tone ? null : el.dataset.tone;
         buzz();
         G.refresh();
         renderLegend(ST.listParts());
+        setKeyButton();
       });
     });
+  }
+
+  /* Closed, the button still has to say whether a filter is on: a map drawing
+     a third of its threads with the reason folded away is a bug report. */
+  function setKeyButton() {
+    var btn = $("#mapKeyBtn");
+    if (!btn) return;
+    btn.classList.toggle("filtered", !!mapTone);
+    btn.setAttribute("aria-expanded", keyOpen ? "true" : "false");
+    $("#mapKeyLabel").textContent = mapTone ? S.TONE_LABELS[mapTone] : "Key";
+    $("#mapKeySwatch").style.background = mapTone ? TONE_COLOR[mapTone] : "";
+  }
+
+  function openKey() {
+    keyOpen = true;
+    renderLegend(ST.listParts());
+    $("#mapLegend").classList.remove("hidden");
+    $("#mapLegendScrim").classList.remove("hidden");
+    $("#mapWrap").classList.add("key-open");
+    setKeyButton();
+    buzz();
+    $("#mapLegend").focus();
+  }
+
+  function closeKey() {
+    if (!keyOpen) return;
+    keyOpen = false;
+    $("#mapLegend").classList.add("hidden");
+    $("#mapLegendScrim").classList.add("hidden");
+    $("#mapWrap").classList.remove("key-open");
+    setKeyButton();
+  }
+
+  /* The button and the part card share the bottom of the screen, so the key
+     steps aside while a part is focused - and takes any open panel with it. */
+  function showKeyButton(on) {
+    if (!on) closeKey();
+    $("#mapKeyBtn").classList.toggle("hidden", !on);
   }
 
   function renderMap() {
@@ -2069,24 +2193,26 @@
     if (parts.length > 1) renderCoach("#mapCoach", "map");
     else $("#mapCoach").innerHTML = "";
     mapTone = null;
+    closeKey();
+    setKeyButton();
     $("#mapEmpty").classList.toggle("hidden", has);
-    $("#mapLegend").classList.toggle("hidden", !has);
+    showKeyButton(has);
     $("#mapHint").classList.toggle("hidden", !has);
     $("#mapCard").classList.add("hidden");
     $("#mapHint").textContent = parts.length > 1
       ? "tap a thread to name it · thicker means more said"
       : "tap a part · drag to move · pinch to zoom";
     if (has) {
-      renderLegend(parts);
+      // the key renders when it is opened, not here: every count in it moves
       G.render(svg, parts, {
         tone: function () { return mapTone; },
         seats: ST.state.table.built ? ST.state.table.seats : null,
         onEdge: function (aSlug, bSlug) { relationshipSheet(aSlug, bSlug); },
         onSelect: function (node) {
             var card = $("#mapCard");
-            // the card and the legend share the bottom of the screen: while a
-            // part is focused the card is what matters
-            var show = function (on) { $("#mapLegend").classList.toggle("hidden", on); };
+            // the card and the key button share the bottom of the screen:
+            // while a part is focused the card is what matters
+            var show = function (on) { showKeyButton(!on); };
             if (!node || node.self) { card.classList.add("hidden"); show(false); return; }
             var p = ST.getPart(node.id);
             if (!p) { card.classList.add("hidden"); show(false); return; }
@@ -3440,6 +3566,9 @@
     $("#fabNew").addEventListener("click", newSessionSheet);
     $("#sheetBackdrop").addEventListener("click", closeSheet);
     $("#panelBack").addEventListener("click", closePanel);
+    $("#mapKeyBtn").addEventListener("click", function () { if (keyOpen) closeKey(); else openKey(); });
+    $("#mapLegendScrim").addEventListener("click", closeKey);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeKey(); });
     $("#groundResume").addEventListener("click", hideGrounding);
     $("#groundEnd").addEventListener("click", function () {
       hideGrounding();

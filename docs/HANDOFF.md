@@ -59,7 +59,7 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 
 | File | Lines | What it owns |
 |---|--:|---|
-| `schema.js` | 642 | Part shape, the 9 coverage categories, 5 edge types, the 5-point feeling scale, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `edgeWeight`, `setFeeling`/`pairFeeling`/`pairTone`, `initial` |
+| `schema.js` | 695 | Part shape, the 9 coverage categories, 5 edge types, the 5-point feeling scale, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `edgeWeight`, `setFeeling`/`pairFeeling`/`pairTone`, `mapCounts`, `initial` |
 | `questions.js` | 130 | The IFS question bank (33 questions), `nextCategory`, `applyAnswers` |
 | `reference.js` | 207 | Fraser's Table protocol (build/tools/seats/closing), the 8-page reference library, the first-run coach cues and the daily check-in prompts |
 | `markdown.js` | 489 | `parts/<slug>.md` ⇄ object. Frontmatter parser, `splitDocs`, `analyze`, `splitVoices`/`summarizeMeeting` |
@@ -68,7 +68,7 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `llm.js` | 272 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
 | `voice.js` | 360 | Web Speech dictation + TTS, optional ElevenLabs voice |
 | `graph.js` | 559 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat |
-| `ui.js` | 3445 | Every view, sheet, panel and flow. The big one. |
+| `ui.js` | 3629 | Every view, sheet, panel and flow. The big one. |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
 
 ## The four tabs
@@ -80,12 +80,22 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
    per-category coverage.
 2. **Map** — every pair of parts is drawn as a faint thread ("you already relate,
    you just haven't named it"). Tap a thread to name it; tap a part to focus it.
-   Three-tone legend (supportive / in tension / not mapped) doubles as a filter.
    Once a table exists, seating becomes distance from Self. Thread thickness is
    how much both parts have said about each other *and* how many rounds of
    readings they have been through; parts fade as they go quiet and the
    recently-visited one keeps a light on. An unnamed pair with readings on it is
    a **felt** thread: dashed still, but with substance and a tone of its own.
+   The **map key** carries all of that vocabulary and is closed by default — the
+   "Key" button bottom-left opens it as a sheet on a phone and a side panel from
+   700px up, with a scrim that closes it, Escape, and a close button. Its first
+   section is the old three-tone filter (supportive / in tension / not mapped),
+   which still drives `mapTone`; the rest explains the five edge styles, the
+   felt threads and the five-point scale behind them, and what a part's colour
+   and fading mean. Counts come from `S.mapCounts()`, so the key doubles as a
+   read on the system: how many pairs are named, how many were rated at a table,
+   how many answered both ways. A filter left switched on is carried on the
+   closed button, which wears the tone's label and dot. The key steps aside
+   while a part is selected — the part card owns that corner.
 3. **Table** — Fraser's Table. Build the room through the source document's own
    questions, invite parts to one of four seats, add tools and agreements, hold a
    meeting, close with the reflection. A meeting opens with the parts taking
@@ -120,7 +130,9 @@ How it relates to other parts / What it needs / Session notes*.
   `allied-with` / `conflicts-with` (self-mirroring). Edges are always written to
   **both** profiles.
 - `EDGE_TONE` in `schema.js` groups those five into three tones for the map
-  legend and the relationship sheet. The five stay the source of truth on disk.
+  key and the relationship sheet. The five stay the source of truth on disk.
+  `namedEdge(a, b)` is the one place a pair's edge is looked up from either
+  side; `mapCounts(parts)` walks every pair once for the key's numbers.
 - `feelings` — directed, dated readings of how this part feels toward another,
   `{part, rating 1-5, date, rounds, prev}`. The opposite of an edge in every
   way that matters: **never mirrored** (it lives only on the rater's profile),

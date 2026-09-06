@@ -108,7 +108,15 @@
         </div>
         <div class="map-hint" id="mapHint">tap a part &middot; drag to move &middot; pinch to zoom</div>
         <div id="mapCoach" class="coach-float"></div>
-        <div class="map-legend" id="mapLegend"></div>
+        <!-- The key is closed by default: it has a lot more to say than the
+             three rows it started as, and none of it belongs permanently on
+             top of a phone-sized map. The button opens it as a sheet from the
+             bottom, or a side panel on anything wider. -->
+        <button class="map-key-btn" id="mapKeyBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="mapLegend">
+          <span class="mk-swatch" id="mapKeySwatch"></span><span id="mapKeyLabel">Key</span>
+        </button>
+        <div class="legend-scrim hidden" id="mapLegendScrim"></div>
+        <aside class="map-legend hidden" id="mapLegend" role="dialog" aria-labelledby="mapLegendTitle" tabindex="-1"></aside>
         <div class="map-card hidden" id="mapCard"></div>
       </div>
     </section>

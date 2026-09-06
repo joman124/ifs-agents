@@ -50,6 +50,18 @@
     } else {
       L.push("relationships: []");
     }
+    if (part.feelings && part.feelings.length) {
+      L.push("feelings:");
+      part.feelings.forEach(function (f) {
+        L.push("  - part: " + yStr(f.part));
+        L.push("    rating: " + f.rating);
+        L.push("    date: " + (f.date || ""));
+        L.push("    rounds: " + (f.rounds || 1));
+        L.push("    prev: " + (f.prev || 0));
+      });
+    } else {
+      L.push("feelings: []");
+    }
     L.push("coverage:");
     S.CATEGORIES.forEach(function (c) {
       L.push("  " + c + ": " + (part.coverage[c] || "untouched"));
@@ -258,6 +270,15 @@
       }).map(function (r) {
         return { part: S.slugify(r.part), type: r.type, notes: r.notes || "" };
       });
+    }
+    // the frontmatter parser hands back strings; normalizeFeelings does the
+    // coercion and drops anything off the scale
+    if (Array.isArray(fm.feelings)) {
+      part.feelings = S.normalizeFeelings(fm.feelings.map(function (f) {
+        return (f && typeof f === "object" && f.part)
+          ? { part: S.slugify(f.part), rating: f.rating, date: f.date, rounds: f.rounds, prev: f.prev }
+          : null;
+      }).filter(Boolean));
     }
     if (fm.coverage && typeof fm.coverage === "object" && !Array.isArray(fm.coverage)) {
       S.CATEGORIES.forEach(function (c) {

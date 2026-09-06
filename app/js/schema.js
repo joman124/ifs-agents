@@ -51,6 +51,40 @@
   };
   var TONE_LABELS = { positive: "Supportive", negative: "In tension", unknown: "Not mapped yet" };
 
+  /* ---- How one part feels toward another, right now ----
+     The practitioner's Self-check question - "how are you feeling toward this
+     part right now?" - turned around and asked of a part about its neighbour,
+     which is what a table meeting is in a position to answer. Five points,
+     because the useful distinctions are hostile / wary / neutral / warm /
+     close and a wider scale only invites false precision. A reading is
+     directed and dated: what The Critic felt toward The Dreamer at the end of
+     one meeting is not what The Dreamer felt back, and neither is permanent. */
+  var FEELINGS = [
+    { val: 1, key: "hostile", label: "Hostile", blurb: "I want it gone" },
+    { val: 2, key: "wary", label: "Wary", blurb: "I do not trust it" },
+    { val: 3, key: "neutral", label: "Neutral", blurb: "nothing much either way" },
+    { val: 4, key: "warm", label: "Warm", blurb: "I am glad it is here" },
+    { val: 5, key: "close", label: "Close", blurb: "I would stand with it" }
+  ];
+
+  function feeling(rating) {
+    return FEELINGS.filter(function (f) { return f.val === Math.round(Number(rating)); })[0] || null;
+  }
+  function feelingLabel(rating) {
+    var f = feeling(rating);
+    return f ? f.label : "";
+  }
+
+  /* A reading lands on the same three tones the map legend already speaks.
+     Neutral is deliberately not a tone: "they sat together and felt nothing
+     much" is a real answer, and colouring it either way would be a claim. */
+  function feelingTone(rating) {
+    var v = Number(rating) || 0;
+    if (v >= 4) return "positive";
+    if (v >= 1 && v <= 2) return "negative";
+    return "unknown";
+  }
+
   var NARRATIVE_SECTIONS = [
     { key: "in_its_own_words", title: "In its own words" },
     { key: "origin_story", title: "Origin story" },
@@ -99,6 +133,10 @@
       unburdened_vision: "",
       trust_in_self: "unknown",
       relationships: [],
+      /* Directed readings of how this part feels toward another, one entry
+         per other part: the latest rating, when it was taken, how many rounds
+         this direction has been through, and the reading before it. */
+      feelings: [],
       coverage: coverage,
       sessions: [],
       narrative: {
@@ -247,6 +285,23 @@
     (base.relationships || []).forEach(function (r) { if (!have[r.part]) edges.push(r); });
     out.relationships = edges;
 
+    /* Readings, same rule: a side the incoming profile is silent about is
+       kept, never dropped. Where both hold the same direction the later
+       reading stands, but `rounds` is a count of table meetings that
+       happened and only ever climbs - a merge must not lose one. */
+    var feels = (out.feelings || []).map(function (f) { return { part: f.part, rating: f.rating, date: f.date || "", rounds: f.rounds || 1, prev: f.prev || 0 }; });
+    var haveF = {};
+    feels.forEach(function (f) { haveF[f.part] = f; });
+    (base.feelings || []).forEach(function (f) {
+      var cur = haveF[f.part];
+      if (!cur) { feels.push({ part: f.part, rating: f.rating, date: f.date || "", rounds: f.rounds || 1, prev: f.prev || 0 }); return; }
+      if ((f.date || "") > (cur.date || "")) {
+        cur.rating = f.rating; cur.date = f.date || ""; cur.prev = f.prev || 0;
+      }
+      cur.rounds = Math.max(cur.rounds || 1, f.rounds || 1);
+    });
+    out.feelings = feels;
+
     NARRATIVE_SECTIONS.forEach(function (sec) {
       if (!out.narrative[sec.key]) out.narrative[sec.key] = base.narrative[sec.key] || "";
     });
@@ -281,6 +336,38 @@
     out.relationships = (out.relationships || []).filter(function (r) {
       return r.part !== absorb.slug && r.part !== keep.slug;
     });
+    out.feelings = (out.feelings || []).filter(function (f) {
+      return f.part !== absorb.slug && f.part !== keep.slug;
+    });
+    return out;
+  }
+
+  /* Readings arrive from a backup, a sync, or a hand-edited profile file, so
+     a rating is whatever someone typed until this has been past it. Anything
+     outside the scale is dropped rather than clamped: an unreadable reading
+     is not a reading, and inventing one would put a thread on the map that
+     nobody ever felt. One entry per direction - a duplicated slug keeps the
+     later of the two and the larger round count. */
+  function normalizeFeelings(raw) {
+    var out = [], byPart = {};
+    (raw || []).forEach(function (f) {
+      if (!f || typeof f !== "object" || typeof f.part !== "string" || !f.part) return;
+      var rating = Math.round(Number(f.rating));
+      if (!(rating >= 1 && rating <= 5)) return;
+      var rounds = Math.round(Number(f.rounds));
+      var prev = Math.round(Number(f.prev));
+      var entry = {
+        part: f.part,
+        rating: rating,
+        date: typeof f.date === "string" ? f.date : "",
+        rounds: rounds >= 1 ? rounds : 1,
+        prev: (prev >= 1 && prev <= 5) ? prev : 0
+      };
+      var cur = byPart[entry.part];
+      if (!cur) { byPart[entry.part] = entry; out.push(entry); return; }
+      if (entry.date > cur.date) { cur.rating = entry.rating; cur.date = entry.date; cur.prev = entry.prev; }
+      cur.rounds = Math.max(cur.rounds, entry.rounds);
+    });
     return out;
   }
 
@@ -312,6 +399,7 @@
         return { part: r.part, type: r.type, notes: typeof r.notes === "string" ? r.notes : "" };
       });
     }
+    if (Array.isArray(raw.feelings)) p.feelings = normalizeFeelings(raw.feelings);
     if (raw.coverage && typeof raw.coverage === "object") {
       CATEGORIES.forEach(function (c) {
         if (COVERAGE_STATUSES.indexOf(raw.coverage[c]) >= 0) p.coverage[c] = raw.coverage[c];
@@ -370,13 +458,99 @@
   var HEAT_FLOOR = 0.12;
   var HEAT_NEW = 0.2;
 
-  function partHeat(part, today) {
-    var last = lastSessionISO(part);
-    if (!last) return HEAT_NEW;
-    var d = daysBetween(last, today);
+  /* The decay curve itself, so a part's recency and a reading's recency
+     cool at the same rate rather than by two hand-rolled formulas. An
+     absent date is not cold, it is nothing: 0, for callers to treat as
+     "never happened". */
+  function heatFrom(dateISO, today) {
+    if (!dateISO) return 0;
+    var d = daysBetween(dateISO, today);
     if (d <= 0) return 1;
     if (d >= HEAT_DAYS) return HEAT_FLOOR;
     return 1 - (d / HEAT_DAYS) * (1 - HEAT_FLOOR);
+  }
+
+  function partHeat(part, today) {
+    var last = lastSessionISO(part);
+    if (!last) return HEAT_NEW;
+    return heatFrom(last, today);
+  }
+
+  /* ---- Readings: reading them back, and taking a new one ---- */
+
+  function getFeeling(part, otherSlug) {
+    return ((part && part.feelings) || []).filter(function (f) { return f.part === otherSlug; })[0] || null;
+  }
+
+  /* Record how `part` feels toward `otherSlug` today. The previous reading is
+     kept as `prev` rather than overwritten, so the profile carries the
+     direction of travel and not only where it ended up, and `rounds` counts
+     how many times this direction has been asked - which is what lets a
+     thread on the map thicken with each meeting instead of only once. */
+  function setFeeling(part, otherSlug, rating, dateISO) {
+    if (!part || !otherSlug || otherSlug === part.slug) return null;
+    var v = Math.round(Number(rating));
+    if (!(v >= 1 && v <= 5)) return null;
+    part.feelings = part.feelings || [];
+    var cur = getFeeling(part, otherSlug);
+    if (!cur) {
+      cur = { part: otherSlug, rating: v, date: dateISO || todayISO(), rounds: 1, prev: 0 };
+      part.feelings.push(cur);
+      return cur;
+    }
+    cur.prev = cur.rating;
+    cur.rating = v;
+    cur.date = dateISO || todayISO();
+    cur.rounds = (cur.rounds || 1) + 1;
+    return cur;
+  }
+
+  /* Both directions of one pair at once. `ab` is how a feels toward b, `ba`
+     the reverse, and either may be 0 - one part answering and the other not
+     is the common case at a table, not an error. `rounds` is how many times
+     this pair has been through a round, `date` the most recent reading. */
+  function pairFeeling(a, b) {
+    var ab = (a && b) ? getFeeling(a, b.slug) : null;
+    var ba = (a && b) ? getFeeling(b, a.slug) : null;
+    var sides = (ab ? 1 : 0) + (ba ? 1 : 0);
+    var sum = (ab ? ab.rating : 0) + (ba ? ba.rating : 0);
+    return {
+      ab: ab ? ab.rating : 0,
+      ba: ba ? ba.rating : 0,
+      sides: sides,
+      avg: sides ? sum / sides : 0,
+      rounds: Math.max(ab ? (ab.rounds || 1) : 0, ba ? (ba.rounds || 1) : 0),
+      date: [ab ? ab.date || "" : "", ba ? ba.date || "" : ""].sort().pop() || ""
+    };
+  }
+
+  /* 0..1: how much the readings alone say about a pair. One side speaking is
+     a claim and both sides an account - the same rule the written notes below
+     follow - and every further round adds a little, flattening off after
+     ROUND_CAP so a pair that meets weekly does not run away from the rest of
+     the map. */
+  var ROUND_CAP = 4;
+
+  function feelingWeight(a, b) {
+    var f = pairFeeling(a, b);
+    if (!f.sides) return 0;
+    return Math.min(1, 0.34 + (f.sides === 2 ? 0.22 : 0) +
+      Math.min(Math.max(f.rounds - 1, 0), ROUND_CAP - 1) * 0.11);
+  }
+
+  /* Which tone a pair reads as on the map and in the legend. The named edge
+     type wins where there is one - what two parts *are* to each other is
+     structural, and one tense meeting does not turn a protector into an
+     enemy. Where nothing has been named, the readings speak instead, which
+     is how a meeting can give an unmapped thread a colour without anyone
+     inventing an edge type for it. */
+  function pairTone(a, b) {
+    if (!a || !b) return "unknown";
+    var r = ((a.relationships || []).filter(function (x) { return x.part === b.slug; })[0]) ||
+            ((b.relationships || []).filter(function (x) { return x.part === a.slug; })[0]);
+    if (r) return EDGE_TONE[r.type] || "unknown";
+    var f = pairFeeling(a, b);
+    return f.sides ? feelingTone(f.avg) : "unknown";
   }
 
   /* ---- How much has actually been said about a relationship ----
@@ -386,7 +560,8 @@
      base; the depth of each side's note earns most of the rest; both sides
      having spoken earns the last of it - a relationship only one part
      describes is a claim, not yet a mutual account. Returns 0 for a pair
-     nobody has mapped, which is what keeps the faint threads faint. */
+     nobody has mapped and nobody has taken a reading on, which is what keeps
+     the faint threads faint. */
   function edgeWeight(a, b) {
     if (!a || !b || !a.slug || !b.slug) return 0;
     var depth = 0, sides = 0;
@@ -396,8 +571,14 @@
       sides++;
       depth += signalWeight(r.notes);
     });
-    if (!sides) return 0;
-    return Math.min(1, 0.3 + (depth / 2) * 0.55 + (sides === 2 ? 0.15 : 0));
+    var said = sides ? Math.min(1, 0.3 + (depth / 2) * 0.55 + (sides === 2 ? 0.15 : 0)) : 0;
+    var felt = feelingWeight(a, b);
+    /* Two independent accounts of the same thread: what was written about it
+       in a mapping session, and what the parts said they felt in the room.
+       Either carries a line on its own, and a pair that has both saturates
+       faster than either would - combined so neither can push past 1 and a
+       thread can only ever thicken as more is known. */
+    return said + felt - said * felt;
   }
 
   /* Which part has gone quietest - the one the daily ritual offers first.
@@ -427,6 +608,10 @@
     EDGE_MIRROR: EDGE_MIRROR,
     EDGE_TONE: EDGE_TONE,
     TONE_LABELS: TONE_LABELS,
+    FEELINGS: FEELINGS,
+    feeling: feeling,
+    feelingLabel: feelingLabel,
+    feelingTone: feelingTone,
     NARRATIVE_SECTIONS: NARRATIVE_SECTIONS,
     slugify: slugify,
     initial: initial,
@@ -436,6 +621,7 @@
     dataScore: dataScore,
     signalWeight: signalWeight,
     coverageScore: coverageScore,
+    normalizeFeelings: normalizeFeelings,
     mergeParts: mergeParts,
     mergeDuplicate: mergeDuplicate,
     normalizePart: normalizePart,
@@ -443,7 +629,13 @@
     daysBetween: daysBetween,
     lastSessionISO: lastSessionISO,
     HEAT_DAYS: HEAT_DAYS,
+    heatFrom: heatFrom,
     partHeat: partHeat,
+    getFeeling: getFeeling,
+    setFeeling: setFeeling,
+    pairFeeling: pairFeeling,
+    feelingWeight: feelingWeight,
+    pairTone: pairTone,
     edgeWeight: edgeWeight,
     quietestPart: quietestPart
   };

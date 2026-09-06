@@ -472,6 +472,14 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .swarm .edge.conflicts-with { stroke: var(--warn); stroke-dasharray: 2 5; }
 /* the unasked question: every pair of parts already relates somehow */
 .swarm .edge.implicit { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 1 6; }
+/* felt but still unnamed: the parts said how they feel about each other at a
+   table meeting, so the thread has substance and a tone - and keeps its
+   dashes, because what they are to each other is still an open question */
+.swarm .edge.felt { stroke: var(--unknown); stroke-dasharray: 5 4; }
+.swarm .edge.felt.warm { stroke: var(--good); }
+.swarm .edge.felt.cool { stroke: var(--warn); }
+/* a thread the parts have spoken about reads as laid down, not drawn */
+.swarm .edge.rated { stroke-linecap: round; }
 /* invisible, fat, and the only thing a finger has to hit */
 .swarm .edge-hit { stroke: transparent; stroke-width: 18; fill: none; cursor: pointer; }
 .swarm .edgelabel { font-size: 9px; fill: var(--ink-faint); text-anchor: middle; }
@@ -593,6 +601,26 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   text-transform: uppercase; color: var(--ink-dim); margin-bottom: 3px;
 }
 .prevrow .taglist { margin-top: 2px; }
+
+/* ================= readings (how a part feels toward another) ================= */
+.rt-row { margin: 0 0 14px; }
+.rt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.rt-who { font-weight: 600; font-size: .92rem; }
+.rt-said { font-size: .72rem; color: var(--ink-faint); }
+.likert { display: flex; gap: 4px; }
+.likert button {
+  flex: 1; padding: 9px 2px; border-radius: 10px; font-size: .66rem; font-weight: 600;
+  background: var(--surface2); border: 1px solid var(--line); color: var(--ink-dim);
+  line-height: 1.15;
+}
+.likert button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.likert button .lk-n { display: block; font-size: .82rem; margin-bottom: 1px; }
+/* the shift a round records: where a pair moved since the last one */
+.shiftrow { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: .84rem; }
+.shiftrow:last-child { border-bottom: 0; }
+.shiftrow .sh-move { margin-left: auto; font-size: .74rem; font-weight: 600; color: var(--ink-faint); }
+.shiftrow .sh-move.up { color: var(--good); }
+.shiftrow .sh-move.down { color: var(--warn); }
 
 .seg { display: flex; background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
 .seg button { flex: 1; padding: 9px 4px; border-radius: 9px; font-size: .82rem; font-weight: 600; color: var(--ink-dim); }

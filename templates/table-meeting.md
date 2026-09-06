@@ -67,7 +67,35 @@ As Self, close with:
   concern seriously without letting any single part drive. Flag it clearly as a
   synthesis for the person to consider — the person decides.
 
-### 5. Close the table
+### 5. Round the table
+
+Go once around the seated parts. Ask each one, by name, how it is feeling
+toward each of the others **right now** — the Self-check question ("how are you
+feeling toward this part right now?") asked of a part about its neighbour, at
+the one moment they have all been in the room together.
+
+Each part answers in its own voice and picks one point on this scale:
+
+| | | |
+|---|---|---|
+| 1 | **hostile** | I want it gone |
+| 2 | **wary** | I do not trust it |
+| 3 | **neutral** | nothing much either way |
+| 4 | **warm** | I am glad it is here |
+| 5 | **close** | I would stand with it |
+
+A part may decline to say, and declining is an answer — never guess one on its
+behalf. Keep it to one line per part, naming who it means. The readings are
+directed and dated: what A feels toward B is not what B feels back, and neither
+is permanent.
+
+Record them in each part's `feelings` list (see `schema/part-schema.md`),
+written to the **rater's** profile only, since a reading is that part's to give.
+Where a pair has been round before, the previous reading moves to `prev` and
+`rounds` climbs by one, so the profile carries the direction of travel and not
+only where things ended up. Nothing else in the profile changes.
+
+### 6. Close the table
 
 - Thank each part by name, including observers and decliners.
 - Ask: "Does any part want something noted before we end?"

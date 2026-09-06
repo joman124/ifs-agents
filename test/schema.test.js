@@ -258,6 +258,131 @@ module.exports = function (t) {
   t.eq(S.edgeWeight(bothDeep[1], bothDeep[0]), S.edgeWeight(bothDeep[0], bothDeep[1]),
     "weight is symmetric - a thread has one thickness from either end");
 
+  /* --- readings: how a part says it feels toward another, right now --- */
+  var critic = part("The Critic"), dreamer = part("The Dreamer");
+  critic.slug = "the-critic"; dreamer.slug = "the-dreamer";
+
+  t.eq(S.getFeeling(critic, "the-dreamer"), null, "a part with no readings has none to give");
+  t.eq(S.setFeeling(critic, "the-dreamer", 9, TODAY), null, "a rating off the scale is refused");
+  t.eq(S.setFeeling(critic, "the-critic", 4, TODAY), null, "a part cannot rate itself");
+  t.eq(critic.feelings, [], "and neither refusal leaves anything behind");
+
+  t.eq(S.setFeeling(critic, "the-dreamer", 2, "2026-08-10").current, true,
+    "a first reading is the one the map reads out");
+  var f1 = S.getFeeling(critic, "the-dreamer");
+  t.eq([f1.rating, f1.rounds, f1.prev], [2, 1, 0], "a first reading starts at one round with nothing before it");
+
+  S.setFeeling(critic, "the-dreamer", 4, TODAY);
+  var f2 = S.getFeeling(critic, "the-dreamer");
+  t.eq([f2.rating, f2.prev, f2.rounds, f2.date], [4, 2, 2, TODAY],
+    "a second reading keeps the first as prev and climbs the round count");
+  t.eq(critic.feelings.length, 1, "one entry per direction, not one per round");
+
+  /* --- a round recorded against a meeting that already happened ---
+     The whole risk of back-filling: an older reading must not present itself
+     as where the two parts stand now. */
+  var back = S.setFeeling(critic, "the-dreamer", 1, "2026-07-01");
+  var f3 = S.getFeeling(critic, "the-dreamer");
+  t.eq(back.current, false, "a reading older than the stored one is not the current one");
+  t.eq([f3.rating, f3.date], [4, TODAY],
+    "so back-filling a past meeting leaves today's reading standing");
+  t.eq(f3.rounds, 3, "but the round still counts - that meeting happened");
+  t.eq(f3.prev, 2, "and a truer 'reading before' is not overwritten by an older one");
+
+  var noPrev = part("NoPrev");
+  noPrev.slug = "no-prev";
+  S.setFeeling(noPrev, "the-dreamer", 5, TODAY);
+  S.setFeeling(noPrev, "the-dreamer", 3, "2026-06-01");
+  var f4 = S.getFeeling(noPrev, "the-dreamer");
+  t.eq([f4.rating, f4.prev, f4.rounds], [5, 3, 2],
+    "where nothing sat in prev, the back-filled reading is exactly the one before");
+
+  var sameDay = part("SameDay");
+  sameDay.slug = "same-day";
+  S.setFeeling(sameDay, "the-dreamer", 2, TODAY);
+  t.eq(S.setFeeling(sameDay, "the-dreamer", 5, TODAY).current, true,
+    "two rounds on one day: the later call still stands as current");
+  t.eq(S.getFeeling(sameDay, "the-dreamer").rating, 5, "and its rating is the one kept");
+
+  /* Directed and never mirrored: a reading is the rater's to give. */
+  t.eq(S.getFeeling(dreamer, "the-critic"), null,
+    "rating another part writes nothing to that part's own profile");
+  S.setFeeling(dreamer, "the-critic", 1, TODAY);
+  var both = S.pairFeeling(critic, dreamer);
+  t.eq([both.ab, both.ba, both.sides], [4, 1, 2], "a pair reads both directions, in order");
+  t.eq(S.pairFeeling(dreamer, critic).ab, 1, "and the other way round from the other end");
+  t.eq(S.pairFeeling(critic, part("Stranger")).sides, 0, "an unrated pair has no sides");
+
+  t.eq(S.feelingTone(5), "positive", "close reads as supportive");
+  t.eq(S.feelingTone(1), "negative", "hostile reads as in tension");
+  t.eq(S.feelingTone(3), "unknown", "neutral is not a tone - it is an answer");
+
+  /* The point of the feature: a round of the table thickens the thread. */
+  var r1 = part("R1"), r2 = part("R2");
+  r1.slug = "r1"; r2.slug = "r2";
+  t.eq(S.edgeWeight(r1, r2), 0, "an unmapped, unrated pair is still weightless");
+  S.setFeeling(r1, "r2", 3, "2026-08-01");
+  var oneRead = S.edgeWeight(r1, r2);
+  t.ok(oneRead > 0, "one reading gives an unmapped thread substance of its own");
+  S.setFeeling(r2, "r1", 3, "2026-08-01");
+  var bothRead = S.edgeWeight(r1, r2);
+  t.ok(bothRead > oneRead, "both sides answering outweighs one of them doing so");
+  S.setFeeling(r1, "r2", 4, "2026-08-08");
+  S.setFeeling(r2, "r1", 4, "2026-08-08");
+  t.ok(S.edgeWeight(r1, r2) > bothRead, "a second round thickens the thread again");
+  var runaway = r1, runaway2 = r2;
+  for (var k = 0; k < 20; k++) {
+    S.setFeeling(runaway, "r2", 5, TODAY);
+    S.setFeeling(runaway2, "r1", 5, TODAY);
+  }
+  t.ok(S.edgeWeight(r1, r2) <= 1, "no number of rounds pushes a thread past full thickness");
+  var beforeBackfill = S.edgeWeight(r1, r2);
+  S.setFeeling(r1, "r2", 1, "2026-01-01");
+  t.ok(S.edgeWeight(r1, r2) >= beforeBackfill,
+    "recording a past meeting only ever thickens a thread, never thins it");
+  t.eq(S.edgeWeight(r1, r2), S.edgeWeight(r2, r1), "readings keep the weight symmetric");
+
+  /* Written notes and readings are two accounts of one thread; a pair with
+     both should read as better known than a pair with either. */
+  var told = pair("Every time it eases off I have to work twice as hard to cover for us.", null);
+  var toldWeight = S.edgeWeight(told[0], told[1]);
+  S.setFeeling(told[0], "b", 2, TODAY);
+  t.ok(S.edgeWeight(told[0], told[1]) > toldWeight,
+    "a reading adds to what was already written about a pair");
+
+  /* Tone: the named edge wins, and the readings speak only where nothing
+     has been named. */
+  t.eq(S.pairTone(told[0], told[1]), "negative", "a named edge takes its tone from its type");
+  t.eq(S.pairTone(r1, r2), "positive", "an unnamed pair takes its tone from what the parts felt");
+  t.eq(S.pairTone(part("X"), part("Y")), "unknown", "and an unasked pair has no tone at all");
+
+  /* Merges must not lose a round: it is a meeting that actually happened. */
+  var mBase = part("M"), mIn = part("M");
+  mBase.feelings = [{ part: "the-dreamer", rating: 2, date: "2026-08-01", rounds: 3, prev: 1 },
+                    { part: "the-planner", rating: 5, date: "2026-08-02", rounds: 1, prev: 0 }];
+  mIn.feelings = [{ part: "the-dreamer", rating: 4, date: "2026-08-09", rounds: 1, prev: 0 }];
+  var mm = S.mergeParts(mBase, mIn);
+  var kept = mm.feelings.filter(function (f) { return f.part === "the-planner"; })[0];
+  var folded = mm.feelings.filter(function (f) { return f.part === "the-dreamer"; })[0];
+  t.ok(!!kept, "a reading the incoming profile never mentioned is kept, not deleted");
+  t.eq(folded.rating, 4, "where both hold a direction, the later reading stands");
+  t.eq(folded.rounds, 3, "but the round count only ever climbs");
+
+  /* --- readings out of a hand-edited backup --- */
+  var dirty = S.normalizePart({ name: "Dirty", feelings: [
+    { part: "the-dreamer", rating: 4, date: "2026-08-09", rounds: 2, prev: 3 },
+    { part: "the-dreamer", rating: 1, date: "2026-07-01", rounds: 5 },
+    { part: "the-planner", rating: 11 },
+    { part: "", rating: 3 },
+    { rating: 2 },
+    "not even an object"
+  ] });
+  t.eq(dirty.feelings.length, 1, "an off-scale, unnamed or malformed reading is dropped");
+  t.eq(dirty.feelings[0].rating, 4, "a slug recorded twice keeps the later reading");
+  t.eq(dirty.feelings[0].rounds, 5, "and the larger round count of the two");
+  t.eq(S.normalizePart({ name: "None" }).feelings, [],
+    "a profile with no feelings block still has an empty one");
+
   /* --- who the daily check-in offers first --- */
   var quiet = seen("Quiet", ["2026-02-01"]);
   var recent = seen("Recent", [TODAY]);

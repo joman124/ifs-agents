@@ -232,6 +232,14 @@
     return lines.join("\n");
   }
 
+  /* The five points the app records, spelled out for the model so the words
+     it puts in the parts' mouths are the words the person then taps. */
+  function feelingScale() {
+    return S.FEELINGS.map(function (f) {
+      return f.label.toLowerCase() + " (" + f.blurb + ")";
+    }).join(", ");
+  }
+
   function meeting(parts, material, table) {
     var atTable = table && table.built && table.seats;
     var seated = [], benched = [];
@@ -261,7 +269,8 @@
       "2. Opening round: each seated part in turn - first reaction, what I see, fears/hopes, what I'd do, what I need. Let anxious protectors go first.",
       "3. Discussion round: one or two exchanges through you as facilitator, prioritizing known polarizations and protective pairs from the relationship edges. Keep to the material at hand.",
       "4. Self synthesis: where the parts agree; where they're polarized on THIS material; what each part needs for the path forward to feel safe; a Self-led recommendation flagged clearly as a synthesis for the person to consider - the person decides.",
-      "5. Close: thank each part by name; 'does any part want something noted before we end?'",
+      "5. Round the table: go once around the seated parts and ask each one, by name, how it is feeling toward each of the others right now - the Self-check question, asked of a part about its neighbour. Each part answers in its own voice and picks one word from this scale: " + feelingScale() + ". A part may decline to say, and declining is an answer; never guess one on its behalf. Keep the whole round short - one line per part, naming who it means. When the round is done, say plainly that the app can record these readings, and that they thicken the threads between those parts on the map.",
+      "6. Close: thank each part by name; 'does any part want something noted before we end?'",
       "",
       "Pace it for a phone: run the meeting across several messages, pausing so the person can respond or redirect between rounds - do not dump the whole meeting at once. If the material turns out to touch something too tender, adjourn early with care.",
       "",

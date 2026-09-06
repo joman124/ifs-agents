@@ -8,9 +8,10 @@ module.exports = function (t) {
   function fresh() {
     var env = H.load(["schema", "store"]);
     env.IFS.store.load();
-    env.add = function (name, edges) {
+    env.add = function (name, edges, feelings) {
       var p = env.IFS.schema.blankPart(name);
       p.relationships = edges || [];
+      p.feelings = feelings || [];
       env.IFS.store.upsertPart(p);
       return p;
     };
@@ -20,7 +21,8 @@ module.exports = function (t) {
   /* --- renaming carries the whole part with it --- */
   var a = fresh();
   a.add("The Critic");
-  a.add("The Planner", [{ part: "the-critic", type: "protects", notes: "steps in first" }]);
+  a.add("The Planner", [{ part: "the-critic", type: "protects", notes: "steps in first" }],
+        [{ part: "the-critic", rating: 2, date: "2026-08-01", rounds: 1, prev: 0 }]);
   a.IFS.store.saveTable({ built: true, seats: { "the-critic": "table", "the-planner": "room" } });
 
   var renamed = a.IFS.store.getPart("the-critic");
@@ -32,6 +34,8 @@ module.exports = function (t) {
     "an inbound edge follows the rename instead of being dropped");
   t.eq(a.IFS.store.state.table.seats["the-watchman"], "table", "the part keeps its chair");
   t.eq(a.IFS.store.state.table.seats["the-critic"], undefined, "and gives up the old one");
+  t.eq(a.IFS.store.getPart("the-planner").feelings[0].part, "the-watchman",
+    "a reading taken of the renamed part follows it, the way an edge does");
 
   /* --- renaming onto an occupied slug must not eat the occupant --- */
   var b = fresh();
@@ -47,7 +51,9 @@ module.exports = function (t) {
   var c = fresh();
   c.add("The Critic");
   c.add("Critic Dup");
-  c.add("The Planner", [{ part: "critic-dup", type: "protects", notes: "" }]);
+  c.add("The Planner", [{ part: "critic-dup", type: "protects", notes: "" }],
+        [{ part: "critic-dup", rating: 4, date: "2026-08-02", rounds: 2, prev: 3 },
+         { part: "the-critic", rating: 2, date: "2026-08-01", rounds: 1, prev: 0 }]);
   c.IFS.store.saveTable({ built: true, seats: { "critic-dup": "table" } });
   c.IFS.store.absorbPart("the-critic", "critic-dup");
 
@@ -56,14 +62,23 @@ module.exports = function (t) {
   t.eq(c.IFS.store.state.table.seats["the-critic"], "table", "the survivor inherits the chair");
   t.eq(c.IFS.store.getPart("the-planner").relationships[0].part, "the-critic",
     "edges that named the absorbed part are repointed at the survivor");
+  var absorbedFeel = c.IFS.store.getPart("the-planner").feelings;
+  t.eq(absorbedFeel.length, 1,
+    "two readings, one of each half, collapse into one rather than both surviving");
+  t.eq([absorbedFeel[0].part, absorbedFeel[0].rating, absorbedFeel[0].rounds],
+    ["the-critic", 4, 2],
+    "and the survivor keeps the later reading with the larger round count");
 
   /* --- deleting gives up edges and the chair --- */
   var d = fresh();
   d.add("The Critic");
-  d.add("The Planner", [{ part: "the-critic", type: "protects", notes: "" }]);
+  d.add("The Planner", [{ part: "the-critic", type: "protects", notes: "" }],
+        [{ part: "the-critic", rating: 3, date: "2026-08-01", rounds: 1, prev: 0 }]);
   d.IFS.store.saveTable({ built: true, seats: { "the-critic": "away" } });
   d.IFS.store.deletePart("the-critic");
   t.eq(d.IFS.store.getPart("the-planner").relationships.length, 0, "a dangling edge is removed");
+  t.eq(d.IFS.store.getPart("the-planner").feelings.length, 0,
+    "and so is a reading pointing at a part that no longer exists");
   t.eq(d.IFS.store.state.table.seats["the-critic"], undefined, "a deleted part gives up its chair");
 
   /* --- a hand-edited backup must not brick the Parts tab --- */

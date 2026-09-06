@@ -354,6 +354,14 @@
         out.push({ part: target, type: r.type, notes: r.notes || "" });
       });
       p.relationships = out;
+      /* Readings taken toward either half now point at the survivor. Two of
+         them collapsing into one is the same case the edges above handle:
+         normalizeFeelings keeps the later reading and the larger round count
+         rather than dropping one of them. */
+      p.feelings = S.normalizeFeelings((p.feelings || []).map(function (f) {
+        return { part: f.part === absorbSlug ? keepSlug : f.part, rating: f.rating,
+                 date: f.date, rounds: f.rounds, prev: f.prev };
+      }));
     });
 
     // the survivor takes the chair if it had none of its own
@@ -382,6 +390,9 @@
       (state.parts[k].relationships || []).forEach(function (r) {
         if (r.part === oldSlug) r.part = newSlug;   // inbound edges follow it
       });
+      (state.parts[k].feelings || []).forEach(function (f) {
+        if (f.part === oldSlug) f.part = newSlug;   // and so do the readings
+      });
     });
     if (state.table.seats[oldSlug]) {              // and so does its chair
       state.table.seats[newSlug] = state.table.seats[oldSlug];
@@ -400,6 +411,7 @@
     Object.keys(state.parts).forEach(function (k) {
       var p = state.parts[k];
       p.relationships = (p.relationships || []).filter(function (r) { return r.part !== slug; });
+      p.feelings = (p.feelings || []).filter(function (f) { return f.part !== slug; });
     });
     delete state.table.seats[slug]; // and its chair at the table
     save();
@@ -413,6 +425,17 @@
     if (state.table.meetings.length > 60) state.table.meetings = state.table.meetings.slice(-60);
     save();
     return m.id;
+  }
+
+  /* Patch a meeting card in place. A round of readings is taken after the
+     meeting has already been filed, so the card has to be able to learn what
+     happened at the end of its own meeting. */
+  function updateMeeting(id, patch) {
+    var m = state.table.meetings.filter(function (x) { return x.id === id; })[0];
+    if (!m) return null;
+    Object.assign(m, patch);
+    save();
+    return m;
   }
 
   function addTranscript(t) {
@@ -762,6 +785,7 @@
     deletePart: deletePart,
     addTranscript: addTranscript,
     addMeeting: addMeeting,
+    updateMeeting: updateMeeting,
     deleteTranscript: deleteTranscript,
     exportAll: exportAll,
     importAll: importAll,

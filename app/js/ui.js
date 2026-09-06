@@ -425,15 +425,28 @@
       ? '<button class="btn btn-primary btn-big" id="pfAsk">Ask ' + esc(p.name) + " about " + esc(S.CATEGORY_LABELS[next].toLowerCase()) + "</button>"
       : (unconnected ? '<button class="btn btn-primary btn-big" id="pfLink">Connect ' + esc(p.name) + " to another part</button>" : "");
 
-    var relHTML = (p.relationships && p.relationships.length)
-      ? p.relationships.map(function (r) {
-          var other = ST.getPart(r.part);
+    /* A part it has only ever rated at the table belongs in this list too:
+       "we have not named what this is, but I know how I feel about them" is
+       a relationship, and leaving it out would hide what a round recorded. */
+    var relSlugs = [], relSeen = {};
+    (p.relationships || []).concat(p.feelings || []).forEach(function (r) {
+      if (!relSeen[r.part]) { relSeen[r.part] = 1; relSlugs.push(r.part); }
+    });
+    var relHTML = relSlugs.length
+      ? relSlugs.map(function (slug) {
+          var r = (p.relationships || []).filter(function (x) { return x.part === slug; })[0];
+          var f = S.getFeeling(p, slug);
+          var other = ST.getPart(slug);
           // an edge naming a part that isn't here can't be drawn on the map -
           // say so rather than showing a bare slug that looks like a name
-          return '<div class="sessionrow"><span class="sr-mode">' + esc(r.type.replace(/-/g, " ")) + "</span><span>" +
-            esc(other ? other.name : r.part) +
+          return '<div class="sessionrow"><span class="sr-mode">' +
+            esc(r ? r.type.replace(/-/g, " ") : "not named yet") + "</span><span>" +
+            esc(other ? other.name : slug) +
             (other ? "" : ' <span class="dim">— not in your library yet</span>') +
-            (r.notes ? ' <span class="dim">' + esc(r.notes) + "</span>" : "") + "</span></div>";
+            (r && r.notes ? ' <span class="dim">' + esc(r.notes) + "</span>" : "") +
+            (f ? ' <span class="dim">feels ' + esc(S.feelingLabel(f.rating).toLowerCase()) +
+                 (f.rounds > 1 ? " after " + f.rounds + " rounds" : "") + "</span>" : "") +
+            "</span></div>";
         }).join("")
       : '<div class="prose none">' + (others.length
           ? "no mapped relationships yet - use Connect to another part below"
@@ -1912,6 +1925,7 @@
        made of it. Built from the transcript, so it costs no extra call.
        Colours are resolved while `session` is still live, which is what makes
        the card match the meeting the person just watched. */
+    var meetingId = "";
     if (sess.mode === "meeting") {
       var names = sess.slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; });
       var turns = sess.messages.filter(function (m) { return m.role === "assistant" && !m.hidden; })
@@ -1919,7 +1933,7 @@
       var sum = MD.summarizeMeeting(turns, names);
       if (sum.voices.length || sum.synthesis) {
         sum.voices.forEach(function (v) { v.color = voiceColor(v.name); });
-        ST.addMeeting({
+        meetingId = ST.addMeeting({
           date: S.todayISO(),
           topic: MD.firstSentences(sess.material, 1, 90),
           parts: sess.slugs.slice(),
@@ -1931,19 +1945,32 @@
     }
     ST.clearDraft();
     var wasMeeting = sess.mode === "meeting";
+    /* The last question of the script, and the only one that changes the map:
+       who felt what toward whom by the end. Offered rather than asked, like
+       everything else here, and read off the slugs before the session is
+       dropped. */
+    var roundSlugs = wasMeeting ? sess.slugs.slice() : [];
     session = null;
     panelOnClose = null;
     closePanel();
     renderParts();
     if (wasMeeting) renderTable();   // the new card belongs on the tab behind this
 
+    var round = function (delay) {
+      if (roundSlugs.length < 2) return false;
+      setTimeout(function () { offerRound(roundSlugs, meetingId); }, delay);
+      return true;
+    };
+
     if (!incoming.length) {
       toast(interviewish ? "Transcript saved - extract it anytime from Settings" : "Session saved");
+      round(700);
       return;
     }
     reviewMerge(incoming, function (saved) {
-      if (!saved.length) { toast("Transcript kept - profiles unchanged"); return; }
+      if (!saved.length) { toast("Transcript kept - profiles unchanged"); round(700); return; }
       toast("Profile saved: " + saved.map(function (p) { return p.name; }).join(", "));
+      if (round(500)) return;
       // one part, freshly deepened, still floating alone -> offer to connect it
       var p = saved.length === 1 ? ST.getPart(saved[0].slug) : null;
       if (p && !(p.relationships || []).length && ST.listParts().length > 1) {
@@ -2002,18 +2029,15 @@
      legend doubles as a read on how much of the system is still unmapped. */
   function renderLegend(parts) {
     var counts = { positive: 0, negative: 0, unknown: 0 };
-    var seen = {};
-    parts.forEach(function (p) {
-      (p.relationships || []).forEach(function (r) {
-        if (!ST.getPart(r.part)) return;
-        var k = [p.slug, r.part].sort().join("|");
-        if (seen[k]) return;
-        seen[k] = 1;
-        counts[S.EDGE_TONE[r.type] || "unknown"]++;
-      });
-    });
-    var pairs = (parts.length * (parts.length - 1)) / 2;
-    counts.unknown = Math.max(0, pairs - Object.keys(seen).length);
+    /* Every pair, counted once, in the tone the map actually draws it: a
+       named edge by its type, an unnamed one by what the parts said they
+       felt at the table. Counting only the named ones left the legend
+       disagreeing with the map the moment a round gave a thread a colour. */
+    for (var i = 0; i < parts.length; i++) {
+      for (var j = i + 1; j < parts.length; j++) {
+        counts[S.pairTone(parts[i], parts[j])]++;
+      }
+    }
 
     var row = function (tone, swatch) {
       return '<button class="lg' + (mapTone === tone ? " on" : "") + '" data-tone="' + tone + '">' +
@@ -2097,6 +2121,7 @@
     var a = ST.getPart(aSlug), b = ST.getPart(bSlug);
     if (!a || !b) return;
     var existing = (a.relationships || []).filter(function (r) { return r.part === bSlug; })[0];
+    var fAB = S.getFeeling(a, bSlug), fBA = S.getFeeling(b, aSlug);
     // grouped by tone, so the choice reads as supportive / in tension first
     // and the exact IFS edge type second
     var groups = [
@@ -2114,7 +2139,7 @@
       '<h2 class="sheet-title serif">' + esc(a.name) + " &amp; " + esc(b.name) + "</h2>" +
       '<p class="dim">' + (existing
         ? "Mapped as <b>" + esc(existing.type.replace(/-/g, " ")) + "</b> — saving replaces it on both profiles."
-        : "These two share a system, so something already passes between them. Name it, and it is written to both profiles.") + "</p>" +
+        : "These two share a system, so something already passes between them. Name it, or just say how each feels about the other, and it is written to both profiles.") + "</p>" +
       '<div class="seg" id="relType" style="flex-direction:column;gap:3px">' +
       groups.map(function (grp) {
         return '<div class="rel-tone ' + grp.tone + '">' + esc(S.TONE_LABELS[grp.tone]) + "</div>" +
@@ -2126,6 +2151,12 @@
       "</div>" +
       '<label class="fieldlabel">Describe the relationship</label>' +
       '<textarea id="relNote" placeholder="What happens between them? e.g. when one pushes to publish, the other floods me with doubt...">' + esc((existing && existing.notes) || "") + "</textarea>" +
+      '<label class="fieldlabel">How each feels toward the other, right now</label>' +
+      '<p class="dim" style="margin:0 2px 10px">Optional, and each side answers for itself. Every reading thickens this thread on the map.</p>' +
+      '<div id="relFeel">' +
+      likertRowHTML(b, fAB && fAB.rating, fAB && fAB.prev, a.name + " \u2192 " + b.name) +
+      likertRowHTML(a, fBA && fBA.rating, fBA && fBA.prev, b.name + " \u2192 " + a.name) +
+      "</div>" +
       '<div style="height:14px"></div>' +
       '<button class="btn btn-primary btn-big" id="relSave">' + (existing ? "Update both profiles" : "Add to both profiles") + "</button>" +
       (existing
@@ -2133,6 +2164,7 @@
         : '<button class="btn btn-ghost btn-big" id="relSkip">Leave it unmapped for now</button>') +
       '<div id="relMsg"></div>'
     );
+    bindLikert("#relFeel");
     bind("#relSkip", closeSheet);
     bind("#relClear", function () {
       clearEdge(aSlug, bSlug);
@@ -2148,15 +2180,32 @@
     });
     $("#relSave").addEventListener("click", function () {
       var sel = document.querySelector("#relType button.on");
-      if (!sel) {
-        $("#relMsg").innerHTML = '<div class="readiness no" style="margin-top:12px">Pick how they relate first.</div>';
+      /* A row's data-to is who the reading is *about*, so the other part of
+         the pair is the one who gave it. */
+      var picked = readLikert("#relFeel");
+      var readings = {};
+      Object.keys(picked).forEach(function (to) {
+        var from = to === bSlug ? aSlug : bSlug;
+        (readings[from] = readings[from] || {})[to] = picked[to];
+      });
+      var anyRead = Object.keys(readings).length > 0;
+      if (!sel && !anyRead) {
+        $("#relMsg").innerHTML = '<div class="readiness no" style="margin-top:12px">Pick how they relate, or take a reading.</div>';
         return;
       }
-      drawEdge(aSlug, bSlug, sel.dataset.val, $("#relNote").value.trim());
+      // the edge first: applyRound re-reads each part from the store, so
+      // writing it second would drop whatever drawEdge had just put there
+      if (sel) drawEdge(aSlug, bSlug, sel.dataset.val, $("#relNote").value.trim());
+      var changes = anyRead ? applyRound(readings, S.todayISO()) : [];
       closeSheet(); buzz(12);
+      renderParts();
       if (currentView === "map") renderMap();
       if (after) after();
-      toast("Mapped: " + a.name + " & " + b.name + " — saved to both profiles");
+      var read = changes.length + (changes.length === 1 ? " reading" : " readings");
+      toast(sel
+        ? "Mapped: " + a.name + " & " + b.name +
+          (changes.length ? " — saved with " + read : " — saved to both profiles")
+        : read + " saved — the thread has thickened");
     });
   }
 
@@ -2200,6 +2249,223 @@
       }
       ST.upsertPart(p);
     });
+  }
+
+  /* ================= readings: a round of the table =================
+     A meeting is the one time every part is in the room together, and it used
+     to end leaving the map exactly as it found it. This is the last question
+     of the script, asked of each part in turn: "how are you feeling toward
+     the others right now?" - the practitioner's Self-check, turned around and
+     asked of a part about its neighbour. Five points, directed, dated. The
+     answers thicken the threads between those parts on the map, a little more
+     with every meeting they sit through, so a system that keeps meeting looks
+     like one. */
+
+  /* One neighbour, five points. The last reading is shown but never
+     pre-selected: a round that records itself when someone taps Next would
+     thicken the map on nobody's word. */
+  function likertRowHTML(target, current, prev, heading) {
+    var said = current
+      ? "last: " + S.feelingLabel(current).toLowerCase() +
+        (prev ? ", was " + S.feelingLabel(prev).toLowerCase() : "")
+      : "";
+    return '<div class="rt-row" data-to="' + esc(target.slug) + '">' +
+      '<div class="rt-head"><span class="rt-who">' + esc(heading || target.name) + "</span>" +
+      (said ? '<span class="rt-said">' + esc(said) + "</span>" : "") + "</div>" +
+      '<div class="likert">' + S.FEELINGS.map(function (f) {
+        return '<button data-val="' + f.val + '" title="' + esc(f.blurb) + '">' +
+          '<span class="lk-n">' + f.val + "</span>" + esc(f.label) + "</button>";
+      }).join("") + "</div></div>";
+  }
+
+  /* Pills are single-choice per row. Bound to the rows themselves rather than
+     to #panelBody, which survives every openPanel and would stack a listener
+     per step of the round. */
+  function bindLikert(scope) {
+    document.querySelectorAll(scope + " .rt-row").forEach(function (row) {
+      row.addEventListener("click", function (ev) {
+        var btn = ev.target.closest("button[data-val]");
+        if (!btn) return;
+        row.querySelectorAll(".likert button").forEach(function (x) { x.classList.remove("on"); });
+        btn.classList.add("on");
+        buzz();
+      });
+    });
+  }
+
+  /* What is currently picked under `scope`, as { toSlug: rating }. */
+  function readLikert(scope) {
+    var out = {};
+    document.querySelectorAll(scope + " .rt-row").forEach(function (row) {
+      var on = row.querySelector(".likert button.on");
+      if (on) out[row.dataset.to] = +on.dataset.val;
+    });
+    return out;
+  }
+
+  /* Write a round to the parts that gave it. Readings live on the rater, not
+     on the pair: what The Critic feels toward The Dreamer is The Critic's to
+     say, and the reverse may be nothing like it. `dateISO` is the day the
+     round belongs to, which for a meeting recorded after the fact is that
+     meeting's date and not today. Returns what changed, so the round can be
+     shown back rather than only saved. */
+  function applyRound(picked, dateISO) {
+    var changes = [];
+    Object.keys(picked).forEach(function (from) {
+      var p = ST.getPart(from);
+      if (!p) return;
+      var rows = picked[from];
+      var said = [];
+      Object.keys(rows).forEach(function (to) {
+        var other = ST.getPart(to);
+        if (!other || to === from) return;
+        var before = S.getFeeling(p, to);
+        var set = S.setFeeling(p, to, rows[to], dateISO);
+        if (!set) return;
+        said.push(other.name + ": " + S.feelingLabel(rows[to]).toLowerCase());
+        changes.push({ from: p.name, to: other.name, rating: rows[to],
+                       was: before ? before.rating : 0,
+                       // false when a back-filled round sits behind a newer
+                       // reading: it still counts, but it is not where they
+                       // stand now, and saying so would be a lie
+                       current: set.current });
+      });
+      if (!said.length) return;
+      // a reading is something said about relationships, so the coverage flag
+      // climbs exactly the way drawing an edge makes it climb
+      if (p.coverage.relationships === "untouched") p.coverage.relationships = "partial";
+      p.narrative.relates_to_others = (p.narrative.relates_to_others ? p.narrative.relates_to_others + "\n\n" : "") +
+        dateISO + " - round the table: " + said.join("; ") + ".";
+      p.sessions.push({
+        date: dateISO, mode: "mapping", categories: ["relationships"],
+        note: "rated how it feels toward " + said.length + (said.length === 1 ? " part" : " parts") + " at the table"
+      });
+      ST.upsertPart(p);
+    });
+    return changes;
+  }
+
+  /* The round, shown back. The number that matters is not the rating but the
+     move: a part that was wary and is now merely neutral is the whole reason
+     for sitting down together, and it is invisible in a profile field. */
+  function roundSummarySheet(changes, when) {
+    // a round recorded against a past meeting sits behind whatever has been
+    // said since, so the sheet says so rather than claiming it is the news
+    var filed = changes.filter(function (c) { return !c.current; }).length;
+    openSheet(
+      '<h2 class="sheet-title serif">The round is in</h2>' +
+      '<p class="dim">' + changes.length + (changes.length === 1 ? " reading" : " readings") +
+      (when ? " from " + esc(when) : "") +
+      ", saved to the part that gave it. The threads between them have thickened on the map." +
+      (filed
+        ? " " + (filed === changes.length
+            ? (filed === 1 ? "It sits behind a more recent reading, so it is"
+                           : "They all sit behind more recent readings, so they are")
+            : (filed === 1 ? "One of them sits behind a more recent reading, so it is"
+                           : filed + " of them sit behind more recent readings, so they are")) +
+          " kept as history rather than as where those parts stand now."
+        : "") +
+      "</p>" +
+      changes.map(function (c) {
+        var delta = c.was ? c.rating - c.was : 0;
+        var move = !c.current ? "filed as history"
+          : (!c.was ? "first reading" : (delta > 0 ? "warmer" : (delta < 0 ? "cooler" : "unchanged")));
+        return '<div class="shiftrow"><span>' + esc(c.from) + " &rarr; " + esc(c.to) + "</span>" +
+          '<span class="dim">' + esc(S.feelingLabel(c.rating).toLowerCase()) + "</span>" +
+          '<span class="sh-move ' + (c.current ? (delta > 0 ? "up" : (delta < 0 ? "down" : "")) : "") + '">' +
+          esc(move) + "</span></div>";
+      }).join("") +
+      '<div style="height:14px"></div>' +
+      '<button class="btn btn-primary btn-big" id="rtMap">See it on the map</button>' +
+      '<button class="btn btn-ghost btn-big" id="rtDone">Close</button>'
+    );
+    bind("#rtMap", function () { closeSheet(); showView("map"); });
+    bind("#rtDone", closeSheet);
+  }
+
+  /* One screen per part: it rates every other part in the round at once, or
+     passes. Passing is a real answer - a part that will not say how it feels
+     about another has said something - so nothing is recorded for it.
+
+     opts.date puts the round on the day it belongs to rather than today,
+     which is how a meeting held weeks ago can still get its round. */
+  function roundOfTheTable(slugs, opts) {
+    opts = opts || {};
+    var parts = slugs.map(ST.getPart).filter(Boolean);
+    if (parts.length < 2) { toast("A round needs two parts still in your library"); return; }
+    var when = opts.date || S.todayISO();
+    var past = when !== S.todayISO();
+    var picked = {};
+    var i = 0, done = false;
+
+    function finish() {
+      if (done) return;
+      done = true;
+      var changes = applyRound(picked, when);
+      closePanel();
+      renderParts();
+      renderTable();
+      if (currentView === "map") renderMap();
+      if (!changes.length) { toast("Nothing recorded - the round is always optional"); return; }
+      if (opts.meetingId) {
+        var m = ST.state.table.meetings.filter(function (x) { return x.id === opts.meetingId; })[0];
+        // a round finished in two sittings adds to the card rather than
+        // replacing what the first one recorded
+        ST.updateMeeting(opts.meetingId, { readings: ((m && m.readings) || 0) + changes.length });
+      }
+      buzz(12);
+      setTimeout(function () { roundSummarySheet(changes, past ? when : ""); }, 260);
+    }
+
+    function step() {
+      if (i >= parts.length) { finish(); return; }
+      var p = parts[i];
+      var others = parts.filter(function (x) { return x.slug !== p.slug; });
+      openPanel("Round the table", p.name + " \u00b7 " + (i + 1) + " of " + parts.length,
+        '<div class="profile">' +
+        '<div class="qprogress"><i style="width:' + Math.round((i / parts.length) * 100) + '%"></i></div>' +
+        '<div class="card"><div class="qtext serif">How are you, ' + esc(p.name) +
+        ", feeling toward each of the others" + (past ? "?" : " right now?") + "</div>" +
+        '<div class="prose dim" style="margin-top:10px">Answer as ' + esc(p.name) +
+        ", in its voice. Leave any of them blank - a part that will not say is answering too." +
+        (past ? " This round belongs to the meeting of " + esc(when) +
+          ", so answer as it stood at the end of that one." : "") + "</div></div>" +
+        others.map(function (o) {
+          var f = S.getFeeling(p, o.slug);
+          return likertRowHTML(o, f && f.rating, f && f.prev);
+        }).join("") +
+        '<div class="profile-cta">' +
+        '<button class="btn btn-primary btn-big" id="rtNext">' +
+        (i === parts.length - 1 ? "Finish the round" : "Next part") + "</button>" +
+        '<button class="btn btn-soft btn-big" id="rtPass">' + esc(p.name) + " passes</button>" +
+        "</div></div>", "",
+        function () { if (Object.keys(picked).length) finish(); return true; });
+
+      bindLikert("#panelBody");
+      $("#rtNext").addEventListener("click", function () {
+        var rows = readLikert("#panelBody");
+        if (Object.keys(rows).length) picked[p.slug] = rows;
+        i++; buzz(); step();
+      });
+      $("#rtPass").addEventListener("click", function () { i++; buzz(); step(); });
+    }
+    step();
+  }
+
+  /* Offered the moment a meeting closes, while the room is still in mind. */
+  function offerRound(slugs, meetingId) {
+    if (slugs.filter(function (sl) { return !!ST.getPart(sl); }).length < 2) return;
+    openSheet(
+      '<h2 class="sheet-title serif">Before everyone leaves</h2>' +
+      '<p class="dim">The parts are still in the room. Ask each of them how it is feeling toward the others right now, and the threads between them thicken on the map &mdash; a little more with every meeting they sit through.</p>' +
+      '<button class="btn btn-primary btn-big" id="orGo">Round the table</button>' +
+      '<button class="btn btn-ghost btn-big" id="orNo">Not this time</button>'
+    );
+    bind("#orGo", function () {
+      closeSheet();
+      setTimeout(function () { roundOfTheTable(slugs, { meetingId: meetingId }); }, 220);
+    });
+    bind("#orNo", closeSheet);
   }
 
   /* ================= the table =================
@@ -2274,6 +2540,9 @@
       '<div class="profile-cta">' +
       '<button class="btn btn-primary btn-big" id="tbMeet"' + (seated.length >= 2 ? "" : " disabled") + ">Hold a meeting" +
       (seated.length >= 2 ? "" : " (seat two parts first)") + "</button>" +
+      (seated.length >= 2
+        ? '<button class="btn btn-soft btn-big" id="tbRound">Round the table</button>'
+        : "") +
       '<button class="btn btn-soft btn-big" id="tbClose">Closing reflection</button>' +
       "</div>";
 
@@ -2293,6 +2562,11 @@
     bind("#tbClose", closingReflection);
     bind("#tbMeet", function () {
       askMaterial("meeting", seated.map(function (p) { return p.slug; }));
+    });
+    // also reachable on its own, for a meeting held elsewhere - copy-prompt
+    // mode never passes through the app's own close
+    bind("#tbRound", function () {
+      roundOfTheTable(seated.map(function (p) { return p.slug; }));
     });
   }
 
@@ -2316,6 +2590,11 @@
       '<div class="mt-top"><span class="mt-date">' + esc(m.date) + "</span>" +
       '<span class="mt-count">' + who + (who === 1 ? " part" : " parts") + " at the table</span></div>" +
       (m.topic ? '<div class="mt-topic">' + esc(m.topic) + "</div>" : "") +
+      // stated, not nagged: a meeting held before there was a round to take
+      // is not a gap, and the card says which ones can still get one
+      '<div class="mt-topic dim">' + (m.readings
+        ? "round of the table &middot; " + m.readings + (m.readings === 1 ? " reading" : " readings")
+        : "no round recorded") + "</div>" +
       (m.voices || []).map(voiceLineHTML).join("") +
       (m.synthesis
         ? voiceLineHTML({ name: "Self", line: m.synthesis, color: "var(--self)" })
@@ -2329,6 +2608,10 @@
     var t = m.transcript
       ? ST.state.transcripts.filter(function (x) { return x.id === m.transcript; })[0]
       : null;
+    /* Who was at this meeting and is still in the library. A part deleted
+       since cannot be asked how it felt, and a renamed one is followed by
+       the store, so what is left here is exactly who can still answer. */
+    var here = (m.parts || []).map(ST.getPart).filter(Boolean);
     openPanel("Table meeting", m.date,
       '<div class="profile">' +
       (m.topic ? '<div class="card"><h3>On the table</h3><div class="prose">' + esc(m.topic) + "</div></div>" : "") +
@@ -2338,10 +2621,30 @@
         : '<div class="prose none">nothing was recorded from this one</div>') +
       "</div>" +
       (m.synthesis ? '<div class="card"><h3>Self</h3><div class="prose">' + esc(m.synthesis) + "</div></div>" : "") +
+      '<div class="card"><h3>Round the table</h3><div class="prose">' +
+      (m.readings
+        ? "This meeting has " + m.readings + (m.readings === 1 ? " reading" : " readings") +
+          " of how the parts felt toward each other. They are on the parts themselves, and on the threads between them on the map."
+        : (here.length >= 2
+          ? "No round was recorded from this one. You can still take it - answer as those parts stood at the end of <b>" +
+            esc(m.date) + "</b>, and it is filed on that day rather than today."
+          : "No round was recorded, and too few of the parts who were here are still in your library to take one now.")) +
+      "</div>" +
+      (here.length >= 2
+        ? '<button class="chip chip-btn" id="mtRound">&#9998; ' +
+          (m.readings ? "add to the round" : "round the table") + "</button>"
+        : "") +
+      "</div>" +
       '<div class="profile-cta">' +
       (t ? '<button class="btn btn-soft btn-big" id="mtFull">Read the full transcript</button>' : "") +
       '<button class="btn btn-danger btn-big" id="mtDel">Remove this card</button>' +
       "</div></div>");
+    bind("#mtRound", function () {
+      closePanel();
+      setTimeout(function () {
+        roundOfTheTable(here.map(function (p) { return p.slug; }), { meetingId: id, date: m.date });
+      }, 220);
+    });
     if (t) bind("#mtFull", function () {
       closePanel(); setTimeout(function () { openTranscript(t); }, 220);
     });

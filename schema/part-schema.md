@@ -42,6 +42,7 @@ behavior; enemies; allies; wants/needs; unburdened)`.
 | `unburdened_vision` | string | What it would do instead if it no longer had to play this role. |
 | `trust_in_self` | enum | `unknown` \| `none` \| `low` \| `growing` \| `high`. How much this part trusts Self to lead. Modulates the compiled agent's tone. |
 | `relationships` | list | Typed edges to other parts — the swarm graph. See below. |
+| `feelings` | list | Directed readings of how this part feels toward another, taken at a table meeting. See below. |
 | `coverage` | map | Per-category interview status. Drives the ongoing-questions engine. See below. |
 | `sessions` | list | Append-only session log. See below. |
 
@@ -63,6 +64,46 @@ Edge types:
 - `polarized-with` — two parts locked in opposing strategies (classic IFS polarization).
 - `allied-with` — parts that cooperate or share goals.
 - `conflicts-with` — friction that isn't a full polarization.
+
+### `feelings` entries
+
+```yaml
+feelings:
+  - part: <other-part-slug>
+    rating: 1..5      # hostile | wary | neutral | warm | close
+    date: YYYY-MM-DD  # when this reading was taken
+    rounds: 2         # how many times this direction has been asked
+    prev: 3           # the reading before this one, 0 if there was none
+```
+
+A reading is the Self-check question — "how are you feeling toward this part
+right now?" — asked of a part about its neighbour, normally in the closing round
+of a table meeting (`templates/table-meeting.md`).
+
+Unlike `relationships`, readings are **directed and never mirrored**: the entry
+lives only on the profile of the part that gave it. What The Critic feels toward
+The Dreamer is The Critic's to say, and the reverse may be nothing like it. They
+are also **dated and temporary** — an edge type says what two parts *are* to each
+other, a reading says only where they stood at the end of one meeting.
+
+Taking a new reading moves the old one to `prev` and increments `rounds`, so the
+profile carries the direction of travel and not only where things ended up. A
+part may decline to answer; nothing is recorded, and no reading is ever inferred
+on a part's behalf.
+
+A round is often recorded **after** the meeting it belongs to — sometimes long
+after — so a reading does not always arrive later than the one already stored.
+`date` is the day of the meeting, never the day it was typed in, and:
+
+- `rounds` climbs either way. That meeting happened, and the thread is that much
+  better known for it.
+- `rating`/`date` move **only forward in time**. Back-filling a session from
+  March must never present March's answer as where the two parts stand now.
+- An older reading becomes `prev` instead — but only where nothing truer
+  already sits there, since a `prev` taken later is the closer "reading before".
+
+Ratings outside 1–5 are dropped rather than clamped: an unreadable reading is
+not a reading.
 
 ### `coverage` map
 

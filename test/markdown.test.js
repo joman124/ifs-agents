@@ -16,6 +16,7 @@ module.exports = function (t) {
   p.emotions = ["vigilance", "contempt"];
   p.fears = ["being caught out"];
   p.relationships = [{ part: "the-planner", type: "protects", notes: "steps in first" }];
+  p.feelings = [{ part: "the-planner", rating: 4, date: "2026-01-09", rounds: 2, prev: 2 }];
   p.coverage.introduction = "complete";
   p.coverage.relationships = "declined";
   p.sessions = [{ date: "2026-01-02", mode: "intake", categories: ["introduction"], note: "first meeting" }];
@@ -30,6 +31,9 @@ module.exports = function (t) {
   t.eq(round.emotions, p.emotions, "lists survive");
   t.eq(round.fears, p.fears, "single-item lists survive");
   t.eq(round.relationships, p.relationships, "edges survive with their notes");
+  t.eq(round.feelings, p.feelings, "readings survive with their round count and the reading before");
+  t.ok(typeof round.feelings[0].rating === "number",
+    "a rating comes back as a number, not the string the frontmatter parser hands over");
   t.eq(round.coverage, p.coverage, "all nine coverage values survive");
   t.eq(round.sessions.length, 1, "the session log survives");
   t.eq(round.narrative.in_its_own_words, "I do not sleep.", "narrative sections survive");
@@ -38,6 +42,7 @@ module.exports = function (t) {
 
   var empty = MD.parse(MD.serialize(S.blankPart("Bare")));
   t.eq(empty.emotions, [], "an empty list round-trips as an empty list, not a string");
+  t.eq(empty.feelings, [], "and so does an empty readings list");
   t.eq(empty.narrative.origin_story, "", "an untouched section round-trips as empty");
 
   /* --- the slug follows the name, whatever the file says --- */
@@ -142,6 +147,8 @@ module.exports = function (t) {
   t.eq(critic.slug, "the-critic", "the fictional example parses despite its comment header");
   t.eq(Object.keys(critic.coverage).length, 9, "with a full coverage block");
   t.ok(!!critic.positive_intent, "and a positive intent");
+  t.eq(critic.feelings, [{ part: "the-dreamer", rating: 2, date: "2026-07-04", rounds: 2, prev: 1 }],
+    "and the reading its last table meeting left on it");
   t.eq(MD.extractProfiles(raw).length, 1, "and imports through the paste path too");
 
   /* --- table meetings: turning one blob of prose into a room of people ---

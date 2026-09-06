@@ -38,7 +38,16 @@ real subagent; you facilitate as Self and synthesize.
    - what each part needs;
    - a Self-led recommendation, clearly flagged as a synthesis for the person
      to decide on.
-6. **Save the transcript** to `sessions/YYYY-MM-DD-table-<topic>.md` (create
+6. **Round the table.** Ask each attending part, by name, how it is feeling
+   toward each of the others right now — one point on the scale in
+   `templates/table-meeting.md` (hostile / wary / neutral / warm / close), in
+   that part's own voice, with declining a valid answer. Offer to write each
+   reading into the **rater's** own `feelings` list (`part`, `rating`, `date`,
+   `rounds`, `prev`) per `schema/part-schema.md`; a pair that has been round
+   before keeps its old reading in `prev` and climbs `rounds` by one. Writing up
+   an earlier meeting: `date` is that meeting's day, and a newer stored reading
+   stays the current one — climb `rounds`, never overwrite forward.
+7. **Save the transcript** to `sessions/YYYY-MM-DD-table-<topic>.md` (create
    `sessions/` if needed): attendees/observers/decliners, each opening
    statement, the discussion exchange, the synthesis. Offer to append a
    `sessions` entry (`mode: meeting`) to each attendee's profile.

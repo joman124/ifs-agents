@@ -1,7 +1,7 @@
 <!--
 FICTIONAL EXAMPLE — this is a sample profile for a made-up person, showing what
-a part file looks like after an intake plus two check-in sessions and one
-mapping session. Real profiles live in parts/ (gitignored).
+a part file looks like after an intake, two check-in sessions, one mapping
+session and a table meeting. Real profiles live in parts/ (gitignored).
 -->
 ---
 name: The Critic
@@ -31,6 +31,12 @@ relationships:
   - part: the-dreamer
     type: polarized-with
     notes: "every big idea it has is a humiliation I have to prevent — we escalate each other"
+feelings:
+  - part: the-dreamer
+    rating: 2
+    date: 2026-07-04
+    rounds: 2
+    prev: 1
 coverage:
   introduction: complete
   history_origin: partial
@@ -58,6 +64,10 @@ sessions:
     mode: mapping
     categories: [relationships]
     note: "mapped polarization with The Dreamer; asked Self to referee, not pick sides"
+  - date: 2026-07-04
+    mode: meeting
+    categories: []
+    note: "table meeting on the job offer; closing round put it at wary of The Dreamer, up from hostile"
 ---
 
 # The Critic
@@ -91,6 +101,10 @@ prevent." Each escalates the other — the bigger the dream, the redder the pen,
 and (per The Dreamer) the redder the pen, the more desperate the dreaming.
 In the mapping session it asked Self to referee rather than pick sides, which it
 called "acceptable."
+
+2026-07-04 - round the table: The Dreamer: wary. Asked at the close of the
+meeting how it was feeling toward The Dreamer right now, it moved off hostile
+for the first time — "I'd still check its work. I just no longer want it gone."
 
 ## What it needs
 

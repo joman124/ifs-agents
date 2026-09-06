@@ -41,6 +41,26 @@
      legend's "not mapped yet" row is switched on. */
   var HAIRBALL = 18;
 
+  /* Warm and cool readings colour a felt thread the way the legend groups
+     them; a pair that came out neutral keeps the unknown grey, because
+     "we sat together and felt nothing much" is an answer, not a tone. */
+  function feltClass(e) {
+    var tone = window.IFS.schema.feelingTone(e.feel.avg);
+    return tone === "positive" ? "warm" : (tone === "negative" ? "cool" : "");
+  }
+
+  /* What the label says while a part is selected, told from that part's side:
+     the map's answer to "how are you feeling toward them right now?". */
+  function edgeLabelText(e, fromA) {
+    var S = window.IFS.schema;
+    var mine = fromA ? e.feel.ab : e.feel.ba;
+    var felt = mine ? S.feelingLabel(mine).toLowerCase() : "";
+    // kept short: at 9px on a phone these sit between two circles, and a
+    // label that runs under the next part's name is worse than no label
+    if (e.implicit) return felt ? "feels " + felt : "";
+    return e.type.replace(/-/g, " ") + (felt ? " \u00b7 " + felt : "");
+  }
+
   function buildGraph(parts) {
     var S = window.IFS.schema;
     var today = S.todayISO();
@@ -72,10 +92,16 @@
                                    : t + "|" + [a, b].sort().join("|");
         if (seen[key]) return;
         seen[key] = 1;
+        /* Readings are directed, so they are read off the ends the edge
+           actually has: `ab` is how the node at `a` feels toward the node at
+           `b`. A "protected-by" edge is flipped just above, so taking them
+           off the profile this came from would put them the wrong way round. */
+        var pf = S.pairFeeling(bySlug[a], bySlug[b]);
         // symmetric: how much both parts have said about each other, which
         // is what the thread's thickness reads out
         edges.push({ a: idx[a], b: idx[b], type: t, from: a, to: b,
-                     weight: S.edgeWeight(bySlug[p.slug], bySlug[r.part]) });
+                     weight: S.edgeWeight(bySlug[p.slug], bySlug[r.part]),
+                     feel: pf, feelHeat: S.heatFrom(pf.date, today) });
       });
     });
 
@@ -89,9 +115,18 @@
       for (var i = 0; i < parts.length; i++) {
         for (var j = i + 1; j < parts.length; j++) {
           if (mapped[pairKey(parts[i].slug, parts[j].slug)]) continue;
+          /* Nobody has named this pair - but a table meeting may still have
+             asked them how they feel about each other, and that is not
+             nothing. A thread with readings on it is "felt": drawn with the
+             substance the readings earn it and coloured by their tone, while
+             staying dashed, because what these two *are* to each other is
+             still an open question. */
+          var f = S.pairFeeling(parts[i], parts[j]);
           edges.push({
             a: idx[parts[i].slug], b: idx[parts[j].slug],
-            type: "unknown", implicit: true, weight: 0,
+            type: "unknown", implicit: true, felt: f.sides > 0,
+            weight: f.sides ? S.edgeWeight(parts[i], parts[j]) : 0,
+            feel: f, feelHeat: S.heatFrom(f.date, today),
             from: parts[i].slug, to: parts[j].slug
           });
         }
@@ -101,6 +136,7 @@
   }
 
   function render(svg, parts, opts) {
+    var S = window.IFS.schema;
     opts = opts || {};
     if (sim) { cancelAnimationFrame(sim.raf); sim = null; }
     unbindSvg();
@@ -161,19 +197,35 @@
       select(ni);
     }
 
-    var TONE = window.IFS.schema.EDGE_TONE;
-    var toneOf = function (e) { return e.implicit ? "unknown" : (TONE[e.type] || "unknown"); };
+    var TONE = S.EDGE_TONE;
+    /* A named edge takes its tone from its type: what two parts *are* to each
+       other is structural, and one tense meeting does not turn a protector
+       into an enemy. An unnamed one has only the readings to go on, which is
+       exactly how a meeting gives a thread a colour without anyone inventing
+       an edge type for it. */
+    var toneOf = function (e) {
+      if (!e.implicit) return TONE[e.type] || "unknown";
+      return e.felt ? S.feelingTone(e.feel.avg) : "unknown";
+    };
 
     var edgeEls = g.edges.map(function (e, ei) {
       var line = document.createElementNS(NS, "line");
-      line.setAttribute("class", "edge " + e.type + (e.implicit ? " implicit" : ""));
+      /* A felt thread is still unnamed, so it keeps the dashes - but it is
+         no longer a hairline, and it takes the colour of what the parts said
+         they felt. `rated` is the one class both kinds share: round caps, so
+         a thread the parts have spoken about reads as something laid down
+         rather than drawn. */
+      line.setAttribute("class", ("edge " + e.type +
+        (e.implicit ? (e.felt ? " felt " + feltClass(e) : " implicit") : "") +
+        (e.feel && e.feel.sides ? " rated" : "")).replace(/\s+/g, " ").trim());
       line.style.color = "var(--manager)";
-      /* Thickness is how much has actually been said about this pair. A
-         thread someone tapped once to pick a type and a thread both parts
-         have described are not the same relationship, and the map should not
-         draw them the same. Set as a style rather than an attribute, or the
-         stylesheet's stroke-width would win. */
-      if (!e.implicit) line.style.strokeWidth = (1.5 + e.weight * 2.8).toFixed(2) + "px";
+      /* Thickness is how much has actually been said about this pair - in a
+         mapping session, at the table, or both. A thread someone tapped once
+         to pick a type and a thread both parts have described and rated are
+         not the same relationship, and the map should not draw them the same.
+         Set as a style rather than an attribute, or the stylesheet's
+         stroke-width would win. */
+      if (!e.implicit || e.felt) line.style.strokeWidth = (1.5 + e.weight * 2.8).toFixed(2) + "px";
       edgeLayer.appendChild(line);
       // a fat invisible line under the thin one: a 2px stroke is not a touch target
       var hit = document.createElementNS(NS, "line");
@@ -185,20 +237,28 @@
       });
       var label = document.createElementNS(NS, "text");
       label.setAttribute("class", "edgelabel");
-      label.textContent = e.type.replace(/-/g, " ");
+      // text is filled in on selection: it reads from the selected part's
+      // side, which is the only side "feels warm" can honestly be said from
       label.style.display = "none"; // labels only for the selected part's edges
       edgeLayer.appendChild(label);
       return { line: line, hit: hit, label: label };
     });
 
     /* Visibility is two filters at once: which part is selected, and which
-       legend tone is switched on. An edge shows only if it passes both. */
-    var implicitCount = g.edges.filter(function (e) { return e.implicit; }).length;
+       legend tone is switched on. An edge shows only if it passes both.
+       Only the unnamed, unfelt threads count toward the hairball: a pair the
+       parts have rated is a known relationship, and hiding it would undo the
+       thing a round of the table just did to the map. */
+    var implicitCount = g.edges.filter(function (e) { return e.implicit && !e.felt; }).length;
 
-    /* A thread is as present as the livelier of the two parts it joins: a
-       relationship between two parts nobody has visited in months should
-       recede, and it should come back the moment either end is sat with. */
-    function edgeHeat(e) { return Math.max(g.nodes[e.a].heat, g.nodes[e.b].heat); }
+    /* A thread is as present as the livelier of the two parts it joins, or as
+       the last time anyone asked them about each other: a relationship
+       between two parts nobody has visited in months should recede, and it
+       should come back the moment either end is sat with - or the moment the
+       two of them sit down together. */
+    function edgeHeat(e) {
+      return Math.max(g.nodes[e.a].heat, g.nodes[e.b].heat, e.feelHeat || 0);
+    }
 
     function applySelection() {
       var tone = opts.tone && opts.tone();
@@ -209,16 +269,21 @@
         var touches = selected != null && (e.a === selected || e.b === selected);
         var inTone = !tone || toneOf(e) === tone;
         var el = edgeEls[i];
+        // a rated thread carries substance whether or not it has been named,
+        // so it is drawn and dimmed like a mapped one
+        var faint = e.implicit && !e.felt;
         var op;
         if (!inTone) op = 0;
-        else if (selected == null) op = e.implicit ? (crowded ? 0 : .3) : (.45 + .55 * edgeHeat(e));
+        else if (selected == null) op = faint ? (crowded ? 0 : .3) : (.45 + .55 * edgeHeat(e));
         else if (touches) op = 1;
-        else op = e.implicit ? 0 : .12;
+        else op = faint ? 0 : .12;
         el.line.style.opacity = op;
         el.hit.style.pointerEvents = op ? "stroke" : "none";
-        // only mapped edges get a label - "not mapped yet" on ten threads at
-        // once is noise, and the sheet names both parts anyway
-        el.label.style.display = touches && inTone && !e.implicit ? "" : "none";
+        // only threads with something to say get a label - "not mapped yet"
+        // on ten of them at once is noise, and the sheet names both parts
+        var text = touches && inTone && !faint ? edgeLabelText(e, e.a === selected) : "";
+        el.label.textContent = text;
+        el.label.style.display = text ? "" : "none";
       });
       g.nodes.forEach(function (n, i) {
         var neighbor = selected == null || i === selected || g.edges.some(function (e) {
@@ -255,7 +320,7 @@
       var initial = document.createElementNS(NS, "text");
       initial.setAttribute("dy", "5");
       initial.setAttribute("font-size", n.self ? "13" : "15");
-      initial.textContent = n.self ? "Self" : window.IFS.schema.initial(n.label);
+      initial.textContent = n.self ? "Self" : S.initial(n.label);
       var name = document.createElementNS(NS, "text");
       name.setAttribute("dy", r + 16);
       name.setAttribute("font-size", "11");
@@ -379,8 +444,11 @@
         }
       }
       g.edges.forEach(function (e) {
-        if (e.implicit) return; // unmapped threads are drawn, not sprung -
-                                // otherwise every pair pulls and the map balls up
+        // unmapped threads are drawn, not sprung - otherwise every pair pulls
+        // and the map balls up. A felt one is the exception: the parts have
+        // actually spoken about each other, so it pulls like any other, and
+        // a round of the table visibly draws the two of them together
+        if (e.implicit && !e.felt) return;
         var a = g.nodes[e.a], b = g.nodes[e.b];
         var dx = b.x - a.x, dy = b.y - a.y;
         var d = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -452,8 +520,13 @@
         el.hit.setAttribute("x1", a.x); el.hit.setAttribute("y1", a.y);
         el.hit.setAttribute("x2", b.x); el.hit.setAttribute("y2", b.y);
         if (el.label.style.display === "") {
-          el.label.setAttribute("x", (a.x + b.x) / 2);
-          el.label.setAttribute("y", (a.y + b.y) / 2 - 5);
+          /* Off the thread rather than on it: a label sitting along its own
+             line is hard to read, and at the midpoint of a short edge it
+             lands on the other part's name underneath its circle. */
+          var lx = b.x - a.x, ly = b.y - a.y;
+          var ll = Math.sqrt(lx * lx + ly * ly) || 1;
+          el.label.setAttribute("x", (a.x + b.x) / 2 + (-ly / ll) * 11);
+          el.label.setAttribute("y", (a.y + b.y) / 2 + (lx / ll) * 11 - 1);
         }
       });
       g.nodes.forEach(function (n, i) {

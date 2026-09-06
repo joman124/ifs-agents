@@ -38,11 +38,11 @@ step; `app/` is served as static files.
 ```
 app/                 the webapp (this is what deploys)
   index.html         single page, 4 tabs, sheet + panel overlays
-  css/app.css        all styles (605 lines)
+  css/app.css        all styles (818 lines)
   sw.js              service worker, cache-first shell — bump CACHE on every deploy
   manifest.webmanifest
   js/                see the table below
-test/                node test/run.js — 317 assertions, no dependencies
+test/                node test/run.js — 469 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
@@ -59,17 +59,17 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 
 | File | Lines | What it owns |
 |---|--:|---|
-| `schema.js` | 442 | Part shape, the 9 coverage categories, 5 edge types, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `initial` |
+| `schema.js` | 642 | Part shape, the 9 coverage categories, 5 edge types, the 5-point feeling scale, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `edgeWeight`, `setFeeling`/`pairFeeling`/`pairTone`, `initial` |
 | `questions.js` | 130 | The IFS question bank (33 questions), `nextCategory`, `applyAnswers` |
 | `reference.js` | 207 | Fraser's Table protocol (build/tools/seats/closing), the 8-page reference library, the first-run coach cues and the daily check-in prompts |
-| `markdown.js` | 446 | `parts/<slug>.md` ⇄ object. Frontmatter parser, `splitDocs`, `analyze`, `splitVoices`/`summarizeMeeting` |
-| `store.js` | 550 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart` |
-| `templates.js` | 383 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
-| `llm.js` | 260 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
-| `voice.js` | 178 | Web Speech dictation + TTS, optional ElevenLabs voice |
-| `graph.js` | 486 | Force-directed SVG swarm map, implicit threads, seating forces, thread weight and recency heat |
-| `ui.js` | 3216 | Every view, sheet, panel and flow. The big one. |
-| `app.js` | 40 | Boot, SW registration, storage persistence |
+| `markdown.js` | 489 | `parts/<slug>.md` ⇄ object. Frontmatter parser, `splitDocs`, `analyze`, `splitVoices`/`summarizeMeeting` |
+| `store.js` | 795 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart` |
+| `templates.js` | 425 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
+| `llm.js` | 272 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
+| `voice.js` | 360 | Web Speech dictation + TTS, optional ElevenLabs voice |
+| `graph.js` | 559 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat |
+| `ui.js` | 3445 | Every view, sheet, panel and flow. The big one. |
+| `app.js` | 49 | Boot, SW registration, storage persistence |
 
 ## The four tabs
 
@@ -82,13 +82,22 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
    you just haven't named it"). Tap a thread to name it; tap a part to focus it.
    Three-tone legend (supportive / in tension / not mapped) doubles as a filter.
    Once a table exists, seating becomes distance from Self. Thread thickness is
-   how much both parts have said about each other; parts fade as they go quiet
-   and the recently-visited one keeps a light on.
+   how much both parts have said about each other *and* how many rounds of
+   readings they have been through; parts fade as they go quiet and the
+   recently-visited one keeps a light on. An unnamed pair with readings on it is
+   a **felt** thread: dashed still, but with substance and a tone of its own.
 3. **Table** — Fraser's Table. Build the room through the source document's own
    questions, invite parts to one of four seats, add tools and agreements, hold a
    meeting, close with the reflection. A meeting opens with the parts taking
    their seats, runs as a group chat with one named bubble per voice, and
-   leaves a summary card behind on the tab.
+   leaves a summary card behind on the tab. It closes with a **round of the
+   table**: one screen per part, five points each, rating how it feels toward
+   every other part in the room — offered when a meeting ends, reachable on
+   its own from the tab (the only way in for copy-prompt mode, since that never
+   passes through the app's own session close), and **reachable from any past
+   meeting card**, where it is filed on that meeting's date rather than today.
+   A card says whether a round was recorded; one whose attendees have since
+   been deleted says so instead of offering a round nobody can answer.
 4. **Settings** — provider keys, voice, theme, backup/restore, transcripts.
    "Find my voices" lists the ElevenLabs account's own voices (clones first) so
    no ID is copied by hand; "Test this key" does a live round-trip for
@@ -112,6 +121,19 @@ How it relates to other parts / What it needs / Session notes*.
   **both** profiles.
 - `EDGE_TONE` in `schema.js` groups those five into three tones for the map
   legend and the relationship sheet. The five stay the source of truth on disk.
+- `feelings` — directed, dated readings of how this part feels toward another,
+  `{part, rating 1-5, date, rounds, prev}`. The opposite of an edge in every
+  way that matters: **never mirrored** (it lives only on the rater's profile),
+  temporary rather than structural, and taken at a table meeting rather than in
+  a mapping session. A new reading pushes the old one into `prev` and climbs
+  `rounds`, so the profile carries the direction of travel. Ratings off the
+  scale are dropped, not clamped.
+- **Readings can arrive out of order**, because a past meeting can get its
+  round months later. `setFeeling` handles it and every caller relies on that:
+  `rounds` climbs either way (the meeting happened), but `rating`/`date` move
+  only forward in time, and an older reading lands in `prev` only where nothing
+  truer sits there. It returns `{entry, current}` so the caller can say which
+  readings actually became current. Do not bypass it.
 
 ### The table — `state.table`
 
@@ -121,7 +143,7 @@ How it relates to other parts / What it needs / Session notes*.
   seats: { <slug>: "table"|"room"|"adjoining"|"away" },
   log: [{date, answers, note}],
   meetings: [{id, date, topic, parts:[slug],
-              voices: [{name, line, color}], synthesis, transcript}] }
+              voices: [{name, line, color}], synthesis, transcript, readings}] }
 ```
 
 `meetings` is capped at 60 and, like transcripts, a restore **adds to** what is
@@ -134,14 +156,19 @@ Included in backups. A deleted part gives up its chair as well as its edges.
 These are not style preferences; several were fixed *because* they were broken.
 
 1. **Never invent.** Unstated fields stay empty. Coverage reflects only ground
-   actually covered, so the development % stays honest.
+   actually covered, so the development % stays honest. A Likert row in the
+   round of the table is deliberately **not** pre-selected from the last
+   reading: a round that recorded itself when someone tapped Next would thicken
+   the map on nobody's word.
 2. **Declined is first-class and sticky.** A declined category is never re-asked
    and never silently downgraded. Reopening asks first.
 3. **Protectors set the pace.** Hesitation backs off. Everything is skippable.
 4. **Merges never lose data.** `mergeParts` (a model's rewrite: newer text
    supersedes) and `mergeDuplicate` (two records of one part: narratives are
    *joined*, both session logs kept) are deliberately different. Don't collapse them.
-5. **Coverage only ever climbs.**
+5. **Coverage only ever climbs.** So does `rounds` on a reading — it counts
+   meetings that actually happened, and a merge that lost one would be lying
+   about the map's thickness.
 6. **No trauma depth, no unburdening.** The source doc's trauma question is
    deliberately absent from both the questionnaire and the prompts.
 7. **Personal profiles never go in the public repo.** `.gitignore` root-anchors
@@ -284,7 +311,7 @@ Everything is in `localStorage` with an IndexedDB mirror. Risks worth closing:
 
 ### 3. Commit the test harness — **done**
 
-`test/` now holds 317 assertions over the pure logic, run with
+`test/` now holds 469 assertions over the pure logic, run with
 `node test/run.js`. See *Running and verifying locally* above for what is
 and isn't covered. What's left here is smaller: DOM-level coverage of the
 sheet/panel flows, and wiring the runner into a pre-commit hook.
@@ -307,6 +334,18 @@ refused. `extractProfiles` now drops a leading comment before giving up.
   `MD.summarizeMeeting`, so it costs no extra model call, and it links through
   to the full transcript. Meetings also open with a short seating ceremony,
   and each part speaks in its own named, coloured bubble.
+- ~~A meeting changed nothing on the map — the one event where the whole system
+  sits down together left the threads between those parts exactly as it found
+  them.~~ A meeting now closes with a **round of the table**: each part rates
+  how it feels toward every other part in the room, and those readings thicken
+  the threads (`schema.feelingWeight` folded into `edgeWeight`) and give an
+  unnamed pair a tone of its own. The prompt asks for the same round in
+  character first, so the words the person taps are the ones the parts said.
+  Meetings held before the feature existed can still get their round, from
+  the meeting card, dated to that meeting.
+  What is not built: a history view of how a pair moved over several rounds —
+  the profile carries `prev` and `rounds`, but nothing plots them, so only the
+  last two readings of a direction survive as numbers.
 - The source doc suggests a notebook left in the room for parts to leave
   messages between meetings — the tool exists as a label but does nothing.
 - Meetings still require an API key or copy-prompt mode. A no-AI structured

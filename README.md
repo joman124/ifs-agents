@@ -65,6 +65,9 @@ part has a positive intent; there are no bad parts. Longer version:
 5. **Meet** — point the swarm at any dataset. Each part responds in character
    (as parallel subagents in Claude Code); a Self-led synthesis names
    agreements, polarizations, needs, and a recommendation — for *you* to decide.
+   The meeting closes with a **round of the table**: each part says how it is
+   feeling toward each of the others right now, on a five-point scale, and those
+   readings go back into the profiles and thicken the swarm graph.
 
 ## Quickstart A — the webapp (Inner Table)
 
@@ -93,6 +96,18 @@ It follows one spine — **add a part → gather → integrate → connect**:
   its threads, and use the three-tone legend (supportive / in tension / not
   mapped yet) to filter. Edges are written to both profiles, mirrored, with no
   AI required.
+- **Round the table** — a table meeting now ends the way the script does: each
+  part is asked, by name, how it is feeling toward each of the others *right
+  now* (hostile / wary / neutral / warm / close). Each reading is written to the
+  part that gave it — directed, dated, and never mirrored, because what The
+  Critic feels toward The Dreamer is nothing like what comes back — and the
+  thread between them **thickens on the map**, a little more with every meeting
+  they sit through. A pair nobody has named yet takes its colour from what they
+  said they felt, so the map answers to a meeting instead of looking identical
+  the morning after one. Parts may pass, and passing records nothing.
+  Meetings you already held can still get their round, from the card on the
+  Table tab — filed on that meeting's date, and never overwriting a more recent
+  reading with an older one.
 
 - **Parts library** with coverage rings, type badges, and compile-readiness
   indicators; **swarm map** as an interactive touch-draggable graph.

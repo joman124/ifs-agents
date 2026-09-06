@@ -71,6 +71,11 @@ For each mapped pair:
 - Append a `sessions` entry (`mode: mapping`) and a dated Session note to both.
 - Add what you learned to each part's "How it relates to other parts" section,
   in the part's own words.
+- Optionally, if you asked either part how it feels toward the other *right now*
+  and it answered, record that as a `feelings` entry on **that part only** —
+  see `schema/part-schema.md`. A reading is not an edge: it is directed, dated,
+  and never mirrored. Never infer one from an edge type, and never record one
+  for a part that did not give it.
 
 ### 5. Render the swarm map
 

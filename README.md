@@ -105,6 +105,9 @@ It follows one spine — **add a part → gather → integrate → connect**:
   they sit through. A pair nobody has named yet takes its colour from what they
   said they felt, so the map answers to a meeting instead of looking identical
   the morning after one. Parts may pass, and passing records nothing.
+  Meetings you already held can still get their round, from the card on the
+  Table tab — filed on that meeting's date, and never overwriting a more recent
+  reading with an older one.
 
 - **Parts library** with coverage rings, type badges, and compile-readiness
   indicators; **swarm map** as an interactive touch-draggable graph.

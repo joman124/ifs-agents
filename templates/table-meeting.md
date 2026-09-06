@@ -95,6 +95,11 @@ Where a pair has been round before, the previous reading moves to `prev` and
 `rounds` climbs by one, so the profile carries the direction of travel and not
 only where things ended up. Nothing else in the profile changes.
 
+If you are writing up a meeting that happened earlier, `date` is that meeting's
+day and not today's. Climb `rounds`, but leave a **newer** stored reading
+standing as the current one — see the ordering rules in the schema. A round
+recorded late must never overwrite where two parts stand now.
+
 ### 6. Close the table
 
 - Thank each part by name, including observers and decliners.

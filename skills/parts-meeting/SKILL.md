@@ -44,7 +44,9 @@ real subagent; you facilitate as Self and synthesize.
    that part's own voice, with declining a valid answer. Offer to write each
    reading into the **rater's** own `feelings` list (`part`, `rating`, `date`,
    `rounds`, `prev`) per `schema/part-schema.md`; a pair that has been round
-   before keeps its old reading in `prev` and climbs `rounds` by one.
+   before keeps its old reading in `prev` and climbs `rounds` by one. Writing up
+   an earlier meeting: `date` is that meeting's day, and a newer stored reading
+   stays the current one — climb `rounds`, never overwrite forward.
 7. **Save the transcript** to `sessions/YYYY-MM-DD-table-<topic>.md` (create
    `sessions/` if needed): attendees/observers/decliners, each opening
    statement, the discussion exchange, the synthesis. Offer to append a

@@ -267,7 +267,8 @@ module.exports = function (t) {
   t.eq(S.setFeeling(critic, "the-critic", 4, TODAY), null, "a part cannot rate itself");
   t.eq(critic.feelings, [], "and neither refusal leaves anything behind");
 
-  S.setFeeling(critic, "the-dreamer", 2, "2026-08-10");
+  t.eq(S.setFeeling(critic, "the-dreamer", 2, "2026-08-10").current, true,
+    "a first reading is the one the map reads out");
   var f1 = S.getFeeling(critic, "the-dreamer");
   t.eq([f1.rating, f1.rounds, f1.prev], [2, 1, 0], "a first reading starts at one round with nothing before it");
 
@@ -276,6 +277,32 @@ module.exports = function (t) {
   t.eq([f2.rating, f2.prev, f2.rounds, f2.date], [4, 2, 2, TODAY],
     "a second reading keeps the first as prev and climbs the round count");
   t.eq(critic.feelings.length, 1, "one entry per direction, not one per round");
+
+  /* --- a round recorded against a meeting that already happened ---
+     The whole risk of back-filling: an older reading must not present itself
+     as where the two parts stand now. */
+  var back = S.setFeeling(critic, "the-dreamer", 1, "2026-07-01");
+  var f3 = S.getFeeling(critic, "the-dreamer");
+  t.eq(back.current, false, "a reading older than the stored one is not the current one");
+  t.eq([f3.rating, f3.date], [4, TODAY],
+    "so back-filling a past meeting leaves today's reading standing");
+  t.eq(f3.rounds, 3, "but the round still counts - that meeting happened");
+  t.eq(f3.prev, 2, "and a truer 'reading before' is not overwritten by an older one");
+
+  var noPrev = part("NoPrev");
+  noPrev.slug = "no-prev";
+  S.setFeeling(noPrev, "the-dreamer", 5, TODAY);
+  S.setFeeling(noPrev, "the-dreamer", 3, "2026-06-01");
+  var f4 = S.getFeeling(noPrev, "the-dreamer");
+  t.eq([f4.rating, f4.prev, f4.rounds], [5, 3, 2],
+    "where nothing sat in prev, the back-filled reading is exactly the one before");
+
+  var sameDay = part("SameDay");
+  sameDay.slug = "same-day";
+  S.setFeeling(sameDay, "the-dreamer", 2, TODAY);
+  t.eq(S.setFeeling(sameDay, "the-dreamer", 5, TODAY).current, true,
+    "two rounds on one day: the later call still stands as current");
+  t.eq(S.getFeeling(sameDay, "the-dreamer").rating, 5, "and its rating is the one kept");
 
   /* Directed and never mirrored: a reading is the rater's to give. */
   t.eq(S.getFeeling(dreamer, "the-critic"), null,
@@ -309,6 +336,10 @@ module.exports = function (t) {
     S.setFeeling(runaway2, "r1", 5, TODAY);
   }
   t.ok(S.edgeWeight(r1, r2) <= 1, "no number of rounds pushes a thread past full thickness");
+  var beforeBackfill = S.edgeWeight(r1, r2);
+  S.setFeeling(r1, "r2", 1, "2026-01-01");
+  t.ok(S.edgeWeight(r1, r2) >= beforeBackfill,
+    "recording a past meeting only ever thickens a thread, never thins it");
   t.eq(S.edgeWeight(r1, r2), S.edgeWeight(r2, r1), "readings keep the weight symmetric");
 
   /* Written notes and readings are two accounts of one thread; a pair with

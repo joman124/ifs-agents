@@ -2305,8 +2305,10 @@
 
   /* Write a round to the parts that gave it. Readings live on the rater, not
      on the pair: what The Critic feels toward The Dreamer is The Critic's to
-     say, and the reverse may be nothing like it. Returns what changed, so the
-     round can be shown back rather than only saved. */
+     say, and the reverse may be nothing like it. `dateISO` is the day the
+     round belongs to, which for a meeting recorded after the fact is that
+     meeting's date and not today. Returns what changed, so the round can be
+     shown back rather than only saved. */
   function applyRound(picked, dateISO) {
     var changes = [];
     Object.keys(picked).forEach(function (from) {
@@ -2318,10 +2320,15 @@
         var other = ST.getPart(to);
         if (!other || to === from) return;
         var before = S.getFeeling(p, to);
-        if (!S.setFeeling(p, to, rows[to], dateISO)) return;
+        var set = S.setFeeling(p, to, rows[to], dateISO);
+        if (!set) return;
         said.push(other.name + ": " + S.feelingLabel(rows[to]).toLowerCase());
         changes.push({ from: p.name, to: other.name, rating: rows[to],
-                       was: before ? before.rating : 0 });
+                       was: before ? before.rating : 0,
+                       // false when a back-filled round sits behind a newer
+                       // reading: it still counts, but it is not where they
+                       // stand now, and saying so would be a lie
+                       current: set.current });
       });
       if (!said.length) return;
       // a reading is something said about relationships, so the coverage flag
@@ -2341,17 +2348,31 @@
   /* The round, shown back. The number that matters is not the rating but the
      move: a part that was wary and is now merely neutral is the whole reason
      for sitting down together, and it is invisible in a profile field. */
-  function roundSummarySheet(changes) {
+  function roundSummarySheet(changes, when) {
+    // a round recorded against a past meeting sits behind whatever has been
+    // said since, so the sheet says so rather than claiming it is the news
+    var filed = changes.filter(function (c) { return !c.current; }).length;
     openSheet(
       '<h2 class="sheet-title serif">The round is in</h2>' +
       '<p class="dim">' + changes.length + (changes.length === 1 ? " reading" : " readings") +
-      ", saved to the part that gave it. The threads between them have thickened on the map.</p>" +
+      (when ? " from " + esc(when) : "") +
+      ", saved to the part that gave it. The threads between them have thickened on the map." +
+      (filed
+        ? " " + (filed === changes.length
+            ? (filed === 1 ? "It sits behind a more recent reading, so it is"
+                           : "They all sit behind more recent readings, so they are")
+            : (filed === 1 ? "One of them sits behind a more recent reading, so it is"
+                           : filed + " of them sit behind more recent readings, so they are")) +
+          " kept as history rather than as where those parts stand now."
+        : "") +
+      "</p>" +
       changes.map(function (c) {
         var delta = c.was ? c.rating - c.was : 0;
-        var move = !c.was ? "first reading" : (delta > 0 ? "warmer" : (delta < 0 ? "cooler" : "unchanged"));
+        var move = !c.current ? "filed as history"
+          : (!c.was ? "first reading" : (delta > 0 ? "warmer" : (delta < 0 ? "cooler" : "unchanged")));
         return '<div class="shiftrow"><span>' + esc(c.from) + " &rarr; " + esc(c.to) + "</span>" +
           '<span class="dim">' + esc(S.feelingLabel(c.rating).toLowerCase()) + "</span>" +
-          '<span class="sh-move ' + (delta > 0 ? "up" : (delta < 0 ? "down" : "")) + '">' +
+          '<span class="sh-move ' + (c.current ? (delta > 0 ? "up" : (delta < 0 ? "down" : "")) : "") + '">' +
           esc(move) + "</span></div>";
       }).join("") +
       '<div style="height:14px"></div>' +
@@ -2364,26 +2385,36 @@
 
   /* One screen per part: it rates every other part in the round at once, or
      passes. Passing is a real answer - a part that will not say how it feels
-     about another has said something - so nothing is recorded for it. */
+     about another has said something - so nothing is recorded for it.
+
+     opts.date puts the round on the day it belongs to rather than today,
+     which is how a meeting held weeks ago can still get its round. */
   function roundOfTheTable(slugs, opts) {
     opts = opts || {};
     var parts = slugs.map(ST.getPart).filter(Boolean);
-    if (parts.length < 2) { toast("A round needs two parts at the table"); return; }
+    if (parts.length < 2) { toast("A round needs two parts still in your library"); return; }
+    var when = opts.date || S.todayISO();
+    var past = when !== S.todayISO();
     var picked = {};
     var i = 0, done = false;
 
     function finish() {
       if (done) return;
       done = true;
-      var changes = applyRound(picked, S.todayISO());
+      var changes = applyRound(picked, when);
       closePanel();
       renderParts();
       renderTable();
       if (currentView === "map") renderMap();
       if (!changes.length) { toast("Nothing recorded - the round is always optional"); return; }
-      if (opts.meetingId) ST.updateMeeting(opts.meetingId, { readings: changes.length });
+      if (opts.meetingId) {
+        var m = ST.state.table.meetings.filter(function (x) { return x.id === opts.meetingId; })[0];
+        // a round finished in two sittings adds to the card rather than
+        // replacing what the first one recorded
+        ST.updateMeeting(opts.meetingId, { readings: ((m && m.readings) || 0) + changes.length });
+      }
       buzz(12);
-      setTimeout(function () { roundSummarySheet(changes); }, 260);
+      setTimeout(function () { roundSummarySheet(changes, past ? when : ""); }, 260);
     }
 
     function step() {
@@ -2394,9 +2425,11 @@
         '<div class="profile">' +
         '<div class="qprogress"><i style="width:' + Math.round((i / parts.length) * 100) + '%"></i></div>' +
         '<div class="card"><div class="qtext serif">How are you, ' + esc(p.name) +
-        ", feeling toward each of the others right now?</div>" +
+        ", feeling toward each of the others" + (past ? "?" : " right now?") + "</div>" +
         '<div class="prose dim" style="margin-top:10px">Answer as ' + esc(p.name) +
-        ", in its voice. Leave any of them blank - a part that will not say is answering too.</div></div>" +
+        ", in its voice. Leave any of them blank - a part that will not say is answering too." +
+        (past ? " This round belongs to the meeting of " + esc(when) +
+          ", so answer as it stood at the end of that one." : "") + "</div></div>" +
         others.map(function (o) {
           var f = S.getFeeling(p, o.slug);
           return likertRowHTML(o, f && f.rating, f && f.prev);
@@ -2557,8 +2590,11 @@
       '<div class="mt-top"><span class="mt-date">' + esc(m.date) + "</span>" +
       '<span class="mt-count">' + who + (who === 1 ? " part" : " parts") + " at the table</span></div>" +
       (m.topic ? '<div class="mt-topic">' + esc(m.topic) + "</div>" : "") +
-      (m.readings ? '<div class="mt-topic dim">closed with a round of the table &middot; ' +
-        m.readings + (m.readings === 1 ? " reading" : " readings") + "</div>" : "") +
+      // stated, not nagged: a meeting held before there was a round to take
+      // is not a gap, and the card says which ones can still get one
+      '<div class="mt-topic dim">' + (m.readings
+        ? "round of the table &middot; " + m.readings + (m.readings === 1 ? " reading" : " readings")
+        : "no round recorded") + "</div>" +
       (m.voices || []).map(voiceLineHTML).join("") +
       (m.synthesis
         ? voiceLineHTML({ name: "Self", line: m.synthesis, color: "var(--self)" })
@@ -2572,6 +2608,10 @@
     var t = m.transcript
       ? ST.state.transcripts.filter(function (x) { return x.id === m.transcript; })[0]
       : null;
+    /* Who was at this meeting and is still in the library. A part deleted
+       since cannot be asked how it felt, and a renamed one is followed by
+       the store, so what is left here is exactly who can still answer. */
+    var here = (m.parts || []).map(ST.getPart).filter(Boolean);
     openPanel("Table meeting", m.date,
       '<div class="profile">' +
       (m.topic ? '<div class="card"><h3>On the table</h3><div class="prose">' + esc(m.topic) + "</div></div>" : "") +
@@ -2581,15 +2621,30 @@
         : '<div class="prose none">nothing was recorded from this one</div>') +
       "</div>" +
       (m.synthesis ? '<div class="card"><h3>Self</h3><div class="prose">' + esc(m.synthesis) + "</div></div>" : "") +
+      '<div class="card"><h3>Round the table</h3><div class="prose">' +
       (m.readings
-        ? '<div class="card"><h3>Round the table</h3><div class="prose">This meeting closed with ' +
-          m.readings + (m.readings === 1 ? " reading" : " readings") +
-          ' of how the parts felt toward each other. They are on the parts themselves, and on the threads between them on the map.</div></div>'
+        ? "This meeting has " + m.readings + (m.readings === 1 ? " reading" : " readings") +
+          " of how the parts felt toward each other. They are on the parts themselves, and on the threads between them on the map."
+        : (here.length >= 2
+          ? "No round was recorded from this one. You can still take it - answer as those parts stood at the end of <b>" +
+            esc(m.date) + "</b>, and it is filed on that day rather than today."
+          : "No round was recorded, and too few of the parts who were here are still in your library to take one now.")) +
+      "</div>" +
+      (here.length >= 2
+        ? '<button class="chip chip-btn" id="mtRound">&#9998; ' +
+          (m.readings ? "add to the round" : "round the table") + "</button>"
         : "") +
+      "</div>" +
       '<div class="profile-cta">' +
       (t ? '<button class="btn btn-soft btn-big" id="mtFull">Read the full transcript</button>' : "") +
       '<button class="btn btn-danger btn-big" id="mtDel">Remove this card</button>' +
       "</div></div>");
+    bind("#mtRound", function () {
+      closePanel();
+      setTimeout(function () {
+        roundOfTheTable(here.map(function (p) { return p.slug; }), { meetingId: id, date: m.date });
+      }, 220);
+    });
     if (t) bind("#mtFull", function () {
       closePanel(); setTimeout(function () { openTranscript(t); }, 220);
     });

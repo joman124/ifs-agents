@@ -482,27 +482,46 @@
     return ((part && part.feelings) || []).filter(function (f) { return f.part === otherSlug; })[0] || null;
   }
 
-  /* Record how `part` feels toward `otherSlug` today. The previous reading is
-     kept as `prev` rather than overwritten, so the profile carries the
-     direction of travel and not only where it ended up, and `rounds` counts
-     how many times this direction has been asked - which is what lets a
-     thread on the map thicken with each meeting instead of only once. */
+  /* Record how `part` felt toward `otherSlug` on `dateISO`. The previous
+     reading is kept as `prev` rather than overwritten, so the profile carries
+     the direction of travel and not only where it ended up, and `rounds`
+     counts how many times this direction has been asked - which is what lets
+     a thread on the map thicken with each meeting instead of only once.
+
+     A round can be recorded long after the meeting it belongs to, so a
+     reading does not always arrive later than the one already stored.
+     `rounds` climbs either way: that meeting happened, and the thread is
+     that much better known for it. But the reading shown as *current* only
+     ever moves forward in time - back-filling a table session from March
+     must not present March's answer as where the two parts stand now. An
+     older reading becomes the one before the current one instead, and only
+     where nothing truer already sits there.
+
+     Returns { entry, current } - `current` says whether this reading is now
+     the one the map and the profile read out, which is what lets a caller
+     report a back-filled round honestly. */
   function setFeeling(part, otherSlug, rating, dateISO) {
     if (!part || !otherSlug || otherSlug === part.slug) return null;
     var v = Math.round(Number(rating));
     if (!(v >= 1 && v <= 5)) return null;
     part.feelings = part.feelings || [];
+    var when = dateISO || todayISO();
     var cur = getFeeling(part, otherSlug);
     if (!cur) {
-      cur = { part: otherSlug, rating: v, date: dateISO || todayISO(), rounds: 1, prev: 0 };
+      cur = { part: otherSlug, rating: v, date: when, rounds: 1, prev: 0 };
       part.feelings.push(cur);
-      return cur;
+      return { entry: cur, current: true };
     }
-    cur.prev = cur.rating;
-    cur.rating = v;
-    cur.date = dateISO || todayISO();
+    var current = when >= (cur.date || "");
+    if (current) {
+      cur.prev = cur.rating;
+      cur.rating = v;
+      cur.date = when;
+    } else if (!cur.prev) {
+      cur.prev = v;
+    }
     cur.rounds = (cur.rounds || 1) + 1;
-    return cur;
+    return { entry: cur, current: current };
   }
 
   /* Both directions of one pair at once. `ab` is how a feels toward b, `ba`

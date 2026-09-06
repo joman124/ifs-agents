@@ -91,6 +91,17 @@ profile carries the direction of travel and not only where things ended up. A
 part may decline to answer; nothing is recorded, and no reading is ever inferred
 on a part's behalf.
 
+A round is often recorded **after** the meeting it belongs to — sometimes long
+after — so a reading does not always arrive later than the one already stored.
+`date` is the day of the meeting, never the day it was typed in, and:
+
+- `rounds` climbs either way. That meeting happened, and the thread is that much
+  better known for it.
+- `rating`/`date` move **only forward in time**. Back-filling a session from
+  March must never present March's answer as where the two parts stand now.
+- An older reading becomes `prev` instead — but only where nothing truer
+  already sits there, since a `prev` taken later is the closer "reading before".
+
 Ratings outside 1–5 are dropped rather than clamped: an unreadable reading is
 not a reading.
 

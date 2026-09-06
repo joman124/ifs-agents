@@ -42,7 +42,7 @@ app/                 the webapp (this is what deploys)
   sw.js              service worker, cache-first shell — bump CACHE on every deploy
   manifest.webmanifest
   js/                see the table below
-test/                node test/run.js — 460 assertions, no dependencies
+test/                node test/run.js — 469 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
@@ -92,9 +92,12 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
    their seats, runs as a group chat with one named bubble per voice, and
    leaves a summary card behind on the tab. It closes with a **round of the
    table**: one screen per part, five points each, rating how it feels toward
-   every other part in the room — offered when a meeting ends, and reachable on
-   its own from the tab (which is the only way in for copy-prompt mode, since
-   that never passes through the app's own session close).
+   every other part in the room — offered when a meeting ends, reachable on
+   its own from the tab (the only way in for copy-prompt mode, since that never
+   passes through the app's own session close), and **reachable from any past
+   meeting card**, where it is filed on that meeting's date rather than today.
+   A card says whether a round was recorded; one whose attendees have since
+   been deleted says so instead of offering a round nobody can answer.
 4. **Settings** — provider keys, voice, theme, backup/restore, transcripts.
    "Find my voices" lists the ElevenLabs account's own voices (clones first) so
    no ID is copied by hand; "Test this key" does a live round-trip for
@@ -125,6 +128,12 @@ How it relates to other parts / What it needs / Session notes*.
   a mapping session. A new reading pushes the old one into `prev` and climbs
   `rounds`, so the profile carries the direction of travel. Ratings off the
   scale are dropped, not clamped.
+- **Readings can arrive out of order**, because a past meeting can get its
+  round months later. `setFeeling` handles it and every caller relies on that:
+  `rounds` climbs either way (the meeting happened), but `rating`/`date` move
+  only forward in time, and an older reading lands in `prev` only where nothing
+  truer sits there. It returns `{entry, current}` so the caller can say which
+  readings actually became current. Do not bypass it.
 
 ### The table — `state.table`
 
@@ -302,7 +311,7 @@ Everything is in `localStorage` with an IndexedDB mirror. Risks worth closing:
 
 ### 3. Commit the test harness — **done**
 
-`test/` now holds 460 assertions over the pure logic, run with
+`test/` now holds 469 assertions over the pure logic, run with
 `node test/run.js`. See *Running and verifying locally* above for what is
 and isn't covered. What's left here is smaller: DOM-level coverage of the
 sheet/panel flows, and wiring the runner into a pre-commit hook.
@@ -332,8 +341,11 @@ refused. `extractProfiles` now drops a leading comment before giving up.
   the threads (`schema.feelingWeight` folded into `edgeWeight`) and give an
   unnamed pair a tone of its own. The prompt asks for the same round in
   character first, so the words the person taps are the ones the parts said.
+  Meetings held before the feature existed can still get their round, from
+  the meeting card, dated to that meeting.
   What is not built: a history view of how a pair moved over several rounds —
-  the profile carries `prev` and `rounds`, but nothing plots them.
+  the profile carries `prev` and `rounds`, but nothing plots them, so only the
+  last two readings of a direction survive as numbers.
 - The source doc suggests a notebook left in the room for parts to leave
   messages between meetings — the tool exists as a label but does nothing.
 - Meetings still require an API key or copy-prompt mode. A no-AI structured

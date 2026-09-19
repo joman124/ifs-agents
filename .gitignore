@@ -10,6 +10,9 @@
 .env
 .vercel
 
+# npm (api/'s web-push dependency)
+node_modules/
+
 # OS noise
 .DS_Store
 Thumbs.db

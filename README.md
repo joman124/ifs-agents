@@ -192,6 +192,33 @@ only ever holds a signed session token. This is still a journaling tool, not
 a therapy record system — the [safety guide](docs/safety.md) applies doubly
 once profiles are on a server.
 
+### Push notifications
+
+A signed-in user can turn on notifications for one device at a time, from
+**Settings → Notifications**. This uses the Web Push standard, which is why
+it's tied to an account (the server needs somewhere to keep the
+subscription) and why, on iOS, it only works once the app is **added to the
+home screen** — Safari itself doesn't expose push at all; only the installed,
+standalone app does. Today this ships as infrastructure plus a **Send test**
+button; nothing sends notifications on its own yet.
+
+It needs one more thing on top of the sync variables above — a VAPID key
+pair, which is how the server proves to browsers' push services that
+messages really come from this app:
+
+```
+npm install
+node scripts/gen-vapid-keys.js
+```
+
+Set the three variables it prints as Vercel env vars:
+
+| Variable | Where it comes from |
+|---|---|
+| `VAPID_PUBLIC_KEY` | printed by `scripts/gen-vapid-keys.js` |
+| `VAPID_PRIVATE_KEY` | same — keep this one secret |
+| `VAPID_SUBJECT` | a `mailto:` address or the site's `https://` URL |
+
 ## Quickstart B — Claude Code
 
 Install as a plugin (or clone and add the `skills/` to your project), then from

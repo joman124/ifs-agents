@@ -1,0 +1,8 @@
+{
+  "name": "ifs-agents",
+  "private": true,
+  "description": "Serverless function dependencies for the Inner Table webapp (app/).",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

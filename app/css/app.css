@@ -570,6 +570,7 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .map-legend .lg-hint { font-size: .66rem; color: var(--ink-faint); padding: 4px 7px 0; }
 .map-legend .lg-note { margin: 0; padding: 8px 7px 0; font-size: .66rem; line-height: 1.55; color: var(--ink-faint); }
 .map-legend .lg-note b { color: var(--ink-dim); font-weight: 650; }
+.map-legend .lg-unpin { margin: 10px 7px 2px; }
 
 /* The swatches are the map's own strokes in a 26px box - whatever the key
    draws has to be the line the person is looking at, not an approximation

@@ -1,0 +1,17 @@
+name: reminders
+
+# The hourly tick behind the 8am / 2pm / 8pm check-in reminders
+# (api/push-remind.js picks out whichever devices are at one of those hours).
+# Vercel's Hobby plan only runs its own crons once a day, so the clock lives here.
+on:
+  schedule:
+    - cron: "7 * * * *" # off the top of the hour, when GitHub's queue is busiest
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://ifs-agents.vercel.app/api/push-remind
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

@@ -75,13 +75,22 @@
       applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
     }));
 
+    await save(sub);
+    return sub;
+  }
+
+  /* The timezone rides along so the server's reminders land at 8am, 2pm and
+     8pm on this device's clock, not the server's. */
+  async function save(sub) {
     var r = await fetch("/api/push-subscribe", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ subscription: sub.toJSON() })
+      body: JSON.stringify({
+        subscription: sub.toJSON(),
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+      })
     });
     if (!r.ok) throw new Error("Could not save your subscription - try again.");
-    return sub;
   }
 
   /* tokenOverride: logout() below clears the session token synchronously,
@@ -138,7 +147,7 @@
     } else if (!supported()) {
       html += '<div class="set-row"><span class="sr-main">Not supported here<span class="sr-sub">try this on your phone, from the home-screen app</span></span></div>';
     } else if (cachedSubscribed) {
-      html += '<div class="set-row"><span class="sr-main">Notifications on<span class="sr-sub">this device can receive them</span></span><button class="btn btn-soft" id="pushTestBtn">Send test</button></div>' +
+      html += '<div class="set-row"><span class="sr-main">Notifications on<span class="sr-sub">a check-in reminder at 8am, 2pm and 8pm</span></span><button class="btn btn-soft" id="pushTestBtn">Send test</button></div>' +
         '<div class="set-row"><span class="sr-main">Turn off<span class="sr-sub">stop notifications on this device</span></span><button class="btn btn-soft" id="pushOffBtn">Turn off</button></div>';
     } else {
       html += '<div class="set-row"><span class="sr-main">Get notified on this device<span class="sr-sub">asks for permission, once</span></span><button class="btn btn-soft" id="pushOnBtn">Enable</button></div>';
@@ -210,6 +219,13 @@
     refreshAndPaint();
   }
   watchSettingsPane();
+
+  // re-send this device's subscription on every open: one saved before the
+  // timezone was sent gets no reminders until it is, and a phone that has
+  // travelled should be reminded on its new clock
+  if (AUTH.isLoggedIn()) {
+    getSubscription().then(function (sub) { if (sub) return save(sub); }).catch(function () {});
+  }
 
   window.IFS = window.IFS || {};
   window.IFS.push = {

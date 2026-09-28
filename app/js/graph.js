@@ -1,6 +1,7 @@
 /* Inner Table - the swarm map.
    A force-directed layout over SVG with mobile interactions:
-   - drag nodes, pan the canvas, pinch to zoom
+   - drag nodes (a dropped one stays where it is left, threads stretching
+     to reach it), pan the canvas, pinch to zoom
    - tap a part to highlight its relationships (labels appear on its edges,
      everything else dims) and surface an "open profile" card via onSelect
    Self sits pinned near the top, per the repo's mapping convention. */
@@ -34,6 +35,25 @@
      it settles with nodes on top of each other - so the distance is also
      enforced directly, once per frame. */
   var MIN_GAP = 64;
+
+  /* How far out a pinch or the wheel can pull back, in screen-widths. Parts
+     can be dragged well past the first screen, so the view has to reach them. */
+  var MAX_ZOOM_OUT = 4;
+
+  /* Where the person has put parts by hand. A dropped part stays where it was
+     left - no springs, no pull to the middle, no clamp to the screen - and its
+     threads stretch to reach it. Per device (a phone and a laptop are different
+     canvases) and per account, like the store's own keys. */
+  function placedKey() {
+    var who = window.IFS.store.owner();
+    return "innertable.map" + (who ? ".u." + who : "");
+  }
+  function loadPlaced() {
+    try { return JSON.parse(localStorage.getItem(placedKey())) || {}; } catch (e) { return {}; }
+  }
+  function savePlaced(placed) {
+    try { localStorage.setItem(placedKey(), JSON.stringify(placed)); } catch (e) {}
+  }
 
   /* Above this many unmapped pairs the faint threads stop being a question
      and become a hairball: at twelve parts there are sixty of them on a
@@ -179,8 +199,11 @@
     var ringX = Math.max(Math.min(W, H) * .26, ringMin);
     var ringY = Math.max(Math.min(W, H) * .22, ringMin);
 
+    var placed = loadPlaced();
     g.nodes.forEach(function (n, i) {
-      if (n.self) { n.x = W / 2; n.y = Math.min(90, H * .16); n.pin = true; }
+      var at = placed[n.id];
+      if (at) { n.x = at[0]; n.y = at[1]; n.pin = true; }
+      else if (n.self) { n.x = W / 2; n.y = Math.min(90, H * .16); n.pin = true; }
       else {
         var ang = (i / (g.nodes.length - 1)) * Math.PI * 2;
         n.x = W / 2 + Math.cos(ang) * ringX;
@@ -353,7 +376,11 @@
           grp.removeEventListener("pointermove", move);
           grp.removeEventListener("pointerup", up);
           grp.removeEventListener("pointercancel", up);
-          if (!moved) tapNode(ni);
+          if (!moved) { tapNode(ni); return; }
+          // dropped: it stays here, across visits, until the key lets it go
+          n.pin = true;
+          placed[n.id] = [Math.round(n.x), Math.round(n.y)];
+          savePlaced(placed);
         };
         grp.addEventListener("pointermove", move);
         grp.addEventListener("pointerup", up);
@@ -389,7 +416,7 @@
         var a = pointers[ids[0]], b = pointers[ids[1]];
         var d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
         var factor = pinchStart.d / d;
-        var w = Math.max(W * .4, Math.min(W * 2.5, pinchStart.view.w * factor));
+        var w = Math.max(W * .4, Math.min(W * MAX_ZOOM_OUT, pinchStart.view.w * factor));
         var h = w * (H / W);
         // zoom around the pinch midpoint
         var mx = pinchStart.view.x + ((a.x + b.x) / 2 / svg.clientWidth) * pinchStart.view.w;
@@ -417,7 +444,7 @@
     bindSvg(svg, "wheel", function (ev) {
       ev.preventDefault();
       var factor = ev.deltaY > 0 ? 1.1 : 0.9;
-      var w = Math.max(W * .4, Math.min(W * 2.5, view.w * factor));
+      var w = Math.max(W * .4, Math.min(W * MAX_ZOOM_OUT, view.w * factor));
       var mx = view.x + (ev.offsetX / svg.clientWidth) * view.w;
       var my = view.y + (ev.offsetY / svg.clientHeight) * view.h;
       view.h = w * (H / W);
@@ -494,8 +521,8 @@
 
       /* Separation, applied to positions rather than velocities so it holds
          even after the heat has run out and the forces have stopped moving
-         anything. Self and a dragged node stay put; the other one takes the
-         whole push. */
+         anything. A pinned node (Self, or one placed by hand) and a dragged one
+         stay put; the other one takes the whole push. */
       for (var si = 0; si < g.nodes.length; si++) {
         for (var sj = si + 1; sj < g.nodes.length; sj++) {
           var na = g.nodes[si], nb = g.nodes[sj];
@@ -555,5 +582,11 @@
     if (refreshFn) refreshFn();
   }
 
-  window.IFS.graph = { render: render, stop: stop, refresh: refresh };
+  /* How many parts have been placed by hand, and a way to hand them all back
+     to the layout. The caller re-renders after unpinning. */
+  function placedCount() { return Object.keys(loadPlaced()).length; }
+  function unpinAll() { savePlaced({}); }
+
+  window.IFS.graph = { render: render, stop: stop, refresh: refresh,
+                       placedCount: placedCount, unpinAll: unpinAll };
 })();

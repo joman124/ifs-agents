@@ -649,6 +649,28 @@
   }
 
   window.IFS = window.IFS || {};
+  /* What the profile actually keeps for one direction of a pair: the current
+     reading and the one before it, in that order. Nothing is invented: `prev`
+     carries no date of its own, and `rounds` counts how many times the
+     direction has been asked, not which rounds the surviving readings came
+     from. One entry per direction that has ever been read; an unread
+     direction is simply absent. */
+  function feelingHistory(a, b) {
+    function dir(from, to) {
+      var f = (from && to) ? getFeeling(from, to.slug) : null;
+      if (!f) return null;
+      var steps = [];
+      if (f.prev) steps.push({ rating: f.prev, date: "", label: "earlier" });
+      steps.push({ rating: f.rating, date: f.date || "", label: "latest" });
+      return { from: from.name, to: to.name, rounds: f.rounds || 1, steps: steps };
+    }
+    var out = [];
+    var ab = dir(a, b), ba = dir(b, a);
+    if (ab) out.push(ab);
+    if (ba) out.push(ba);
+    return out;
+  }
+
   window.IFS.schema = {
     CATEGORIES: CATEGORIES,
     CATEGORY_LABELS: CATEGORY_LABELS,
@@ -685,6 +707,7 @@
     getFeeling: getFeeling,
     setFeeling: setFeeling,
     pairFeeling: pairFeeling,
+    feelingHistory: feelingHistory,
     feelingWeight: feelingWeight,
     pairTone: pairTone,
     namedEdge: namedEdge,

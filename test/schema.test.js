@@ -317,6 +317,24 @@ module.exports = function (t) {
   t.eq(S.feelingTone(1), "negative", "hostile reads as in tension");
   t.eq(S.feelingTone(3), "unknown", "neutral is not a tone - it is an answer");
 
+  /* --- feelingHistory: the timeline view reads back what was actually kept --- */
+  t.eq(S.feelingHistory(critic, part("Stranger")).length, 0,
+    "a pair with no readings has no history to show");
+  var hist = S.feelingHistory(critic, dreamer);
+  t.eq(hist.length, 2, "both directions appear once each has been read");
+  t.eq(hist[0].from, "The Critic", "the first direction runs rater first");
+  t.eq(hist[0].rounds, 3, "the timeline carries the round count, not invented points");
+  t.eq(hist[0].steps.map(function (s) { return s.rating; }), [2, 4],
+    "the kept readings come back in order, earlier then latest");
+  t.eq(hist[0].steps[0].date, "", "the earlier reading carries no date of its own");
+  t.eq(hist[0].steps[1].date, TODAY, "the latest reading carries its date");
+  var fresh1 = part("Fresh1"), fresh2 = part("Fresh2");
+  fresh1.slug = "fresh1"; fresh2.slug = "fresh2";
+  S.setFeeling(fresh1, "fresh2", 3, TODAY);
+  var single = S.feelingHistory(fresh1, fresh2);
+  t.eq(single.length, 1, "a one-sided pair shows only the side that answered");
+  t.eq(single[0].steps.length, 1, "one round means one point on the timeline");
+
   /* The point of the feature: a round of the table thickens the thread. */
   var r1 = part("R1"), r2 = part("R2");
   r1.slug = "r1"; r2.slug = "r2";

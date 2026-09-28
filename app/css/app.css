@@ -914,3 +914,18 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .learn .learn-list { margin: 0 0 14px; padding-left: 20px; }
 .learn .learn-list li { margin: 7px 0; font-size: .95rem; line-height: 1.55; }
 .learn a { color: var(--accent); }
+
+/* ---------- readings history: how a pair's readings moved over rounds ---------- */
+.hist-dir { margin: 0 0 18px; }
+.hist-who { font-weight: 600; font-size: .95rem; margin-bottom: 8px; }
+.hist-step { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.hist-dots { display: flex; gap: 4px; }
+.hist-dots .fdot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.hist-dots .fdot.on.positive { background: var(--good); }
+.hist-dots .fdot.on.negative { background: var(--warn); }
+.hist-dots .fdot.on.unknown { background: var(--unknown); }
+.hist-lab { font-size: .85rem; min-width: 64px; }
+
+/* ---------- no-AI meeting: who is speaking ---------- */
+.sm-who { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .9rem; margin: 8px 2px 2px; }
+.sm-who .sm-ava { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: .78rem; flex: none; }

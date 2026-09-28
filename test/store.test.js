@@ -206,4 +206,33 @@ module.exports = function (t) {
   t.eq(legacy.IFS.store.state.table.meetings, [],
     "a backup from before meetings existed restores with an empty shelf, not a crash");
   t.ok(legacy.IFS.store.state.table.built, "and the rest of the room still comes back");
+
+  /* --- table-only export/import: the room travels on its own --- */
+  var src = fresh();
+  src.IFS.store.saveTable({ built: true, room: "a long library table under a window",
+    agreements: ["speak kindly"] });
+  src.IFS.store.addMeeting({ date: "2026-08-01", topic: "theirs", parts: [], voices: [], synthesis: "" });
+  var tableFile = JSON.parse(src.IFS.store.exportTable());
+  t.eq([tableFile.app, tableFile.kind], ["inner-table", "table"], "a table file names itself as one");
+  t.ok(tableFile.table && tableFile.table.room, "and it carries the room");
+
+  var dst = fresh();
+  dst.IFS.store.addMeeting({ date: "2026-08-02", topic: "mine", parts: [], voices: [], synthesis: "" });
+  var mineId = dst.IFS.store.state.table.meetings[0].id;
+  var res = dst.IFS.store.importTable(JSON.stringify(tableFile));
+  t.eq(res.meetingsAdded, 1, "the incoming meeting arrives");
+  var topics = dst.IFS.store.state.table.meetings.map(function (m) { return m.topic; });
+  t.ok(topics.indexOf("mine") >= 0 && topics.indexOf("theirs") >= 0,
+    "and the one this device already had is not thrown away");
+  t.eq(dst.IFS.store.state.table.room, "a long library table under a window",
+    "the room fields merge onto the current one");
+  t.eq(dst.IFS.store.state.table.agreements, ["speak kindly"], "and so do the agreements");
+  var res2 = dst.IFS.store.importTable(JSON.stringify(tableFile));
+  t.eq([res2.meetingsAdded, dst.IFS.store.state.table.meetings.length], [0, 2],
+    "importing the same table file twice adds nothing twice");
+
+  t.throws(function () { dst.IFS.store.importTable('{"nope":1}'); },
+    "a file that is not a table file is refused");
+  t.throws(function () { dst.IFS.store.importTable('not json'); },
+    "and so is a file that is not json at all");
 };

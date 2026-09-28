@@ -1,16 +1,20 @@
 # Inner Table — handoff
 
-Everything a fresh session needs to pick this up. Written 2026-08-01, updated 2026-08-02.
+Everything a fresh session needs to pick this up. Written 2026-08-01, refreshed
+2026-09-27 to cover the multi-user, sync and push work (PR #7).
 
 ---
 
 ## What this is
 
-**Inner Table** is a mobile-first, zero-backend PWA for Internal Family Systems
+**Inner Table** is a mobile-first PWA for Internal Family Systems
 (IFS) self-exploration. You meet your inner "parts", build a written profile of
 each one, map how they relate, and hold a table meeting where they respond to
-something real. Everything lives in the browser — no account, no server, no
-analytics.
+something real. It is on-device first — parts live in browser storage with an
+IndexedDB mirror — and signed-in users get two server-side services: **accounts
+with cloud sync** (the same parts on every device you sign in on) and
+**Web Push** for the daily check-in. The LLM sessions themselves still call the
+provider's API straight from the browser; there are no analytics anywhere.
 
 It is the webapp half of **ifs-agents**, which also ships Claude Code skills and
 portable prompts that read and write the *same* `parts/<slug>.md` files.
@@ -27,28 +31,51 @@ portable prompts that read and write the *same* `parts/<slug>.md` files.
 | **Public repo** (code) | https://github.com/joman124/ifs-agents — `main` |
 | **Private repo** (real part data) | `joman124/ifs-agents-jm` — profiles, sessions, imports |
 | **Hosting** | Vercel project `ifs-agents`, auto-deploys every push to `main` |
-| **Vercel config** | `vercel.json` — serves `app/` as site root, `cleanUrls`, no-cache on `sw.js` |
-| **CI** | None. A GitHub Pages workflow existed, never once succeeded, and was deleted in `afb4b85`. |
+| **Vercel config** | `vercel.json` — serves `app/` as site root, `cleanUrls`, no-cache on `sw.js`; `api/` functions deploy as serverless endpoints |
+| **Server API** | `api/` — signup, login (scrypt-hashed passwords, HMAC-signed session tokens), state sync, Web Push subscription/sending. Stateless; all persistence is Upstash Redis. See *Server setup* below. |
+| **State storage** | Signed-out: browser only (localStorage + IndexedDB mirror). Signed-in: same local storage as source of truth, plus a per-user state blob in Upstash Redis (`innertable:state:<username>`) for cross-device sync — whole-blob push/pull, reconciled before the first push, merged through `store.importAll` on pull. |
+| **CI** | `.github/workflows/test.yml` — runs `node test/run.js` on push and PR to `main`. (An earlier GitHub Pages workflow never succeeded and was deleted in `afb4b85`.) |
 
 Deploys are automatic: push to `main` → Vercel builds → live. There is no build
-step; `app/` is served as static files.
+step; `app/` is served as static files and `api/` runs as serverless functions
+on the same project.
+
+### Server setup
+
+The `api/` functions need environment variables on the Vercel project. Without
+them they return a 500 that says which feature is unconfigured — the app degrades
+gracefully (local-only mode), it never crashes.
+
+| Variable | For | How to get |
+|---|---|---|
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | accounts + sync | Upstash Redis database |
+| `SESSION_SECRET` | signing login tokens (HMAC-SHA256) | any long random string |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | `node scripts/gen-vapid-keys.js` |
+| `VAPID_SUBJECT` | Web Push contact | `mailto:` address |
+
+`scripts/add-user.js` provisions accounts from the command line when needed.
 
 ## Repo layout
 
 ```
 app/                 the webapp (this is what deploys)
   index.html         single page, 4 tabs, sheet + panel overlays
-  css/app.css        all styles (818 lines)
+  css/app.css        all styles (931 lines)
   sw.js              service worker, cache-first shell — bump CACHE on every deploy
-  manifest.webmanifest
+  manifest.webmanifest  icons + install-card screenshots (placeholders — see Next steps §1)
+  screenshots/       placeholder install-card PNGs — replace with real device shots
   js/                see the table below
-test/                node test/run.js — 469 assertions, no dependencies
+api/                 serverless functions (Vercel): signup, login, sync,
+                     push-subscribe, push-send, vapid-public-key
+  root package.json  holds the `web-push` dependency for the functions only
+test/                node test/run.js — 497 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
 templates/           portable prompts (same content as js/templates.js)
 skills/              Claude Code slash commands
 examples/            one fictional part, "The Critic"
+scripts/             gen-vapid-keys.js, add-user.js, env.js, audit-parts.js
 ```
 
 ### The JS modules
@@ -59,16 +86,21 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 
 | File | Lines | What it owns |
 |---|--:|---|
-| `schema.js` | 695 | Part shape, the 9 coverage categories, 5 edge types, the 5-point feeling scale, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `edgeWeight`, `setFeeling`/`pairFeeling`/`pairTone`, `mapCounts`, `initial` |
+| `schema.js` | 718 | Part shape, the 9 coverage categories, 5 edge types, the 5-point feeling scale, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `edgeWeight`, `setFeeling`/`pairFeeling`/`pairTone`/`feelingHistory`, `mapCounts`, `initial` |
 | `questions.js` | 130 | The IFS question bank (33 questions), `nextCategory`, `applyAnswers` |
 | `reference.js` | 207 | Fraser's Table protocol (build/tools/seats/closing), the 8-page reference library, the first-run coach cues and the daily check-in prompts |
 | `markdown.js` | 489 | `parts/<slug>.md` ⇄ object. Frontmatter parser, `splitDocs`, `analyze`, `splitVoices`/`summarizeMeeting` |
-| `store.js` | 795 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart` |
+| `store.js` | 831 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart`, table-only `exportTable`/`importTable` |
 | `templates.js` | 425 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
 | `llm.js` | 272 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
 | `voice.js` | 360 | Web Speech dictation + TTS, optional ElevenLabs voice |
 | `graph.js` | 559 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat |
-| `ui.js` | 3629 | Every view, sheet, panel and flow. The big one. |
+| `auth.js` | 62 | Session token storage, sign-in/up/out flows against `api/` |
+| `sync.js` | 82 | Whole-blob push/pull via `api/sync.js`; nothing pushes before a pull reconciles; a pending push is pinned to the account that queued it |
+| `push.js` | 222 | Web Push subscribe/unsubscribe, daily check-in reminder scheduling; requires sign-in |
+| `ui.js` | 3093 | The shell and every view, sheet, panel and flow except the two below. Still the big one; shares its helpers with them via `IFS.ui._share`. |
+| `ui-table.js` | 740 | The Table tab: the room, seating, meetings, the round of the table and the readings-history sheet |
+| `ui-learn.js` | 49 | The Learn library sheet and its pages |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
 
 ## The four tabs
@@ -108,7 +140,9 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
    meeting card**, where it is filed on that meeting's date rather than today.
    A card says whether a round was recorded; one whose attendees have since
    been deleted says so instead of offering a round nobody can answer.
-4. **Settings** — provider keys, voice, theme, backup/restore, transcripts.
+4. **Settings** — account (sign in/up/out, "Sync now", sign-out closes your parts
+   and returns to the sign-in screen), push notifications (tied to the signed-in
+   account), provider keys, voice, theme, backup/restore, transcripts.
    "Find my voices" lists the ElevenLabs account's own voices (clones first) so
    no ID is copied by hand; "Test this key" does a live round-trip for
    whichever LLM provider is active instead of failing silently mid-session.
@@ -163,6 +197,20 @@ already there rather than replacing it — both are history.
 
 Included in backups. A deleted part gives up its chair as well as its edges.
 
+### Sync — `api/sync.js` ⇄ `app/js/sync.js`
+
+Signed-in users share one state blob per account, stored at
+`innertable:state:<username>` in Upstash Redis. The browser's local storage
+stays the source of truth; sync is best-effort on top of it. The server
+verifies the HMAC-signed session token (issued by `api/login.js`) on every
+call, so one user can never read or write another's slot. The client pushes
+the whole blob after a 1.5 s debounce, but never before a pull has reconciled
+what the server holds — a push that lands in the wrong account's slot would
+flatten the other device's parts, so nothing goes up blind, and a queued push
+is pinned to the username that queued it. A pull merges through
+`store.importAll`'s existing merge logic rather than overwriting, so the
+Invariants around merges still hold across devices.
+
 ## Invariants — do not break these
 
 These are not style preferences; several were fixed *because* they were broken.
@@ -197,6 +245,10 @@ python3 -m http.server 8777 --directory app
 
 No build, no install. Any static server works — Node one-liners and
 `npx serve app` do too; `.claude/launch.json` has a config for the latter.
+A plain static server won't run the `api/` functions; test those against a
+Vercel preview deploy (or `vercel dev`) with the env vars from *Server setup*
+above — without them each function returns its "not configured" 500 and the
+app runs local-only.
 
 ### The test suite
 
@@ -299,34 +351,45 @@ Ordered by value against "a web app people save to their phones for local use".
   event exists, the same banner says *tap Share, then Add to Home Screen*.
   Dismissing snoozes it for 30 days (`settings.installSnooze`). Settings →
   **About** is the permanent path, and reads *Installed* once it is.
-- ~~**Manifest polish:** `id`, `categories`, maskable PNG.~~ Still missing:
-  `screenshots`, which is what gives Android the richer install card. It needs
-  real device-sized PNG screenshots, which nothing in this repo can generate.
+- ~~**Manifest polish:** `id`, `categories`, maskable PNG.~~ `screenshots` are
+  now in the manifest — `screenshots/wide.png` (1280×720) and
+  `screenshots/narrow.png` (750×1334) — which gives Android the richer install
+  card. Both are **generated placeholders** drawn in the app's palette
+  (`scripts`-side throwaway at `/tmp/gen-screenshots.py`; no image tooling in
+  the repo). Replace them with real device screenshots when convenient; the
+  sizes and `form_factor` values (`wide` / `narrow`) are already correct.
 - ~~**Verify offline.**~~ Verified for real on 2026-08-01: shell cached under
   `inner-table-v11`, dev server killed, cold navigation still booted the whole
-  app with zero console errors. **Not** yet verified from an iOS home-screen
-  icon on a real phone — that is the one remaining install check.
+  app with zero console errors. **iOS home-screen install verified on a real
+  phone per owner, 2026-09-27.**
 
-### 2. Protect local data — it is the whole product
+### 2. Protect data — it is the whole product
 
-Everything is in `localStorage` with an IndexedDB mirror. Risks worth closing:
+Signed-in users get a per-account state blob in Upstash (sync), which doubles
+as an off-device backup. Signed-out users still rely on browser storage
+(localStorage + IndexedDB mirror), so the risks below are theirs:
 
-- ~~Safari can evict script-writable storage after ~7 days of no interaction for
+- Safari can evict script-writable storage after ~7 days of no interaction for
   sites not on the home screen. `navigator.storage.persist()` is already
-  requested; surface whether it was *granted* and warn if not.~~ Persistence is
-  still requested at boot. The passive status row was removed in the settings
-  cleanup; the "export backups" nudge now rides on the backup reminder and the
-  **Your data** section instead of a standalone line.
+  requested; surface whether it was *granted* and warn if not. The passive
+  status row was removed in the settings cleanup; the "export backups" nudge
+  now rides on the backup reminder and the **Your data** section instead of a
+  standalone line.
 - The backup reminder only nags after 3 weeks. Consider a first-run prompt and
-  a "your data is only on this device" line in onboarding.
-- No import/export of the table alone; only the whole-backup JSON.
+  a "your data is only on this device" line in onboarding for signed-out users.
+- ~~No import/export of the table alone; only the whole-backup JSON.~~
+  Settings → **Your data** now exports and imports the table on its own
+  (`store.exportTable`/`importTable`); an import merges the room onto the
+  current one and adds only meetings this device doesn't already have.
 
 ### 3. Commit the test harness — **done**
 
-`test/` now holds 469 assertions over the pure logic, run with
-`node test/run.js`. See *Running and verifying locally* above for what is
-and isn't covered. What's left here is smaller: DOM-level coverage of the
-sheet/panel flows, and wiring the runner into a pre-commit hook.
+`test/` now holds 497 assertions over the pure logic, run with
+`node test/run.js`. `.github/workflows/test.yml` runs the suite on push and
+PR to `main`, so regressions get caught before they merge. See *Running and
+verifying locally* above for what is and isn't covered. What's left here is
+smaller: DOM-level coverage of the sheet/panel flows, and wiring the runner
+into a pre-commit hook alongside the CI.
 
 Writing it found one real defect, now fixed: `examples/parts/the-critic.md`
 opens with an HTML comment saying it is fictional, and frontmatter has to come
@@ -374,8 +437,9 @@ refused. `extractProfiles` now drops a leading comment before giving up.
   is one paragraph with a **Read more** into the full page, fires once, and
   runs only during an account's first day (`settings.coachOn` / `taught`).
   The library still has no search.
-- `ui.js` is 3216 lines. Splitting the Table and Learn sections out would help,
-  but only worth doing alongside the test harness.
+- ~~`ui.js` is 3629 lines. Splitting the Table and Learn sections out would help,
+  but only worth doing alongside the test harness.~~ Done: the Table tab lives
+  in `ui-table.js` and the Learn library in `ui-learn.js`; `ui.js` is 3093 lines.
 
 ---
 
@@ -385,13 +449,16 @@ refused. `extractProfiles` now drops a leading comment before giving up.
    too.** Sign-up and login make this a multi-user platform, and the first-run
    experience is built on that — a fresh account gets the coach cues, an
    established one gets the daily check-in.
-2. **Which phone?** iOS and Android need different install work, and iOS is
-   where the icon and storage-eviction problems bite.
+2. ~~**Which phone?**~~ iOS and Android both install and run; iOS home-screen
+   install verified on a real phone per owner, 2026-09-27. Remaining iOS
+   exposure is storage eviction for sites kept off the home screen (see
+   *Next steps* §2).
 3. **Do you want a no-AI path all the way through?** The questionnaire, map and
    table all work with zero configuration, but *meetings* still need a key or
    the copy-prompt detour. Closing that gap makes the app fully usable offline.
-4. **Should the slug drift in the private repo be fixed?** Seven edges currently
-   don't draw. It is a mechanical fix to five files, and it is your data.
+4. ~~**Should the slug drift in the private repo be fixed?**~~ **Answered:
+   leave it alone — owner, 2026-09-27.** Seven edges don't draw; the data stays
+   as-is.
 5. ~~**How much should the app teach?**~~ **Answered:** contextually, but only
    at the start. Five coach cues surface the library where its content is
    relevant, each once, and only during an account's first day — after that

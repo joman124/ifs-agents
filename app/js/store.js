@@ -464,6 +464,61 @@
     }, null, 2);
   }
 
+  /* Export just the table - the room, its seats and tools, and the meeting
+     history - as its own file, separate from the whole backup. */
+  function exportTable() {
+    return JSON.stringify({
+      app: "inner-table",
+      kind: "table",
+      version: 1,
+      exported: new Date().toISOString(),
+      table: state.table
+    }, null, 2);
+  }
+
+  /* Merge an incoming table object onto the current room: fields onto the
+     room, meetings added to history by id rather than replacing it. This is
+     the same rule the whole-backup import uses for data.table, so the two
+     paths can never disagree. */
+  function mergeTable(d) {
+    if (!d || typeof d !== "object") return;
+    var tb = {};
+    ["name", "room", "details"].forEach(function (k) { if (typeof d[k] === "string") tb[k] = d[k]; });
+    if (Array.isArray(d.tools)) tb.tools = d.tools.filter(function (x) { return x && typeof x.label === "string"; });
+    if (Array.isArray(d.agreements)) tb.agreements = d.agreements.filter(function (x) { return typeof x === "string"; });
+    if (d.seats && typeof d.seats === "object" && !Array.isArray(d.seats)) tb.seats = d.seats;
+    if (Array.isArray(d.log)) tb.log = d.log.filter(function (x) { return x && x.date; });
+    if (Array.isArray(d.meetings)) {
+      // meetings are history, so a restore adds to what is here rather than
+      // replacing it - same rule the transcripts below follow
+      var haveM = {};
+      state.table.meetings.forEach(function (m) { haveM[m.id] = 1; });
+      d.meetings.forEach(function (m) {
+        if (m && m.id && m.date && !haveM[m.id]) { haveM[m.id] = 1; state.table.meetings.push(m); }
+      });
+      state.table.meetings.sort(function (x, y) { return String(x.date).localeCompare(String(y.date)); });
+      tb.meetings = state.table.meetings;
+    }
+    // built only counts if there is actually a room, or buildTable can loop
+    tb.built = !!(tb.room || state.table.room);
+    Object.assign(state.table, tb);
+  }
+
+  /* Import a table file: the merge rules above. Returns how many meetings
+     the file added, so the caller can say something true about it. */
+  function importTable(json) {
+    var data = JSON.parse(json);
+    if (!data || typeof data !== "object" || !data.table || typeof data.table !== "object")
+      throw new Error("Not an Inner Table table file.");
+    var before = {};
+    state.table.meetings.forEach(function (m) { before[m.id] = 1; });
+    mergeTable(data.table);
+    var added = 0;
+    state.table.meetings.forEach(function (m) { if (!before[m.id]) added++; });
+    save();
+    return { meetingsAdded: added };
+  }
+
   /* Keep the later of two ISO stamps, "" meaning "no idea, treat as ancient". */
   function laterOf(a, b) { return (a || "") > (b || "") ? (a || "") : (b || ""); }
 
@@ -531,28 +586,7 @@
       }
       count++;
     });
-    if (data.table && typeof data.table === "object") {
-      var d = data.table, tb = {};
-      ["name", "room", "details"].forEach(function (k) { if (typeof d[k] === "string") tb[k] = d[k]; });
-      if (Array.isArray(d.tools)) tb.tools = d.tools.filter(function (x) { return x && typeof x.label === "string"; });
-      if (Array.isArray(d.agreements)) tb.agreements = d.agreements.filter(function (x) { return typeof x === "string"; });
-      if (d.seats && typeof d.seats === "object" && !Array.isArray(d.seats)) tb.seats = d.seats;
-      if (Array.isArray(d.log)) tb.log = d.log.filter(function (x) { return x && x.date; });
-      if (Array.isArray(d.meetings)) {
-        // meetings are history, so a restore adds to what is here rather than
-        // replacing it - same rule the transcripts below follow
-        var haveM = {};
-        state.table.meetings.forEach(function (m) { haveM[m.id] = 1; });
-        d.meetings.forEach(function (m) {
-          if (m && m.id && m.date && !haveM[m.id]) { haveM[m.id] = 1; state.table.meetings.push(m); }
-        });
-        state.table.meetings.sort(function (x, y) { return String(x.date).localeCompare(String(y.date)); });
-        tb.meetings = state.table.meetings;
-      }
-      // built only counts if there is actually a room, or buildTable can loop
-      tb.built = !!(tb.room || state.table.room);
-      Object.assign(state.table, tb);
-    }
+    if (data.table && typeof data.table === "object") mergeTable(data.table);
     if (Array.isArray(data.transcripts)) {
       var have = {};
       state.transcripts.forEach(function (t) { have[t.id] = 1; });
@@ -788,6 +822,8 @@
     updateMeeting: updateMeeting,
     deleteTranscript: deleteTranscript,
     exportAll: exportAll,
+    exportTable: exportTable,
+    importTable: importTable,
     importAll: importAll,
     wipe: wipe,
     SAMPLE_CRITIC: SAMPLE_CRITIC

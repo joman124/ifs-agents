@@ -12,6 +12,8 @@ jobs:
   remind:
     runs-on: ubuntu-latest
     steps:
-      - run: curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://ifs-agents.vercel.app/api/push-remind
+      # a block scalar: the ": " in the header breaks a plain YAML value
+      - run: |
+          curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://ifs-agents.vercel.app/api/push-remind
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}

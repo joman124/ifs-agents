@@ -111,16 +111,36 @@ label.fieldlabel { display: block; font-size: .8rem; color: var(--ink-dim); marg
 .glyph-send::before { content: "\2191"; font-weight: 700; }
 
 /* ================= onboarding ================= */
+/* Same viewport story as .app below: dvh keeps the bottom of the overlay
+   (and the slide's button) above the browser toolbar. */
 .onboarding {
-  position: fixed; inset: 0; z-index: 60; background: var(--bg);
+  position: fixed; inset: 0; height: 100dvh; z-index: 60; background: var(--bg);
   display: flex; flex-direction: column;
 }
-.onboard-track { flex: 1; display: flex; overflow: hidden; }
+.onboard-track { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+/* A slide taller than the screen (the "not therapy" one on a small phone)
+   scrolls instead of being clipped. justify-content:center would push the
+   overflow off both ends out of reach, so the auto margins on the first and
+   last child do the centering - they collapse to 0 once there is no room. */
 .onboard-slide {
   min-width: 100%; padding: calc(28px + var(--sat)) 28px 20px;
-  display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  display: flex; flex-direction: column; gap: 14px;
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   text-align: center; animation: fadeUp .45s ease;
   transition: margin-left .38s cubic-bezier(.3,.8,.3,1);
+}
+.onboard-slide > :first-child { margin-top: auto; }
+.onboard-slide > :last-child { margin-bottom: auto; }
+/* the way forward stays on screen while the text scrolls behind it */
+.onboard-slide > .btn-big {
+  position: sticky; bottom: 0; flex-shrink: 0;
+  box-shadow: 0 0 0 14px var(--bg);
+}
+@media (max-height: 640px) {
+  .onboard-slide { gap: 10px; padding-top: calc(16px + var(--sat)); padding-bottom: 12px; }
+  .onboard-art, .onboard-art .glyph { font-size: 40px; }
+  .onboard-slide h1 { font-size: 1.9rem; }
+  .onboard-slide h2 { font-size: 1.45rem; }
 }
 .onboard-art { font-size: 54px; margin-bottom: 4px; }
 .onboard-art .glyph { width: auto; height: auto; font-size: 54px; line-height: 1; }

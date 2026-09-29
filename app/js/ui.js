@@ -2257,10 +2257,16 @@
       "<section><h4>What a thread says</h4>" + named + "</section>" +
       '<section><h4>Round the table <small>' + readOut + "</small></h4>" +
       felt + scale + note + "</section>" +
-      "<section><h4>Parts</h4>" + partRows + "</section>" +
+      "<section><h4>Parts</h4>" + partRows +
+      (G.placedCount()
+        ? '<button class="btn btn-soft lg-unpin" id="lgUnpin">Let moved parts float again</button>'
+        : '<div class="lg-hint">drag a part to place it &mdash; it stays where you leave it</div>') +
+      "</section>" +
       "</div>";
 
     $("#lgClose").addEventListener("click", closeKey);
+    var unpin = $("#lgUnpin");
+    if (unpin) unpin.addEventListener("click", function () { G.unpinAll(); buzz(); renderMap(); });
     document.querySelectorAll("#mapLegend .lg").forEach(function (el) {
       el.addEventListener("click", function () {
         mapTone = mapTone === el.dataset.tone ? null : el.dataset.tone;
@@ -2327,7 +2333,7 @@
     $("#mapCard").classList.add("hidden");
     $("#mapHint").textContent = parts.length > 1
       ? "tap a thread to name it · thicker means more said"
-      : "tap a part · drag to move · pinch to zoom";
+      : "tap a part · drag to place it · pinch to zoom";
     if (has) {
       // the key renders when it is opened, not here: every count in it moves
       G.render(svg, parts, {

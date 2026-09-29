@@ -24,6 +24,13 @@ function verifySession(token, secret) {
   } catch (e) { return null; }
 }
 
+/* The device's IANA timezone, so push-remind.js can catch it at its own
+   8am. Anything the runtime can't resolve is dropped rather than stored. */
+function validTimeZone(tz) {
+  if (typeof tz !== "string" || !tz || tz.length > 64) return "";
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } catch (e) { return ""; }
+}
+
 function validSubscription(s) {
   return !!(s && typeof s.endpoint === "string" && s.endpoint &&
     s.keys && typeof s.keys.p256dh === "string" && typeof s.keys.auth === "string");
@@ -56,7 +63,8 @@ module.exports = async function handler(req, res) {
     var sub = req.body && req.body.subscription;
     if (!validSubscription(sub)) { res.status(400).json({ error: "Missing or malformed subscription" }); return; }
     list = list.filter(function (s) { return s.endpoint !== sub.endpoint; });
-    list.push({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, savedAt: Date.now() });
+    list.push({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+                tz: validTimeZone(req.body.tz) || undefined, savedAt: Date.now() });
     if (list.length > MAX_DEVICES) list = list.slice(list.length - MAX_DEVICES);
   } else if (req.method === "DELETE") {
     var endpoint = req.body && req.body.endpoint;

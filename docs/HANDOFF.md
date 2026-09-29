@@ -52,6 +52,7 @@ gracefully (local-only mode), it never crashes.
 | `SESSION_SECRET` | signing login tokens (HMAC-SHA256) | any long random string |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | `node scripts/gen-vapid-keys.js` |
 | `VAPID_SUBJECT` | Web Push contact | `mailto:` address |
+| `CRON_SECRET` | check-in reminders (`api/push-remind.js`) | any long random string — also set as a GitHub Actions secret of the same name; `.github/workflows/reminders.yml` sends it hourly, and the endpoint notifies each device at 8am, 2pm and 8pm on its own clock |
 
 `scripts/add-user.js` provisions accounts from the command line when needed.
 
@@ -66,7 +67,7 @@ app/                 the webapp (this is what deploys)
   screenshots/       placeholder install-card PNGs — replace with real device shots
   js/                see the table below
 api/                 serverless functions (Vercel): signup, login, sync,
-                     push-subscribe, push-send, vapid-public-key
+                     push-subscribe, push-send, push-remind, vapid-public-key
   root package.json  holds the `web-push` dependency for the functions only
 test/                node test/run.js — 497 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
@@ -94,7 +95,7 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `templates.js` | 425 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
 | `llm.js` | 272 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
 | `voice.js` | 360 | Web Speech dictation + TTS, optional ElevenLabs voice |
-| `graph.js` | 559 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat |
+| `graph.js` | 559 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat; a dragged part stays where it is dropped (per device, per account) |
 | `auth.js` | 62 | Session token storage, sign-in/up/out flows against `api/` |
 | `sync.js` | 82 | Whole-blob push/pull via `api/sync.js`; nothing pushes before a pull reconciles; a pending push is pinned to the account that queued it |
 | `push.js` | 222 | Web Push subscribe/unsubscribe, daily check-in reminder scheduling; requires sign-in |

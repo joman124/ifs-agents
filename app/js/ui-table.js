@@ -306,6 +306,7 @@ which ui.js attaches before this script runs. */
 
     $("#tablePane").innerHTML =
       '<div class="room-card">' +
+      '<span class="kicker">' + window.IFS.icon("table", 15) + " Your meeting room</span>" +
       '<h2 class="serif room-name">' + esc(t.name || "The room") + "</h2>" +
       '<div class="prose">' + esc(t.room) + "</div>" +
       (t.details ? '<div class="prose dim" style="margin-top:10px">' + esc(t.details) + "</div>" : "") +

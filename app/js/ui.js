@@ -13,6 +13,7 @@
   var AUTH = window.IFS.auth;
   var SY = window.IFS.sync;
   var F = window.IFS.files;
+  var icon = window.IFS.icon;
 
   var $ = function (sel) { return document.querySelector(sel); };
   var esc = function (s) {
@@ -40,12 +41,9 @@
     var dark = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
   }
-  function cycleTheme() {
-    var order = ["auto", "dark", "light"];
-    var s = ST.state.settings;
-    s.theme = order[(order.indexOf(s.theme) + 1) % order.length];
+  function setTheme(t) {
+    ST.state.settings.theme = t;
     ST.save(); applyTheme(); buzz();
-    toast("Theme: " + s.theme);
   }
 
   /* ================= sheet =================
@@ -103,19 +101,112 @@
   var currentView = "parts";
   function showView(name) {
     currentView = name;
+    closeProfileMenu();
     document.querySelectorAll(".tab").forEach(function (t) {
-      t.classList.toggle("active", t.dataset.view === name);
+      var on = t.dataset.view === name;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
     });
     document.querySelectorAll(".view").forEach(function (v) {
       v.classList.toggle("hidden", v.id !== "view-" + name);
     });
-    $("#topTitle").textContent = { parts: "Inner Table", map: "Swarm Map", table: "The Table", settings: "Settings" }[name];
+    // settings has no tab: the profile button is where it lives, so that is
+    // what reads as "you are here" while it is open
+    $("#profileBtn").classList.toggle("active", name === "settings");
+    paintProfile();
     $("#fabNew").classList.toggle("hidden", name !== "parts");
     if (name === "map") renderMap(); else G.stop();
     if (name === "parts") renderParts();
     if (name === "table") window.IFS.ui.renderTable();
     if (name === "settings") renderSettings();
     buzz();
+  }
+
+  /* ================= profile menu =================
+     The avatar in the top bar. Settings moved here off the tab bar - the tab
+     bar is for the three places the work happens - along with the theme and
+     the way out of the account. */
+  function initialsOf(name) {
+    var n = String(name || "").trim();
+    if (!n) return "?";
+    var words = n.split(/[\s._-]+/).filter(Boolean);
+    var two = words.length > 1 ? words[0][0] + words[1][0] : n.slice(0, 2);
+    return two.toUpperCase();
+  }
+
+  function paintProfile() {
+    var who = AUTH.isLoggedIn() ? AUTH.getUsername() : "";
+    $("#profileInitials").textContent = initialsOf(who);
+  }
+
+  function profileMenuHTML() {
+    var who = AUTH.isLoggedIn() ? AUTH.getUsername() : "";
+    var theme = ST.state.settings.theme;
+    var themeBtn = function (val, ic, label) {
+      return '<button data-theme-val="' + val + '"' + (theme === val ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"') + ">" +
+        icon(ic, 16) + "<span>" + label + "</span></button>";
+    };
+    return '<div class="pm-head"><span class="avatar large">' + esc(initialsOf(who)) + "</span>" +
+      '<span class="pm-who"><b>' + esc(who || "Not signed in") + "</b>" +
+      "<small>" + (who ? "Your parts follow you to every device" : "Sign in to reach your parts") + "</small></span></div>" +
+      '<button class="pm-item" role="menuitem" data-menu="settings">' + icon("settings") + "<span>Settings</span>" + icon("chevron", 16) + "</button>" +
+      '<button class="pm-item" role="menuitem" data-menu="learn">' + icon("info") + "<span>How this works</span>" + icon("chevron", 16) + "</button>" +
+      '<div class="pm-label">Theme</div>' +
+      '<div class="pm-theme" role="group" aria-label="Theme">' +
+      themeBtn("light", "sun", "Light") + themeBtn("dark", "moon", "Dark") + themeBtn("auto", "monitor", "Auto") +
+      "</div>" +
+      (who
+        ? '<button class="pm-item danger" role="menuitem" data-menu="signout">' + icon("logout") + "<span>Sign out</span></button>"
+        : '<button class="pm-item" role="menuitem" data-menu="signin">' + icon("user") + "<span>Sign in</span></button>");
+  }
+
+  function openProfileMenu() {
+    var m = $("#profileMenu");
+    m.innerHTML = profileMenuHTML();
+    m.classList.remove("hidden");
+    $("#profileScrim").classList.remove("hidden");
+    $("#profileBtn").setAttribute("aria-expanded", "true");
+    buzz();
+    var first = m.querySelector(".pm-item");
+    if (first) first.focus({ preventScroll: true });
+  }
+
+  function closeProfileMenu() {
+    var m = $("#profileMenu");
+    if (!m || m.classList.contains("hidden")) return;
+    m.classList.add("hidden");
+    $("#profileScrim").classList.add("hidden");
+    $("#profileBtn").setAttribute("aria-expanded", "false");
+  }
+
+  function onProfileMenuClick(e) {
+    var tb = e.target.closest("[data-theme-val]");
+    if (tb) {
+      setTheme(tb.dataset.themeVal);
+      $("#profileMenu").innerHTML = profileMenuHTML();
+      if (currentView === "settings") renderSettings();
+      return;
+    }
+    var it = e.target.closest("[data-menu]");
+    if (!it) return;
+    var what = it.dataset.menu;
+    closeProfileMenu();
+    if (what === "settings") showView("settings");
+    if (what === "learn") window.IFS.ui.learnSheet();
+    if (what === "signin") showLogin();
+    if (what === "signout") signOut();
+  }
+
+  function signOut() {
+    AUTH.logout();
+    SY.reset();
+    // parts live in the account; signing out closes them under their own key
+    // and returns to the sign-in gate, leaving nothing of the account on
+    // screen. Another person can now sign in here and reach only their own.
+    ST.switchOwner(null);
+    requireLogin();
+    paintProfile();
+    toast("Signed out - sign in to reach your parts again");
   }
 
   /* ================= parts list ================= */
@@ -281,17 +372,21 @@
     if (!p) { el.innerHTML = ""; return; }
 
     el.innerHTML =
-      '<div class="ritual">' +
-      '<button class="coach-x" id="rtSkip" aria-label="Not today">&#10005;</button>' +
-      '<div class="ritual-q serif">' + esc(R.ritualPrompt(today)) + "</div>" +
+      '<section class="ritual">' +
+      '<div class="ritual-copy">' +
+      '<span class="kicker">' + icon("spark", 15) + " Daily check-in</span>" +
+      '<h2 class="ritual-q serif">' + esc(R.ritualPrompt(today)) + "</h2>" +
       '<div class="ritual-part">' +
       '<span class="rt-i">' + esc(S.initial(p.name)) + "</span>" +
       '<span class="rt-main"><b>' + esc(p.name) + "</b>" +
       '<span class="rt-sub">' + esc(quietLabel(p)) + "</span></span></div>" +
       '<div class="ritual-cta">' +
-      '<button class="btn btn-primary" id="rtGo">Check in</button>' +
+      '<button class="btn btn-primary" id="rtGo">Check in ' + icon("arrow", 18) + "</button>" +
       '<button class="btn btn-soft" id="rtOther">Someone else</button>' +
-      "</div></div>";
+      "</div></div>" +
+      '<div class="orbit-art" aria-hidden="true"><i class="orbit o1"></i><i class="orbit o2"></i><i class="orb b1"></i><i class="orb b2"></i><i class="orb b3"></i></div>' +
+      '<button class="coach-x" id="rtSkip" aria-label="Not today">&#10005;</button>' +
+      "</section>";
 
     bind("#rtSkip", function () { dismissRitual(); renderParts(); buzz(); });
     bind("#rtGo", function () {
@@ -314,19 +409,19 @@
     var s = ST.state.settings;
     if (d && d.messages && d.messages.length) {
       html +=
-        '<div class="banner"><span class="bn-main"><b>Unfinished ' + esc((d.title || "session").toLowerCase()) + "</b>" +
+        '<div class="banner"><span class="bn-icon">' + icon("chat") + '</span><span class="bn-main"><b>Unfinished ' + esc((d.title || "session").toLowerCase()) + "</b>" +
         '<span class="bn-sub">from ' + esc(d.updated || "recently") + " &middot; pick up where you left off</span></span>" +
         '<button class="btn btn-primary" id="bnResume">Resume</button>' +
         '<button class="btn btn-ghost" id="bnDiscard" aria-label="Discard draft">&#10005;</button></div>';
     } else if (!isStandalone() && (deferredInstall || isIOS()) && daysSince(s.installSnooze) >= 30) {
       html +=
-        '<div class="banner quiet"><span class="bn-main"><b>Add to your home screen</b>' +
+        '<div class="banner quiet"><span class="bn-icon">' + icon("download") + '</span><span class="bn-main"><b>Add to your home screen</b>' +
         '<span class="bn-sub">' + installHint() + "</span></span>" +
         (deferredInstall ? '<button class="btn btn-soft" id="bnInstall">Install</button>' : "") +
         '<button class="btn btn-ghost" id="bnInstallNo" aria-label="Not now">&#10005;</button></div>';
     } else if (ST.listParts().length && daysSince(s.lastBackup) >= 21 && daysSince(s.backupSnooze) >= 14) {
       html +=
-        '<div class="banner quiet"><span class="bn-main"><b>Back up your parts</b>' +
+        '<div class="banner quiet"><span class="bn-icon">' + icon("database") + '</span><span class="bn-main"><b>Back up your parts</b>' +
         '<span class="bn-sub">' + (s.lastBackup ? "last backup " + esc(s.lastBackup) : "never backed up") + " &middot; browsers can clear site data</span></span>" +
         '<button class="btn btn-soft" id="bnBackup">Export</button>' +
         '<button class="btn btn-ghost" id="bnSnooze" aria-label="Remind me later">&#10005;</button></div>';
@@ -345,7 +440,46 @@
     bind("#bnInstallNo", function () { s.installSnooze = S.todayISO(); ST.save(); renderParts(); });
   }
 
+  /* The page opens on a person, not a list: today's date, a greeting for
+     the hour, and the one line of permission the whole app runs on. */
+  function partsHeadHTML() {
+    var now = new Date();
+    var h = now.getHours();
+    var part = h >= 5 && h < 12 ? "Good morning" : h >= 12 && h < 18 ? "Good afternoon" : "Good evening";
+    var who = AUTH.isLoggedIn() ? AUTH.getUsername() : "";
+    var date = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    return '<p class="eyebrow">' + esc(date) + "</p>" +
+      '<h1 class="serif">' + esc(part) + (who ? ", " + esc(who) : "") + ".</h1>" +
+      '<p class="subtitle">Take a moment to notice what is present today.</p>';
+  }
+
+  function partCardHTML(p, today) {
+    var rd = S.readiness(p);
+    var pct = Math.round(S.coverageScore(p) * 100);
+    var last = p.sessions.length ? p.sessions[p.sessions.length - 1] : null;
+    var note = p.positive_intent || (last ? "last session " + last.date : "Not yet interviewed - its story is still to come.");
+    // a part left alone long enough to have gone quiet says so, so the
+    // library reads as a system with a pulse rather than a set of files
+    var lastISO = S.lastSessionISO(p);
+    var quiet = lastISO && S.daysBetween(lastISO, today) >= 14;
+    return '<article class="part-card t-' + esc(p.type) + (quiet ? " is-quiet" : "") + '" data-slug="' + esc(p.slug) + '" tabindex="0" role="button" aria-label="Open ' + esc(p.name) + '">' +
+      '<div class="pc-top">' +
+      '<span class="pc-avatar">' + esc(S.initial(p.name)) + "</span>" +
+      '<span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span>" +
+      (rd.ready ? '<span class="pc-ready" title="ready for table meetings">' + icon("check", 13) + "ready</span>" : "") +
+      "</div>" +
+      '<h3 class="serif">' + esc(p.name) + "</h3>" +
+      '<p class="pc-note">' + esc(note) + "</p>" +
+      '<div class="pc-progress"><div class="pc-plabel"><span>Profile depth</span><b>' + pct + "%</b></div>" +
+      '<span class="pc-track"><i style="width:' + pct + '%"></i></span></div>' +
+      '<div class="pc-foot"><span class="readydot' + (rd.ready ? " ready" : "") + '"></span>' +
+      '<span class="pc-when">' + (rd.ready ? "" : "needs more check-ins &middot; ") + esc(quietLabel(p)) + "</span>" +
+      icon("chevron", 16) + "</div>" +
+      "</article>";
+  }
+
   function renderParts() {
+    $("#partsHead").innerHTML = partsHeadHTML();
     renderCoach("#partsCoach", "parts");
     renderRitual();
     renderBanners();
@@ -353,28 +487,38 @@
     var today = S.todayISO();
     var list = $("#partsList");
     $("#partsEmpty").classList.toggle("hidden", parts.length > 0);
-    list.innerHTML = parts.map(function (p) {
-      var rd = S.readiness(p);
-      var score = S.coverageScore(p);
-      var last = p.sessions.length ? p.sessions[p.sessions.length - 1] : null;
-      var sub = p.positive_intent || (last ? "last session " + last.date : "not yet interviewed");
-      // a part left alone long enough to have gone quiet says so, so the
-      // library reads as a system with a pulse rather than a set of files
-      var lastISO = S.lastSessionISO(p);
-      var quiet = lastISO && S.daysBetween(lastISO, today) >= 14;
-      return '<div class="part-card" data-slug="' + esc(p.slug) + '">' +
-        ringSVG(score, S.initial(p.name)) +
-        '<div class="part-card-main">' +
-        '<div class="part-card-name">' + esc(p.name) +
-        ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span>" +
-        (quiet ? ' <span class="quiettag">' + esc(quietLabel(p)) + "</span>" : "") + "</div>" +
-        '<div class="part-card-sub">' + esc(sub) + "</div></div>" +
-        '<span class="readydot' + (rd.ready ? " ready" : "") + '" title="' + (rd.ready ? "ready for meetings" : "needs more check-ins") + '"></span>' +
-        "</div>";
-    }).join("");
+    var n = parts.length;
+    $("#partsSection").innerHTML = n
+      ? '<div class="section-head"><div><h2 class="serif">Your inner system</h2>' +
+        "<p>" + (n === 1 ? "One part is" : n + " parts are") + " getting to know you.</p></div>" +
+        '<button class="text-btn" id="psStart">Start something ' + icon("arrow", 16) + "</button></div>"
+      : "";
+    bind("#psStart", newSessionSheet);
+    list.innerHTML = n
+      ? parts.map(function (p) { return partCardHTML(p, today); }).join("") +
+        '<button class="add-part-card" id="addPartCard"><span class="apc-i">' + icon("plus") + "</span>" +
+        '<b class="serif">Meet a new part</b><small>Upload, interview, or create by hand</small></button>'
+      : "";
     list.querySelectorAll(".part-card").forEach(function (card) {
       card.addEventListener("click", function () { openProfile(card.dataset.slug); });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProfile(card.dataset.slug); }
+      });
     });
+    bind("#addPartCard", addPartSheet);
+  }
+
+  function addPartSheet() {
+    openSheet(
+      '<h2 class="sheet-title serif">Meet a new part</h2>' +
+      '<p class="dim">However it arrives is fine &mdash; you can deepen it later.</p>' +
+      menuItem("", "Upload or paste", "one .md file, a whole parts folder, or raw notes", "ap-import") +
+      menuItem("", "Meet it in an interview", "guided intake · 10-20 min", "ap-intake") +
+      menuItem("", "Create by hand", "just a name is enough to start", "ap-create")
+    );
+    bind("#ap-import", function () { closeSheet(); setTimeout(importSheet, 220); });
+    bind("#ap-intake", function () { closeSheet(); startSession("intake", []); });
+    bind("#ap-create", function () { createPartSheet(""); });
   }
 
   /* ================= profile ================= */
@@ -815,19 +959,22 @@
   }
 
   var MENU_ICONS = {
-    "mi-intake": "✧",            // sparkle
-    "mi-checkin": "◎",           // bullseye
-    "mi-map": "🕸",         // web
-    "mi-embody": "📄",      // document
-    "mi-meeting": "🕯",     // candle
-    "mi-import": "⤓",            // down arrow
-    "mi-create": "✎",            // pencil
-    "mi-ask": "?",
-    "mi-link": "⇄"
+    "mi-intake": icon("spark"),
+    "mi-checkin": icon("chat"),
+    "mi-map": icon("map"),
+    "mi-embody": icon("file"),
+    "mi-meeting": icon("table"),
+    "mi-import": icon("upload"),
+    "mi-create": icon("pen"),
+    "mi-ask": icon("info"),
+    "mi-link": icon("sync"),
+    "ap-import": icon("upload"),
+    "ap-intake": icon("spark"),
+    "ap-create": icon("pen")
   };
 
-  function menuItem(icon, title, sub, id, disabled) {
-    var safe = MENU_ICONS[id] || icon;
+  function menuItem(glyph, title, sub, id, disabled) {
+    var safe = MENU_ICONS[id] || glyph;
     return '<button class="menu-item" id="' + id + '"' + (disabled ? " disabled" : "") + '>' +
       '<span class="mi-icon">' + safe + '</span><span class="mi-main">' + esc(title) +
       '<span class="mi-sub">' + esc(sub) + "</span></span></button>";
@@ -988,7 +1135,7 @@
       ? "Covers: " + touched.map(function (c) { return S.CATEGORY_LABELS[c].toLowerCase(); }).join(", ")
       : "No categories covered yet";
     var exists = !!ST.getPart(p.slug);
-    return '<div class="part-card" style="cursor:default;margin-top:12px">' +
+    return '<div class="part-row" style="margin-top:12px">' +
       ringSVG(S.coverageScore(p), S.initial(p.name)) +
       '<div class="part-card-main"><div class="part-card-name">' + esc(p.name) +
       ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
@@ -2670,16 +2817,29 @@
   /* ================= settings ================= */
   function renderSettings() {
     var s = ST.state.settings;
+    var row = function (ic, main, sub, action, danger) {
+      return '<div class="set-row"><span class="sr-icon' + (danger ? " danger" : "") + '">' + icon(ic, 18) + "</span>" +
+        '<span class="sr-main"' + (danger ? ' style="color:var(--danger)"' : "") + ">" + main + '<span class="sr-sub">' + sub + "</span></span>" +
+        (action || "") + "</div>";
+    };
+    var jump = [["setAccount", "Account"], ["pushSettingsGroup", "Notifications"], ["setSessions", "Live sessions"],
+      ["setVoice", "Voice"], ["setAppearance", "Appearance"], ["setData", "Your data"], ["setAbout", "About"]];
     $("#settingsPane").innerHTML =
-      '<div class="set-group"><h3>Account</h3>' +
+      '<nav class="set-jump" aria-label="Settings sections">' + jump.map(function (j) {
+        return '<button data-jump="' + j[0] + '">' + j[1] + "</button>";
+      }).join("") + "</nav>" +
+
+      '<div class="set-group" id="setAccount"><h3>Account</h3>' +
       (AUTH.isLoggedIn()
-        ? '<div class="set-row"><span class="sr-main">Signed in as ' + esc(AUTH.getUsername()) + '<span class="sr-sub">your parts follow you to every device you sign in on</span></span><button class="btn btn-soft" id="syncNowBtn">Sync now</button></div>' +
-          '<div class="set-row"><span class="sr-main">Sign out<span class="sr-sub">closes your parts and returns to the sign-in screen</span></span><button class="btn btn-soft" id="signOutBtn">Sign out</button></div>'
-        : '<div class="set-row"><span class="sr-main">Not signed in<span class="sr-sub">sign in to reach your parts</span></span><button class="btn btn-soft" id="signInBtn">Sign in</button></div>') +
-      '<p class="dim" style="margin:12px 14px 14px">Your parts live in your account (encrypted in transit), so every device you sign in on shares them. Anyone else signing in here reaches only their own parts &mdash; never yours.</p>' +
+        ? '<div class="account-card"><span class="avatar large">' + esc(initialsOf(AUTH.getUsername())) + "</span>" +
+          '<span class="sr-main"><b>' + esc(AUTH.getUsername()) + '</b><span class="sr-sub">your parts follow you to every device you sign in on</span></span></div>' +
+          row("sync", "Sync now", "pull in changes from your other devices", '<button class="btn btn-soft" id="syncNowBtn">Sync</button>') +
+          row("logout", "Sign out", "closes your parts and returns to the sign-in screen", '<button class="btn btn-soft" id="signOutBtn">Sign out</button>')
+        : row("user", "Not signed in", "sign in to reach your parts", '<button class="btn btn-soft" id="signInBtn">Sign in</button>')) +
+      '<p class="set-note">Your parts live in your account (encrypted in transit), so every device you sign in on shares them. Anyone else signing in here reaches only their own parts &mdash; never yours.</p>' +
       "</div>" +
 
-      '<div class="set-group"><h3>Live sessions</h3>' +
+      '<div class="set-group" id="setSessions"><h3>Live sessions</h3>' +
       '<div class="set-pad"><div class="seg" id="provSeg">' +
       segBtn("manual", "Copy-prompt", s.provider) + segBtn("gemini", "Gemini", s.provider) + segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) +
       "</div>" +
@@ -2687,7 +2847,7 @@
       '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent straight to the provider. Anything you share in a session falls under that provider&rsquo;s data policies.</p>' +
       "</div></div>" +
 
-      '<div class="set-group"><h3>Voice</h3>' +
+      '<div class="set-group" id="setVoice"><h3>Voice</h3>' +
       '<div class="set-pad">' +
       '<label class="fieldlabel">ElevenLabs API key (optional)</label>' +
       '<input type="password" id="elKey" autocomplete="off" placeholder="sk_..." value="' + esc(s.elevenKey) + '">' +
@@ -2706,33 +2866,40 @@
       '<p class="dim" style="margin:12px 2px 2px">Optional. With a key and voice ID, sessions speak in that ElevenLabs voice &mdash; e.g. your own clone &mdash; instead of the built-in one. <b>Find my voices</b> fills in the ID for you. Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
       "</div></div>" +
 
-      '<div class="set-group"><h3>Appearance</h3>' +
-      '<div class="set-pad"><div class="seg" id="themeSeg">' +
-      segBtn("auto", "Auto", s.theme) + segBtn("dark", "Dark", s.theme) + segBtn("light", "Light", s.theme) +
+      '<div class="set-group" id="setAppearance"><h3>Appearance</h3>' +
+      '<div class="set-pad"><div class="sr-copy"><b>Theme</b><span class="sr-sub">how Inner Table looks on this device</span></div>' +
+      '<div class="theme-options" id="themeSeg">' +
+      themeOpt("light", "sun", "Light", s.theme) + themeOpt("dark", "moon", "Dark", s.theme) + themeOpt("auto", "monitor", "Auto", s.theme) +
       "</div></div>" +
-      '<div class="set-row"><span class="sr-main">Haptic feedback<span class="sr-sub">tiny vibrations on taps (where supported)</span></span>' +
-      '<input type="checkbox" id="hapt" style="width:auto" ' + (s.haptics ? "checked" : "") + "></div></div>" +
-
-      '<div class="set-group"><h3>Your data</h3>' +
-      '<div class="set-row"><span class="sr-main">Session transcripts<span class="sr-sub">' + ST.state.transcripts.length + ' saved from live AI sessions</span></span><button class="btn btn-soft" id="openTranscripts">Open</button></div>' +
-      '<div class="set-row"><span class="sr-main">Export backup<span class="sr-sub">everything, including the table, as one JSON file</span></span><button class="btn btn-soft" id="expAll">Export</button></div>' +
-      '<div class="set-row"><span class="sr-main">Import backup<span class="sr-sub">merge a previously exported file</span></span><button class="btn btn-soft" id="impAll">Import</button></div>' +
-      '<div class="set-row"><span class="sr-main">Export table<span class="sr-sub">the room, its seats and meeting history as one JSON file</span></span><button class="btn btn-soft" id="expTable">Export</button></div>' +
-      '<div class="set-row"><span class="sr-main">Import table<span class="sr-sub">merge a table file into the current room</span></span><button class="btn btn-soft" id="impTable">Import</button></div>' +
-      '<div class="set-row"><span class="sr-main" style="color:var(--danger)">Erase everything<span class="sr-sub">removes all parts and sessions from this device</span></span><button class="btn btn-danger" id="wipeAll">Erase</button></div>' +
+      row("vibrate", "Haptic feedback", "tiny vibrations on taps (where supported)",
+        '<input type="checkbox" class="toggle" role="switch" id="hapt" aria-label="Haptic feedback" ' + (s.haptics ? "checked" : "") + ">") +
       "</div>" +
 
-      '<div class="set-group"><h3>About</h3>' +
-      '<div class="set-row"><span class="sr-main">' +
-      (isStandalone()
-        ? 'Installed<span class="sr-sub">running from your home screen &middot; works offline</span>'
-        : 'Add to home screen<span class="sr-sub">' + installHint() + "</span>") +
-      "</span>" +
-      (!isStandalone() && deferredInstall ? '<button class="btn btn-soft" id="setInstall">Install</button>' : "") +
+      '<div class="set-group" id="setData"><h3>Your data</h3>' +
+      row("chat", "Session transcripts", ST.state.transcripts.length + " saved from live AI sessions", '<button class="btn btn-soft" id="openTranscripts">Open</button>') +
+      row("download", "Export backup", "everything, including the table, as one JSON file", '<button class="btn btn-soft" id="expAll">Export</button>') +
+      row("upload", "Import backup", "merge a previously exported file", '<button class="btn btn-soft" id="impAll">Import</button>') +
+      row("table", "Export table", "the room, its seats and meeting history as one JSON file", '<button class="btn btn-soft" id="expTable">Export</button>') +
+      row("table", "Import table", "merge a table file into the current room", '<button class="btn btn-soft" id="impTable">Import</button>') +
+      row("trash", "Erase everything", "removes all parts and sessions from this device", '<button class="btn btn-danger" id="wipeAll">Erase</button>', true) +
       "</div>" +
-      '<div class="set-pad" style="padding-top:12px"><p class="dim" style="margin:0 0 8px"><b>Inner Table</b> is the webapp of the open-source <a href="https://github.com/joman124/ifs-agents" target="_blank" rel="noopener">ifs-agents</a> system, inspired by Internal Family Systems (Richard C. Schwartz). It is a self-exploration and journaling tool, <b>not therapy</b> — no trauma processing, no unburdening. Read the <a href="https://github.com/joman124/ifs-agents/blob/main/docs/safety.md" target="_blank" rel="noopener">safety guide</a>.</p>' +
-      '<p class="dim" style="margin:0">In crisis? Call or text <b>988</b> (US) or visit <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p></div></div>';
 
+      '<div class="set-group" id="setAbout"><h3>About</h3>' +
+      row("home",
+        isStandalone() ? "Installed" : "Add to home screen",
+        isStandalone() ? "running from your home screen &middot; works offline" : installHint(),
+        !isStandalone() && deferredInstall ? '<button class="btn btn-soft" id="setInstall">Install</button>' : "") +
+      '<div class="privacy-banner"><span class="pb-i">' + icon("shield") + "</span><div>" +
+      '<b class="serif">This is not therapy.</b>' +
+      '<p><b>Inner Table</b> is the webapp of the open-source <a href="https://github.com/joman124/ifs-agents" target="_blank" rel="noopener">ifs-agents</a> system, inspired by Internal Family Systems (Richard C. Schwartz). It is a self-exploration and journaling tool &mdash; no trauma processing, no unburdening. Read the <a href="https://github.com/joman124/ifs-agents/blob/main/docs/safety.md" target="_blank" rel="noopener">safety guide</a>.</p>' +
+      '<p>In crisis? Call or text <b>988</b> (US) or visit <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p></div></div>' +
+      "</div>";
+
+    $("#settingsPane").querySelector(".set-jump").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-jump]"); if (!b) return;
+      var target = document.getElementById(b.dataset.jump);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     renderProviderFields();
     $("#provSeg").addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
@@ -2758,16 +2925,7 @@
     });
     $("#hapt").addEventListener("change", function (e) { s.haptics = e.target.checked; ST.save(); buzz(); });
     bind("#signInBtn", showLogin);
-    bind("#signOutBtn", function () {
-      AUTH.logout();
-      SY.reset();
-      // parts live in the account; signing out closes them under their own key
-      // and returns to the sign-in gate, leaving nothing of the account on
-      // screen. Another person can now sign in here and reach only their own.
-      ST.switchOwner(null);
-      requireLogin();
-      toast("Signed out - sign in to reach your parts again");
-    });
+    bind("#signOutBtn", signOut);
     bind("#syncNowBtn", syncNow);
     bind("#setInstall", doInstall);
     $("#openTranscripts").addEventListener("click", function () {
@@ -2806,6 +2964,12 @@
       $("#wipeYes").addEventListener("click", function () { ST.wipe(); closeSheet(); applyTheme(); showView("parts"); toast("Fresh start"); });
       $("#wipeNo").addEventListener("click", closeSheet);
     });
+  }
+
+  function themeOpt(val, ic, label, cur) {
+    return '<button data-val="' + val + '"' + (cur === val ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"') + ">" +
+      icon(ic, 18) + "<span>" + label + "</span>" +
+      (cur === val ? '<span class="theme-check">' + icon("check", 11) + "</span>" : "") + "</button>";
   }
 
   function segBtn(val, label, cur) {
@@ -3018,14 +3182,22 @@
     document.querySelectorAll(".tab").forEach(function (t) {
       t.addEventListener("click", function () { showView(t.dataset.view); });
     });
-    $("#themeBtn").addEventListener("click", cycleTheme);
     $("#learnBtn").addEventListener("click", window.IFS.ui.learnSheet);
+    $("#profileBtn").addEventListener("click", function () {
+      if ($("#profileMenu").classList.contains("hidden")) openProfileMenu(); else closeProfileMenu();
+    });
+    $("#profileScrim").addEventListener("click", closeProfileMenu);
+    $("#profileMenu").addEventListener("click", onProfileMenuClick);
     $("#fabNew").addEventListener("click", newSessionSheet);
     $("#sheetBackdrop").addEventListener("click", closeSheet);
     $("#panelBack").addEventListener("click", closePanel);
     $("#mapKeyBtn").addEventListener("click", function () { if (keyOpen) closeKey(); else openKey(); });
     $("#mapLegendScrim").addEventListener("click", closeKey);
-    document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeKey(); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      if (!$("#profileMenu").classList.contains("hidden")) { closeProfileMenu(); $("#profileBtn").focus(); return; }
+      closeKey();
+    });
     $("#groundResume").addEventListener("click", hideGrounding);
     $("#groundEnd").addEventListener("click", function () {
       hideGrounding();

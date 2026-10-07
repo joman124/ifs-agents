@@ -21,6 +21,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="preload" href="fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -30,7 +31,7 @@
   <div class="onboard-track" id="onboardTrack">
 
     <section class="onboard-slide">
-      <div class="onboard-art"><span class="glyph glyph-table"></span></div>
+      <div class="onboard-art"><svg class="icon" aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 8h16M6 8l1 12M18 8l-1 12"/><ellipse cx="12" cy="7" rx="9" ry="3"/></svg></div>
       <h1 class="serif">Inner Table</h1>
       <p class="lead">Meet your inner parts through gentle guided interviews. Build evolving profiles of each one &mdash; then invite them to a table meeting over anything real: a decision, a budget, a draft.</p>
       <p class="dim">Based on the open-source <b>ifs-agents</b> system and Internal Family Systems (Richard Schwartz).</p>
@@ -38,7 +39,7 @@
     </section>
 
     <section class="onboard-slide">
-      <div class="onboard-art"><span class="glyph glyph-shield"></span></div>
+      <div class="onboard-art"><svg class="icon" aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6Z"/></svg></div>
       <h2 class="serif">This is not therapy</h2>
       <p class="lead">It is a self-exploration and journaling tool. It deliberately excludes therapeutic depth work &mdash; no trauma processing, no unburdening. That work belongs with a trained practitioner.</p>
       <ul class="rules">
@@ -51,7 +52,7 @@
     </section>
 
     <section class="onboard-slide">
-      <div class="onboard-art"><span class="glyph glyph-lock"></span></div>
+      <div class="onboard-art"><svg class="icon" aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
       <h2 class="serif">Yours, and only yours</h2>
       <p class="lead">Everything lives on this device unless you turn on sync. No analytics, ever. Part profiles are intimate &mdash; export backups and keep them private.</p>
       <p class="dim">Sync is optional: sign in and a copy of your parts is kept on the server so your own devices can share them. Signed out, nothing leaves this device.</p>
@@ -68,24 +69,32 @@
 
   <header class="topbar">
     <div class="topbar-inner">
-      <span class="brand serif" id="topTitle">Inner Table</span>
-      <div style="display:flex;gap:2px">
-        <button class="iconbtn" id="learnBtn" aria-label="How this works"><span class="glyph glyph-info"></span></button>
-        <button class="iconbtn" id="themeBtn" aria-label="Toggle theme"><span class="glyph glyph-moon"></span></button>
+      <span class="brand serif" id="topTitle"><img class="brand-logo" src="icons/icon.svg" alt="" width="36" height="36">Inner Table</span>
+      <div class="topbar-actions">
+        <button class="quietbtn" id="learnBtn" aria-label="How this works"><svg class="icon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>
+        <!-- Settings lives behind the profile, not on the tab bar: it is
+             somewhere you go once in a while, not one of the three places
+             the work happens. -->
+        <button class="avatar-btn" id="profileBtn" aria-label="Profile and settings" aria-haspopup="menu" aria-expanded="false" aria-controls="profileMenu"><span class="avatar" id="profileInitials">?</span></button>
       </div>
     </div>
   </header>
 
+  <div class="menu-scrim hidden" id="profileScrim"></div>
+  <div class="profile-menu hidden" id="profileMenu" role="menu" aria-labelledby="profileBtn"></div>
+
   <main id="views">
     <!-- PARTS -->
     <section class="view" id="view-parts">
-      <div class="view-pad">
+      <div class="view-pad wide">
+        <header class="page-head" id="partsHead"></header>
         <div id="partsCoach"></div>
         <div id="ritual"></div>
         <div id="partsBanner"></div>
-        <div id="partsList"></div>
+        <div id="partsSection"></div>
+        <div id="partsList" class="parts-grid"></div>
         <div id="partsEmpty" class="empty hidden">
-          <div class="empty-art"><span class="glyph glyph-spark"></span></div>
+          <div class="empty-art"><svg class="icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z"/></svg></div>
           <h2 class="serif">No parts yet</h2>
           <p>Bring one in from a file or your notes, or start from scratch &mdash; is there a feeling, urge, or inner voice that keeps showing up?</p>
           <button class="btn btn-primary btn-big" data-action="import-part">Upload or paste a part</button>
@@ -102,7 +111,7 @@
       <div id="mapWrap" class="map-wrap">
         <svg id="swarmSvg" class="swarm"></svg>
         <div id="mapEmpty" class="empty map-empty hidden">
-          <div class="empty-art"><span class="glyph glyph-web"></span></div>
+          <div class="empty-art"><svg class="icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="13" cy="19" r="2.5"/><path d="m7.4 6 9.1-.7M6.5 8l5 8.6M17.7 7l-3.5 9.7"/></svg></div>
           <h2 class="serif">The swarm map</h2>
           <p>Once you have two or more parts, every pair shows up as a faint thread &mdash; they already relate, you just haven't named it yet. Tap a thread to say how.</p>
         </div>
@@ -124,10 +133,15 @@
     <!-- THE TABLE -->
     <section class="view hidden" id="view-table">
       <div class="view-pad">
+        <header class="page-head">
+          <p class="eyebrow">Fraser&rsquo;s Table</p>
+          <h1 class="serif">The Table</h1>
+          <p class="subtitle">A safe room where your parts can sit down together.</p>
+        </header>
         <div id="tableCoach"></div>
         <div id="tablePane" class="hidden"></div>
         <div id="tableEmpty" class="empty hidden">
-          <div class="empty-art"><span class="glyph glyph-table"></span></div>
+          <div class="empty-art"><svg class="icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M4 8h16M6 8l1 12M18 8l-1 12"/><ellipse cx="12" cy="7" rx="9" ry="3"/></svg></div>
           <h2 class="serif">Build your table</h2>
           <p>A meeting place with a table in it &mdash; a room where no harm can come to you, and a table that feels safe or neutral. Once it exists, parts can be invited to sit.</p>
           <button class="btn btn-primary btn-big" data-action="build-table">Imagine the room</button>
@@ -136,17 +150,25 @@
       </div>
     </section>
 
-    <!-- SETTINGS -->
+    <!-- SETTINGS (opened from the profile button, not the tab bar) -->
     <section class="view hidden" id="view-settings">
-      <div class="view-pad" id="settingsPane"></div>
+      <div class="view-pad">
+        <header class="page-head">
+          <p class="eyebrow">Your space</p>
+          <h1 class="serif">Settings</h1>
+          <p class="subtitle">Make Inner Table feel right for you.</p>
+        </header>
+        <div id="settingsPane"></div>
+      </div>
     </section>
   </main>
 
   <nav class="tabbar" role="tablist">
-    <button class="tab active" data-view="parts" role="tab"><span class="glyph glyph-parts"></span><span>Parts</span></button>
-    <button class="tab" data-view="map" role="tab"><span class="glyph glyph-web"></span><span>Map</span></button>
-    <button class="tab" data-view="table" role="tab"><span class="glyph glyph-table"></span><span>Table</span></button>
-    <button class="tab" data-view="settings" role="tab"><span class="glyph glyph-gear"></span><span>Settings</span></button>
+    <div class="tabbar-inner">
+      <button class="tab active" data-view="parts" role="tab"><span class="tab-ic"><svg class="icon" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="4"/><circle cx="17" cy="15" r="3"/><path d="M2.5 20c.7-4.2 3-6 6.5-6 2.2 0 4 .7 5.1 2.2"/></svg></span><span>Parts</span></button>
+      <button class="tab" data-view="map" role="tab"><span class="tab-ic"><svg class="icon" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="13" cy="19" r="2.5"/><path d="m7.4 6 9.1-.7M6.5 8l5 8.6M17.7 7l-3.5 9.7"/></svg></span><span>Map</span></button>
+      <button class="tab" data-view="table" role="tab"><span class="tab-ic"><svg class="icon" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 8h16M6 8l1 12M18 8l-1 12"/><ellipse cx="12" cy="7" rx="9" ry="3"/></svg></span><span>Table</span></button>
+    </div>
   </nav>
 
 </div>
@@ -161,7 +183,7 @@
 <!-- ============ FULLSCREEN PANEL (chat / profile) ============ -->
 <div id="panel" class="panel hidden">
   <header class="panel-top">
-    <button class="iconbtn" id="panelBack" aria-label="Back"><span class="glyph glyph-back"></span></button>
+    <button class="iconbtn" id="panelBack" aria-label="Back"><svg class="icon" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="m15 6-6 6 6 6"/></svg></button>
     <div class="panel-title" id="panelTitle"></div>
     <div class="panel-actions" id="panelActions"></div>
   </header>
@@ -206,6 +228,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
+<script src="js/icons.js"></script>
 <script src="js/schema.js"></script>
 <script src="js/questions.js"></script>
 <script src="js/reference.js"></script>

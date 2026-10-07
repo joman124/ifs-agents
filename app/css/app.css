@@ -212,15 +212,9 @@ label.fieldlabel { display: block; font-size: .8rem; color: var(--ink-dim); marg
 .topbar-inner { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; max-width: 1180px; margin: 0 auto; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 1.3rem; }
-/* three leaves leaning in towards each other - a system, held together */
-.brand-mark { position: relative; width: 26px; height: 24px; flex: none; }
-.brand-mark i {
-  position: absolute; width: 10px; height: 16px; display: block;
-  background: var(--accent); border-radius: 60% 40% 55% 45%;
-}
-.brand-mark i:nth-child(1) { left: 1px; top: 5px; transform: rotate(-38deg); opacity: .75; }
-.brand-mark i:nth-child(2) { left: 8px; top: 0; transform: rotate(35deg); }
-.brand-mark i:nth-child(3) { left: 14px; top: 8px; transform: rotate(76deg); opacity: .55; }
+/* the app icon itself, so the top bar and the home screen show the same mark */
+.brand-logo { width: 36px; height: 36px; border-radius: 9px; flex: none; display: block; }
+[data-theme="light"] .brand-logo { box-shadow: 0 1px 3px rgba(60,40,10,.18); }
 .quietbtn {
   width: 38px; height: 38px; border-radius: 50%; flex: none;
   display: inline-flex; align-items: center; justify-content: center;

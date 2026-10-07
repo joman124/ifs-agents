@@ -138,21 +138,26 @@
   var GROUP_ID = "pushSettingsGroup";
   var cachedSubscribed = null;
 
+  // the bell tile the rest of Settings uses on its rows (icons.js loads first)
+  function bell() {
+    return '<span class="sr-icon">' + (window.IFS.icon ? window.IFS.icon("bell", 18) : "") + "</span>";
+  }
+
   function groupHTML() {
     var html = '<div class="set-group" id="' + GROUP_ID + '"><h3>Notifications</h3>';
     if (!AUTH.isLoggedIn()) {
-      html += '<div class="set-row"><span class="sr-main">Sign in required<span class="sr-sub">notifications are tied to your account, like sync</span></span></div>';
+      html += '<div class="set-row">' + bell() + '<span class="sr-main">Sign in required<span class="sr-sub">notifications are tied to your account, like sync</span></span></div>';
     } else if (F.isIOS() && !isStandalone()) {
-      html += '<div class="set-row"><span class="sr-main">Add to Home Screen first<span class="sr-sub">iOS only allows notifications for the installed app</span></span></div>';
+      html += '<div class="set-row">' + bell() + '<span class="sr-main">Add to Home Screen first<span class="sr-sub">iOS only allows notifications for the installed app</span></span></div>';
     } else if (!supported()) {
-      html += '<div class="set-row"><span class="sr-main">Not supported here<span class="sr-sub">try this on your phone, from the home-screen app</span></span></div>';
+      html += '<div class="set-row">' + bell() + '<span class="sr-main">Not supported here<span class="sr-sub">try this on your phone, from the home-screen app</span></span></div>';
     } else if (cachedSubscribed) {
-      html += '<div class="set-row"><span class="sr-main">Notifications on<span class="sr-sub">a check-in reminder at 8am, 2pm and 8pm</span></span><button class="btn btn-soft" id="pushTestBtn">Send test</button></div>' +
-        '<div class="set-row"><span class="sr-main">Turn off<span class="sr-sub">stop notifications on this device</span></span><button class="btn btn-soft" id="pushOffBtn">Turn off</button></div>';
+      html += '<div class="set-row">' + bell() + '<span class="sr-main">Notifications on<span class="sr-sub">a check-in reminder at 8am, 2pm and 8pm</span></span><button class="btn btn-soft" id="pushTestBtn">Send test</button></div>' +
+        '<div class="set-row">' + bell() + '<span class="sr-main">Turn off<span class="sr-sub">stop notifications on this device</span></span><button class="btn btn-soft" id="pushOffBtn">Turn off</button></div>';
     } else {
-      html += '<div class="set-row"><span class="sr-main">Get notified on this device<span class="sr-sub">asks for permission, once</span></span><button class="btn btn-soft" id="pushOnBtn">Enable</button></div>';
+      html += '<div class="set-row">' + bell() + '<span class="sr-main">Get notified on this device<span class="sr-sub">asks for permission, once</span></span><button class="btn btn-soft" id="pushOnBtn">Enable</button></div>';
     }
-    html += '<p class="dim" style="margin:12px 14px 14px">Only this device is notified once enabled &mdash; turn it on separately on each phone or computer you use Inner Table on.</p></div>';
+    html += '<p class="set-note">Only this device is notified once enabled &mdash; turn it on separately on each phone or computer you use Inner Table on.</p></div>';
     return html;
   }
 

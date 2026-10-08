@@ -452,16 +452,102 @@
     save();
   }
 
-  function exportAll() {
+  /* A backup keeps everything, pictures included. The blob that syncs does
+     not: `exportAll({ images: false })` leaves them out, because they travel
+     on their own endpoint (exportImages below). A handful of photos in the
+     main blob would push it past the server's request limit, and the first
+     thing to stop syncing would be every edit to every part. */
+  function exportAll(opts) {
+    var parts = state.parts;
+    if (opts && opts.images === false) {
+      parts = {};
+      Object.keys(state.parts).forEach(function (k) {
+        var bare = Object.assign({}, state.parts[k]);
+        delete bare.image;
+        delete bare.image_at;
+        parts[k] = bare;
+      });
+    }
     return JSON.stringify({
       app: "inner-table",
       version: 1,
       exported: new Date().toISOString(),
-      parts: state.parts,
+      parts: parts,
       deleted: state.deleted,
       transcripts: state.transcripts,
       table: state.table
     }, null, 2);
+  }
+
+  /* ---- pictures, as their own thing to sync ----
+     slug -> { image, at }. A removal is an entry too - an empty `image` under
+     a later `at` - because "this part has no picture any more" has to beat an
+     older copy of the picture on another device, or it simply comes back. */
+  function imageEntries() {
+    var out = {};
+    Object.keys(state.parts).forEach(function (slug) {
+      var p = state.parts[slug];
+      if (p.image || p.image_at) out[slug] = { image: p.image || "", at: p.image_at || "" };
+    });
+    return out;
+  }
+
+  function exportImages() {
+    return JSON.stringify({ app: "inner-table", kind: "images", version: 1, images: imageEntries() });
+  }
+
+  function parseImageEntries(json) {
+    var out = {};
+    var data = JSON.parse(json);
+    var raw = data && typeof data === "object" && data.images;
+    if (!raw || typeof raw !== "object") return out;
+    Object.keys(raw).forEach(function (slug) {
+      var e = raw[slug];
+      if (!e || typeof e !== "object") return;
+      var said = e.image == null ? "" : e.image;
+      if (typeof said !== "string") return;
+      /* An empty image under a stamp is a removal and means exactly that. An
+         entry that claims a picture and is not one is nothing at all - not a
+         removal either, or garbling a blob would be a way to delete pictures. */
+      var image = said ? S.cleanImage(said) : "";
+      if (said && !image) return;
+      var at = S.cleanStamp(e.at);
+      if (image || at) out[slug] = { image: image, at: at };
+    });
+    return out;
+  }
+
+  /* Last writer wins, per part, by the picture's own clock. A part this device
+     does not have is skipped (it was deleted, or its profile has not arrived
+     yet - the next pull brings both), and nothing here counts as an edit:
+     `updated` stays put, so travelling cannot make a part look newer than a
+     deletion. Returns how many parts changed. */
+  function importImages(json) {
+    var entries = parseImageEntries(json);
+    var changed = 0;
+    Object.keys(entries).forEach(function (slug) {
+      var p = state.parts[slug];
+      if (!p) return;
+      var e = entries[slug], have = p.image_at || "";
+      var newer = e.at > have || (e.at === have && e.image && !p.image);
+      if (!newer || (p.image === e.image && have === e.at)) return;
+      p.image = e.image;
+      p.image_at = e.at;
+      changed++;
+    });
+    if (changed) save();
+    return changed;
+  }
+
+  /* A short string that says which pictures, at which times, a store - or a
+     pictures blob - holds. Sync compares the two to know whether anything is
+     worth sending, so an edit to a profile's text never re-uploads photos. */
+  function imageFingerprint(json) {
+    var entries = json ? parseImageEntries(json) : imageEntries();
+    return Object.keys(entries).sort().map(function (slug) {
+      var e = entries[slug];
+      return slug + "|" + e.at + "|" + (e.image ? e.image.length : 0);
+    }).join("\n");
   }
 
   /* Export just the table - the room, its seats and tools, and the meeting
@@ -822,6 +908,9 @@
     updateMeeting: updateMeeting,
     deleteTranscript: deleteTranscript,
     exportAll: exportAll,
+    exportImages: exportImages,
+    importImages: importImages,
+    imageFingerprint: imageFingerprint,
     exportTable: exportTable,
     importTable: importTable,
     importAll: importAll,

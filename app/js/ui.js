@@ -13,6 +13,7 @@
   var AUTH = window.IFS.auth;
   var SY = window.IFS.sync;
   var F = window.IFS.files;
+  var P = window.IFS.portrait;
   var icon = window.IFS.icon;
 
   var $ = function (sel) { return document.querySelector(sel); };
@@ -75,9 +76,13 @@
   /* ================= panel ================= */
   var panelOnClose = null;
   var panelSeq = 0;
-  function openPanel(title, sub, bodyHTML, actionsHTML, onClose) {
+  /* `faceHTML`, when given, sits to the left of the title - the profile uses
+     it so a part keeps its face in the bar while its long page scrolls. */
+  function openPanel(title, sub, bodyHTML, actionsHTML, onClose, faceHTML) {
     panelSeq++;
-    $("#panelTitle").innerHTML = esc(title) + (sub ? "<small>" + esc(sub) + "</small>" : "");
+    var text = esc(title) + (sub ? "<small>" + esc(sub) + "</small>" : "");
+    $("#panelTitle").classList.toggle("has-face", !!faceHTML);
+    $("#panelTitle").innerHTML = faceHTML ? faceHTML + '<span class="pt-text">' + text + "</span>" : text;
     $("#panelBody").innerHTML = bodyHTML;
     $("#panelActions").innerHTML = actionsHTML || "";
     panelOnClose = onClose || null;
@@ -210,13 +215,15 @@
   }
 
   /* ================= parts list ================= */
-  function ringSVG(score, initial) {
+  /* `p` is the part the ring belongs to - its picture, when it has one,
+     sits inside the ring in place of the initial. */
+  function ringSVG(score, p) {
     var r = 24, c = 2 * Math.PI * r;
     var off = c * (1 - score);
     return '<div class="ring"><svg width="54" height="54" viewBox="0 0 54 54">' +
       '<circle class="ring-bg" cx="27" cy="27" r="' + r + '" fill="none" stroke-width="3"/>' +
       '<circle class="ring-fg" cx="27" cy="27" r="' + r + '" fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="' + c + '" stroke-dashoffset="' + off + '"/>' +
-      '</svg><span class="ring-initial">' + esc(initial) + "</span></div>";
+      '</svg><span class="ring-initial' + P.cls(p) + '">' + P.face(p) + "</span></div>";
   }
 
   function daysSince(iso) {
@@ -377,7 +384,7 @@
       '<span class="kicker">' + icon("spark", 15) + " Daily check-in</span>" +
       '<h2 class="ritual-q serif">' + esc(R.ritualPrompt(today)) + "</h2>" +
       '<div class="ritual-part">' +
-      '<span class="rt-i">' + esc(S.initial(p.name)) + "</span>" +
+      '<span class="rt-i' + P.cls(p) + '">' + P.face(p) + "</span>" +
       '<span class="rt-main"><b>' + esc(p.name) + "</b>" +
       '<span class="rt-sub">' + esc(quietLabel(p)) + "</span></span></div>" +
       '<div class="ritual-cta">' +
@@ -464,7 +471,7 @@
     var quiet = lastISO && S.daysBetween(lastISO, today) >= 14;
     return '<article class="part-card t-' + esc(p.type) + (quiet ? " is-quiet" : "") + '" data-slug="' + esc(p.slug) + '" tabindex="0" role="button" aria-label="Open ' + esc(p.name) + '">' +
       '<div class="pc-top">' +
-      '<span class="pc-avatar">' + esc(S.initial(p.name)) + "</span>" +
+      '<span class="pc-avatar' + P.cls(p) + '">' + P.face(p) + "</span>" +
       '<span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span>" +
       (rd.ready ? '<span class="pc-ready" title="ready for table meetings">' + icon("check", 13) + "ready</span>" : "") +
       "</div>" +
@@ -585,6 +592,7 @@
           // say so rather than showing a bare slug that looks like a name
           return '<div class="sessionrow"><span class="sr-mode">' +
             esc(r ? r.type.replace(/-/g, " ") : "not named yet") + "</span><span>" +
+            (other ? '<span class="mini-ava' + P.cls(other) + '">' + P.face(other) + "</span>" : "") +
             esc(other ? other.name : slug) +
             (other ? "" : ' <span class="dim">— not in your library yet</span>') +
             (r && r.notes ? ' <span class="dim">' + esc(r.notes) + "</span>" : "") +
@@ -609,13 +617,20 @@
 
     var body =
       '<div class="profile">' +
-      '<div class="profile-hero">' +
-      '<div class="avatar">' + esc(S.initial(p.name)) + "</div>" +
+      '<div class="profile-hero t-' + esc(p.type) + '">' +
+      /* The portrait is the way to the picture: tap it. With none yet it is
+         the same initial circle as ever, with a camera on it saying so. */
+      '<button class="portrait" id="pfPicture" aria-label="' + (P.has(p) ? "Change" : "Add") + " the picture of " + esc(p.name) + '">' +
+      '<span class="avatar' + P.cls(p) + '">' + P.face(p, "Picture of " + p.name) + "</span>" +
+      '<span class="portrait-cam" aria-hidden="true">' + icon("camera", 15) + "</span></button>" +
       '<h1 class="serif">' + esc(p.name) + "</h1>" +
       '<div class="sub"><span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
+      // what it looks like, in words, belongs beside what it looks like in a picture
+      (p.appearance ? '<p class="hero-look">' + esc(p.appearance) + "</p>" : "") +
       '<div class="chips">' + facts.map(function (f) { return '<span class="chip">' + f + "</span>"; }).join("") +
-      '<button class="chip chip-btn" id="pfAbout">&#9998; edit details</button></div>' +
-      "</div>" +
+      '<button class="chip chip-btn" id="pfAbout">&#9998; edit details</button>' +
+      (P.has(p) ? "" : '<button class="chip chip-btn" id="pfAddPic">' + icon("camera", 13) + " add a picture</button>") +
+      "</div></div>" +
       '<div class="readiness ' + (rd.ready ? "ok" : "no") + '">' +
       (rd.ready ? "&#10003; Developed enough to speak at table meetings"
                 : "Needs " + esc(rd.missing.join(", ")) + " before it can speak for itself") +
@@ -643,7 +658,8 @@
       '<button class="btn btn-danger btn-big" id="pfDelete">Delete this part</button>' +
       "</div></div>";
 
-    openPanel(p.name, p.type + " · " + Math.round(S.coverageScore(p) * 100) + "% developed", body);
+    openPanel(p.name, p.type + " · " + Math.round(S.coverageScore(p) * 100) + "% developed", body, "", null,
+      '<span class="pt-face' + P.cls(p) + '">' + P.face(p) + "</span>");
 
     // pencil on each card -> simple edit sheet; edits save straight into the
     // stored profile, which is exactly what exports and prompts read
@@ -651,6 +667,10 @@
       btn.addEventListener("click", function () { editFieldSheet(p.slug, btn.dataset.edit); });
     });
     $("#pfAbout").addEventListener("click", function () { aboutSheet(p.slug); });
+    // pictures: the portrait itself, and (while there is none) the chip beside "edit details"
+    ["#pfPicture", "#pfAddPic"].forEach(function (sel) {
+      bind(sel, function () { window.IFS.ui.pictureSheet(p.slug, function () { openProfile(p.slug); }); });
+    });
 
     // coverage: tap a category to work through its questions
     document.querySelectorAll("#panelBody .covitem").forEach(function (el) {
@@ -880,6 +900,11 @@
     $("#rawSave").addEventListener("click", function () {
       try {
         var np = MD.parse($("#rawMd").value);
+        /* The markdown is the profile in words and leaves the picture out, so
+           what comes back from editing it has no picture of its own. It is
+           the same part: the one it had stays. */
+        np.image = p.image || "";
+        np.image_at = p.image_at || "";
         if (np.slug !== slug && !ST.renamePart(slug, np)) {
           toast("Not saved: another part is already called " + np.name);
           return;
@@ -993,8 +1018,8 @@
       '<h2 class="sheet-title serif">' + esc(title) + "</h2>" +
       (mustBeReady ? '<p class="dim">Only parts developed enough to speak for themselves are listed.</p>' : "") +
       parts.map(function (p) {
-        return '<button class="menu-item pk" data-slug="' + esc(p.slug) + '"><span class="mi-icon">' +
-          esc(S.initial(p.name)) + '</span><span class="mi-main">' + esc(p.name) +
+        return '<button class="menu-item pk" data-slug="' + esc(p.slug) + '"><span class="mi-icon' + P.cls(p) + '">' +
+          P.face(p) + '</span><span class="mi-main">' + esc(p.name) +
           '<span class="mi-sub">' + esc(p.type) + '</span></span><span class="pk-check">&#10003;</span></button>';
       }).join("") +
       '<div style="height:12px"></div>' +
@@ -1028,8 +1053,8 @@
     openSheet(
       '<h2 class="sheet-title serif">' + esc(title) + "</h2>" +
       parts.map(function (p) {
-        return '<button class="menu-item" data-slug="' + esc(p.slug) + '"><span class="mi-icon">' +
-          esc(S.initial(p.name)) + '</span><span class="mi-main">' + esc(p.name) +
+        return '<button class="menu-item" data-slug="' + esc(p.slug) + '"><span class="mi-icon' + P.cls(p) + '">' +
+          P.face(p) + '</span><span class="mi-main">' + esc(p.name) +
           '<span class="mi-sub">' + esc(p.type) + "</span></span></button>";
       }).join("")
     );
@@ -1135,8 +1160,9 @@
       ? "Covers: " + touched.map(function (c) { return S.CATEGORY_LABELS[c].toLowerCase(); }).join(", ")
       : "No categories covered yet";
     var exists = !!ST.getPart(p.slug);
+    // an import brings no picture of its own, but the part it updates may have one
     return '<div class="part-row" style="margin-top:12px">' +
-      ringSVG(S.coverageScore(p), S.initial(p.name)) +
+      ringSVG(S.coverageScore(p), P.has(p) ? p : (ST.getPart(p.slug) || p)) +
       '<div class="part-card-main"><div class="part-card-name">' + esc(p.name) +
       ' <span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span></div>" +
       '<div class="part-card-sub">' + (exists ? "updates your existing " + esc(p.name) : "new part") +
@@ -1592,7 +1618,7 @@
     $("#seatingLine").textContent = "";
     $("#seatingChairs").innerHTML = parts.map(function (p, i) {
       return '<span class="chair" style="--d:' + (i * 340 + 260) + 'ms">' +
-        '<span class="chair-i">' + esc(S.initial(p.name)) + "</span>" +
+        '<span class="chair-i' + P.cls(p) + '">' + P.face(p) + "</span>" +
         '<span class="chair-n">' + esc(p.name) + "</span></span>";
     }).join("");
 
@@ -1817,8 +1843,10 @@
     return groups.filter(function (g) { return g.name || g.text; }).map(function (g) {
       if (!g.name) return '<div class="bubble">' + esc(g.text) + "</div>";
       var selfV = /^self$/i.test(g.name);
+      // a part speaks under its own face; Self, and a name the model made up, have none
+      var who = P.partNamed(g.name) || { name: g.name };
       return '<div class="voice' + (selfV ? " self-voice" : "") + '" style="--vc:' + voiceColor(g.name) + '">' +
-        '<span class="vhead"><span class="vava">' + esc(S.initial(g.name)) + "</span>" +
+        '<span class="vhead"><span class="vava' + P.cls(who) + '">' + P.face(who) + "</span>" +
         '<span class="vname">' + esc(g.name) + "</span></span>" +
         '<span class="vbody">' + esc(g.text) + "</span></div>";
     }).join("");
@@ -2233,8 +2261,9 @@
 
     function bubbleHTML(name, text) {
       var selfV = /^self$/i.test(name);
+      var who = P.partNamed(name) || { name: name };
       return '<div class="voice' + (selfV ? " self-voice" : "") + '" style="--vc:' + voiceColor(name) + '">' +
-        '<span class="vhead"><span class="vava">' + esc(S.initial(name)) + '</span><span class="vname">' +
+        '<span class="vhead"><span class="vava' + P.cls(who) + '">' + P.face(who) + '</span><span class="vname">' +
         esc(name) + "</span></span>" + '<span class="vbody">' + esc(text) + "</span></div>";
     }
 
@@ -2246,7 +2275,7 @@
         : '<div class="prose none">' + esc(sp.name) + " speaks first</div>";
       scroll.scrollTop = scroll.scrollHeight;
       $("#smWho").innerHTML =
-        '<span class="sm-ava" style="background:' + voiceColor(sp.name) + '">' + esc(S.initial(sp.name)) + "</span>" +
+        '<span class="sm-ava' + P.cls(sp) + '" style="background:' + voiceColor(sp.name) + '">' + P.face(sp) + "</span>" +
         "<span>" + esc(sp.name) + " is speaking</span>";
       $("#smBox").placeholder = sp.name === "Self"
         ? "As Self, what do you make of all this?"
@@ -2545,6 +2574,7 @@
               sub = R.seatLabel(ST.state.table.seats[p.slug] || "away").toLowerCase() + " · " + sub;
             }
             card.innerHTML =
+              '<span class="mc-ava' + P.cls(p) + '">' + P.face(p) + "</span>" +
               '<span class="mc-name">' + esc(p.name) +
               '<span class="mc-sub">' + esc(p.type) + " &middot; " + sub + "</span></span>" +
               '<button class="btn btn-primary" id="mcOpen">Open</button>';

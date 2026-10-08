@@ -115,6 +115,16 @@ It follows one spine — **add a part → gather → integrate → connect**:
 
 - **Parts library** with coverage rings, type badges, and compile-readiness
   indicators; **swarm map** as an interactive touch-draggable graph.
+- **Pictures** — give any part a face: a photo, a drawing, a screenshot of
+  whatever you see when you picture it. Tap the portrait at the top of a
+  profile (or a part's seat on the Table tab), frame it with a drag and a
+  pinch, and it stands in for the initial everywhere that part appears — the
+  library, the profile and the relationships on it, the swarm map, the seats
+  at the Table, meeting cards, the round of the table, and the chat. The
+  picture is shrunk to a small square on the device before anything is stored,
+  follows your account between devices (on an endpoint of its own, so photos can
+  never be what stops your profiles syncing), and is never sent to an AI or
+  written into an exported `.md` — it is for you, not for the model.
 - **Live guided sessions** (intake, check-in, mapping, embody, table meeting)
   as a chat, powered by your own Gemini, Anthropic, or OpenAI API key — the key
   and all profiles stay on your device. No key? A **copy-prompt mode** generates

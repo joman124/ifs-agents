@@ -2884,8 +2884,11 @@
   }
 
   /* ================= settings ================= */
+  var lastAi = "anthropic";   // which platform "Link my AI" returns to after a stint in copy-prompt
+
   function renderSettings() {
     var s = ST.state.settings;
+    var linked = s.provider !== "manual";
     var row = function (ic, main, sub, action, danger) {
       return '<div class="set-row"><span class="sr-icon' + (danger ? " danger" : "") + '">' + icon(ic, 18) + "</span>" +
         '<span class="sr-main"' + (danger ? ' style="color:var(--danger)"' : "") + ">" + main + '<span class="sr-sub">' + sub + "</span></span>" +
@@ -2905,19 +2908,26 @@
           row("sync", "Sync now", "pull in changes from your other devices", '<button class="btn btn-soft" id="syncNowBtn">Sync</button>') +
           row("logout", "Sign out", "closes your parts and returns to the sign-in screen", '<button class="btn btn-soft" id="signOutBtn">Sign out</button>')
         : row("user", "Not signed in", "sign in to reach your parts", '<button class="btn btn-soft" id="signInBtn">Sign in</button>')) +
-      '<p class="set-note">Your parts live in your account (encrypted in transit), so every device you sign in on shares them. Anyone else signing in here reaches only their own parts &mdash; never yours.</p>' +
       "</div>" +
 
       '<div class="set-group" id="setSessions"><h3>Live sessions</h3>' +
-      '<div class="set-pad"><div class="seg" id="provSeg">' +
-      segBtn("manual", "Copy-prompt", s.provider) + segBtn("gemini", "Gemini", s.provider) + segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) +
+      '<div class="set-pad"><div class="seg" id="modeSeg">' +
+      segBtn("manual", "Copy-prompt", linked ? "link" : "manual") + segBtn("link", "Link my AI", linked ? "link" : "manual") +
       "</div>" +
-      '<div id="provFields"></div>' +
-      '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent straight to the provider. Anything you share in a session falls under that provider&rsquo;s data policies.</p>' +
+      (linked
+        ? '<div class="seg" id="provSeg" style="margin-top:10px">' +
+          segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) + segBtn("gemini", "Gemini", s.provider) +
+          "</div>" + window.IFS.ui.linkAi.html(s.provider) +
+          '<details class="advanced"' + (PROVIDERS[s.provider] && s[PROVIDERS[s.provider].key] ? " open" : "") + '>' +
+          "<summary>Run sessions inside this app with my own API key</summary>" +
+          '<div id="provFields"></div>' +
+          '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent straight to the provider. Anything you share in a session falls under that provider&rsquo;s data policies.</p>' +
+          "</details>"
+        : '<p class="dim" style="margin:12px 2px 0">Each session makes a prompt to paste into any AI chat; paste the updated profile back here.</p>') +
       "</div></div>" +
 
       '<div class="set-group" id="setVoice"><h3>Voice</h3>' +
-      '<div class="set-pad">' +
+      '<div class="set-pad"><details class="advanced" style="margin:0;border:0;padding:0"><summary>Voice settings</summary>' +
       '<label class="fieldlabel">ElevenLabs API key (optional)</label>' +
       '<input type="password" id="elKey" autocomplete="off" placeholder="sk_..." value="' + esc(s.elevenKey) + '">' +
       '<label class="fieldlabel">Voice ID</label>' +
@@ -2932,8 +2942,8 @@
       segBtn("1", "Normal", String(s.speechRate)) +
       "</div>" +
       '<button class="btn btn-soft" id="elTest" style="margin-top:12px">Hear a sample</button>' +
-      '<p class="dim" style="margin:12px 2px 2px">Optional. With a key and voice ID, sessions speak in that ElevenLabs voice &mdash; e.g. your own clone &mdash; instead of the built-in one. <b>Find my voices</b> fills in the ID for you. Reply text is sent to ElevenLabs and billed per character; if anything fails, sessions fall back to the browser voice. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
-      "</div></div>" +
+      '<p class="dim" style="margin:12px 2px 2px">Optional ElevenLabs voice for sessions; reply text is sent to ElevenLabs. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
+      "</details></div></div>" +
 
       '<div class="set-group" id="setAppearance"><h3>Appearance</h3>' +
       '<div class="set-pad"><div class="sr-copy"><b>Theme</b><span class="sr-sub">how Inner Table looks on this device</span></div>' +
@@ -2969,11 +2979,20 @@
       var target = document.getElementById(b.dataset.jump);
       if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
-    renderProviderFields();
-    $("#provSeg").addEventListener("click", function (e) {
+    $("#modeSeg").addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
-      s.provider = b.dataset.val; ST.save(); renderSettings(); buzz();
+      if (b.dataset.val === "manual") { if (linked) lastAi = s.provider; s.provider = "manual"; }
+      else if (!linked) s.provider = lastAi;
+      ST.save(); renderSettings(); buzz();
     });
+    if (linked) {
+      renderProviderFields();
+      window.IFS.ui.linkAi.mount();
+      $("#provSeg").addEventListener("click", function (e) {
+        var b = e.target.closest("button"); if (!b) return;
+        s.provider = b.dataset.val; ST.save(); renderSettings(); buzz();
+      });
+    }
     $("#themeSeg").addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
       s.theme = b.dataset.val; ST.save(); applyTheme(); renderSettings(); buzz();
@@ -3057,10 +3076,6 @@
   function renderProviderFields() {
     var s = ST.state.settings;
     var el = $("#provFields");
-    if (s.provider === "manual") {
-      el.innerHTML = '<p class="dim" style="margin:12px 2px 0">No key needed. Sessions generate a portable prompt you paste into any AI chat, then paste the updated profile back.</p>';
-      return;
-    }
     var cfg = PROVIDERS[s.provider];
     if (!cfg) return;
     el.innerHTML =
@@ -3115,8 +3130,8 @@
     signupMode = signup;
     $("#loginTitle").textContent = signup ? "Create an account" : "Sign in";
     $("#loginIntro").textContent = signup
-      ? "Pick a name and a password of at least 8 characters. Your parts live in this account and follow you to any device you sign in on - nobody else signing in here can see them."
-      : "Your parts live in your account. Sign in to reach them on this device - and on any other device you sign in on.";
+      ? "Pick a name and a password of at least 8 characters."
+      : "Sign in to reach your parts.";
     $("#loginSubmit").textContent = signup ? "Create account" : "Sign in";
     $("#loginToggle").textContent = signup ? "I already have an account" : "Create an account";
     // lets a password manager offer to generate one, rather than autofilling

@@ -67,9 +67,10 @@ app/                 the webapp (this is what deploys)
   screenshots/       placeholder install-card PNGs — replace with real device shots
   js/                see the table below
 api/                 serverless functions (Vercel): signup, login, sync,
-                     push-subscribe, push-send, push-remind, vapid-public-key
+                     push-subscribe, push-send, push-remind, vapid-public-key,
+                     bridge (read-only AI link: MCP + markdown, no new env vars)
   root package.json  holds the `web-push` dependency for the functions only
-test/                node test/run.js — 497 assertions, no dependencies
+test/                node test/run.js — 545 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
@@ -399,7 +400,7 @@ as an off-device backup. Signed-out users still rely on browser storage
 
 ### 3. Commit the test harness — **done**
 
-`test/` now holds 497 assertions over the pure logic, run with
+`test/` now holds 545 assertions over the pure logic, run with
 `node test/run.js`. `.github/workflows/test.yml` runs the suite on push and
 PR to `main`, so regressions get caught before they merge. See *Running and
 verifying locally* above for what is and isn't covered. What's left here is

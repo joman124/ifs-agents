@@ -973,6 +973,14 @@ input.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
 .privacy-banner b.serif { font-size: 1.1rem; display: block; margin-bottom: 4px; }
 .privacy-banner p { margin: 0 0 8px; font-size: .8rem; line-height: 1.55; color: var(--ink-dim); }
 .privacy-banner p:last-child { margin: 0; }
+.bridge ol { margin: 0 0 14px 20px; padding: 0; font-size: .88rem; color: var(--ink-dim); }
+.bridge li { margin: 4px 0; }
+.bridge-box { margin-top: 4px; }
+.bridge-box input { font-size: .8rem; }
+.bridge-row { display: flex; gap: 8px; margin-top: 8px; }
+.bridge-row .btn { flex: 1; }
+details.advanced { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+details.advanced summary { cursor: pointer; font-size: .86rem; font-weight: 600; color: var(--ink-dim); }
 /* import preview: which field each piece of the text landed in */
 .prevrows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .prevrow {

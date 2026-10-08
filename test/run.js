@@ -1,15 +1,15 @@
 /* node test/run.js
    No framework, no dependencies. Each *.test.js exports one function that
-   takes an assert object and calls it as many times as it likes. */
+   takes an assert object and calls it as many times as it likes. Suites run
+   one after another: several of them replace global.fetch. */
 "use strict";
 
-var SUITES = ["schema", "markdown", "files", "questions", "reference", "store", "voice", "auth", "sync", "isolation", "deletion", "reminders", "templates", "portrait"];
+var SUITES = ["schema", "markdown", "files", "questions", "reference", "store", "voice", "auth", "sync", "isolation", "deletion", "reminders", "templates", "portrait", "bridge"];
 
 var pass = 0;
 var failures = [];
-var pending = [];
 
-SUITES.forEach(function (name) {
+async function runSuite(name) {
   var t = {
     ok: function (cond, msg) {
       if (cond) pass++;
@@ -25,21 +25,17 @@ SUITES.forEach(function (name) {
       catch (e) { pass++; }
     }
   };
-  function blame(e) {
+  try {
+    await require("./" + name + ".test.js")(t);
+  } catch (e) {
     failures.push(name + " - suite threw: " + (e && e.stack ? e.stack.split("\n").slice(0, 3).join("\n      ") : e));
   }
-  try {
-    // a suite may be async (the auth gate is); collect it and await below
-    var result = require("./" + name + ".test.js")(t);
-    if (result && typeof result.then === "function") pending.push(result.catch(blame));
-  } catch (e) {
-    blame(e);
-  }
-});
+}
 
-Promise.all(pending).then(function () {
-  console.log("\n" + pass + " passed, " + failures.length + " failed");
-  failures.forEach(function (f) { console.log("\n  FAIL  " + f); });
-  console.log("");
-  process.exit(failures.length ? 1 : 0);
-});
+SUITES.reduce(function (p, name) { return p.then(function () { return runSuite(name); }); }, Promise.resolve())
+  .then(function () {
+    console.log("\n" + pass + " passed, " + failures.length + " failed");
+    failures.forEach(function (f) { console.log("\n  FAIL  " + f); });
+    console.log("");
+    process.exit(failures.length ? 1 : 0);
+  });

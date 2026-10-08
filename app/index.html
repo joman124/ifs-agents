@@ -33,30 +33,22 @@
     <section class="onboard-slide">
       <div class="onboard-art"><svg class="icon" aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 8h16M6 8l1 12M18 8l-1 12"/><ellipse cx="12" cy="7" rx="9" ry="3"/></svg></div>
       <h1 class="serif">Inner Table</h1>
-      <p class="lead">Meet your inner parts through gentle guided interviews. Build evolving profiles of each one &mdash; then invite them to a table meeting over anything real: a decision, a budget, a draft.</p>
-      <p class="dim">Based on the open-source <b>ifs-agents</b> system and Internal Family Systems (Richard Schwartz).</p>
+      <p class="lead">Meet your inner parts, one at a time.</p>
       <button class="btn btn-primary btn-big" data-next>Begin</button>
     </section>
 
     <section class="onboard-slide">
       <div class="onboard-art"><svg class="icon" aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6Z"/></svg></div>
       <h2 class="serif">This is not therapy</h2>
-      <p class="lead">It is a self-exploration and journaling tool. It deliberately excludes therapeutic depth work &mdash; no trauma processing, no unburdening. That work belongs with a trained practitioner.</p>
-      <ul class="rules">
-        <li>Permission first &mdash; anything can be declined</li>
-        <li>Protectors set the pace &mdash; hesitation means back off</li>
-        <li>Stopping anytime is a fine outcome</li>
-      </ul>
-      <p class="dim">If you are in crisis, use a crisis line &mdash; <b>988</b> in the US &mdash; not this tool.</p>
+      <p class="lead">Self-exploration and journaling only &mdash; no trauma processing. Anything can be declined, and stopping is always fine.</p>
+      <p class="dim">In crisis? Call or text <b>988</b> (US).</p>
       <button class="btn btn-primary btn-big" data-next>I understand</button>
     </section>
 
     <section class="onboard-slide">
       <div class="onboard-art"><svg class="icon" aria-hidden="true" width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
       <h2 class="serif">Yours, and only yours</h2>
-      <p class="lead">Everything lives on this device unless you turn on sync. No analytics, ever. Part profiles are intimate &mdash; export backups and keep them private.</p>
-      <p class="dim">Sync is optional: sign in and a copy of your parts is kept on the server so your own devices can share them. Signed out, nothing leaves this device.</p>
-      <p class="dim">Live sessions can use your own AI key (sent directly from your device to the provider), or a copy-paste mode with any chat you already trust.</p>
+      <p class="lead">Your parts live in your account. No analytics, ever.</p>
       <button class="btn btn-primary btn-big" id="onboardDone">Enter</button>
     </section>
 
@@ -96,7 +88,7 @@
         <div id="partsEmpty" class="empty hidden">
           <div class="empty-art"><svg class="icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z"/></svg></div>
           <h2 class="serif">No parts yet</h2>
-          <p>Bring one in from a file or your notes, or start from scratch &mdash; is there a feeling, urge, or inner voice that keeps showing up?</p>
+          
           <button class="btn btn-primary btn-big" data-action="import-part">Upload or paste a part</button>
           <button class="btn btn-soft btn-big" data-action="new-intake">Meet a part in an interview</button>
           <button class="btn btn-soft btn-big" data-action="create-part">Create one by hand</button>
@@ -113,7 +105,7 @@
         <div id="mapEmpty" class="empty map-empty hidden">
           <div class="empty-art"><svg class="icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="13" cy="19" r="2.5"/><path d="m7.4 6 9.1-.7M6.5 8l5 8.6M17.7 7l-3.5 9.7"/></svg></div>
           <h2 class="serif">The swarm map</h2>
-          <p>Once you have two or more parts, every pair shows up as a faint thread &mdash; they already relate, you just haven't named it yet. Tap a thread to say how.</p>
+          <p>With two or more parts, each pair shows as a thread. Tap one to say how they relate.</p>
         </div>
         <div class="map-hint" id="mapHint">tap a part &middot; drag to place it &middot; pinch to zoom</div>
         <div id="mapCoach" class="coach-float"></div>
@@ -217,7 +209,7 @@
 <div id="login" class="ground hidden" role="dialog" aria-modal="true">
   <div class="ground-inner">
     <h2 class="serif" id="loginTitle">Sign in</h2>
-    <p id="loginIntro">Your parts live in your account. Sign in to reach them on this device &mdash; and on any other device you sign in on.</p>
+    <p id="loginIntro">Sign in to reach your parts.</p>
     <input id="loginUser" autocomplete="username" placeholder="Username" style="margin-bottom:10px">
     <input id="loginPass" type="password" autocomplete="current-password" placeholder="Password" style="margin-bottom:10px">
     <p id="loginError" class="dim hidden" style="color:var(--danger)"></p>
@@ -247,6 +239,7 @@
 <script src="js/ui-table.js"></script>
 <script src="js/ui-portrait.js"></script>
 <script src="js/ui-learn.js"></script>
+<script src="js/ui-bridge.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

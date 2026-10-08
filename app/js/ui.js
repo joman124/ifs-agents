@@ -2157,28 +2157,67 @@
     });
   }
 
-  /* ---------- manual (copy-prompt) mode ---------- */
+  /* ---------- manual (copy-prompt) mode ----------
+     The page has one job: get the prompt into another chat and, for the
+     modes that write profiles, the result back out. So the steps say what
+     actually happens in each mode - a meeting or an embodied reaction never
+     produces a profile to paste back - and the prompt itself sits folded
+     away, because nobody needs to read four screens of instructions to
+     copy them. */
   function manualSession(mode, slugs, material) {
     var parts = slugs.map(ST.getPart).filter(Boolean);
     var prompt = T.portable(mode, parts, material, ST.state.table);
+    var writes = mode === "intake" || mode === "checkin" || mode === "mapping";
+    var names = parts.map(function (p) { return p.name; });
+    var words = prompt.split(/\s+/).filter(Boolean).length;
+
+    var finish =
+      writes ? [
+        "<b>When you want to stop,</b> say &ldquo;let&rsquo;s close the session.&rdquo; It thanks " +
+          (names.length === 1 ? esc(names[0]) : "the part" + (mode === "mapping" ? "s" : "")) +
+          " and writes the updated profile" + (mode === "mapping" ? "s" : "") + ".",
+        "<b>Copy that reply and bring it back</b> with the button below. You&rsquo;ll see how it reads before it&rsquo;s saved, and it merges into what you already have rather than replacing it."
+      ] : mode === "meeting" ? [
+        "<b>The meeting ends with a round of the table</b> &mdash; each part says how it feels toward the others.",
+        "<b>Record those readings</b> from the Table tab with <b>Round the table</b>, so they thicken the threads on the map."
+      ] : [
+        "<b>Talk it through</b> with " + esc(names[0] || "the part") + " for as long as it helps. An embodied reaction doesn&rsquo;t change the profile, so there&rsquo;s nothing to bring back."
+      ];
+    var steps = [
+      "<b>Copy the prompt.</b>",
+      "<b>Start a new chat</b> in any AI you trust &mdash; Claude, ChatGPT, Gemini &mdash; and paste it. It opens the session on its own. Voice mode works too."
+    ].concat(finish);
+
+    var privacy = names.length
+      ? "The prompt contains " + esc(names.join(", ")) + (names.length === 1 ? "&rsquo;s profile" : "&rsquo;s profiles") +
+        (material ? " and the material you added" : "") + ". "
+      : "";
+    privacy += "Whatever you paste is covered by that provider&rsquo;s data policy &mdash; a chat with memory switched off keeps it out of your other conversations.";
+
     openPanel(MODE_TITLES[mode], "copy-prompt mode",
       '<div class="profile">' +
-      '<div class="card"><h3>How this works</h3><div class="prose">1. Copy the prompt below.\n2. Paste it into any AI chat you trust (Claude, ChatGPT, Gemini...).\n3. Have the session there.\n4. When it ends, the model outputs an updated profile - paste that back here with the Import button.</div></div>' +
-      '<button class="btn btn-primary btn-big" id="copyPrompt">Copy the full prompt</button>' +
+      '<div class="card"><h3>How this works</h3><ol class="cp-steps">' +
+      steps.map(function (x) { return "<li>" + x + "</li>"; }).join("") +
+      "</ol></div>" +
+      '<button class="btn btn-primary btn-big" id="copyPrompt">Copy the prompt</button>' +
       '<div style="height:10px"></div>' +
       (navigator.share ? '<button class="btn btn-soft btn-big" id="sharePrompt">Share to another app</button><div style="height:10px"></div>' : "") +
-      '<button class="btn btn-soft btn-big" id="pasteBack">Paste the updated profile back</button>' +
-      '<div class="card" style="margin-top:16px"><h3>The prompt</h3><div class="prose" style="max-height:38vh;overflow:auto;font-size:.78rem">' + esc(prompt) + "</div></div>" +
+      (writes ? '<button class="btn btn-soft btn-big" id="pasteBack">Bring the updated profile back</button>' : "") +
+      '<p class="dim cp-note">' + privacy + "</p>" +
+      '<details class="card cp-prompt"><summary>Read the prompt <span class="dim">&middot; ' + words + " words</span></summary>" +
+      '<div class="prose">' + esc(prompt) + "</div></details>" +
       "</div>");
     $("#copyPrompt").addEventListener("click", function () {
-      navigator.clipboard.writeText(prompt).then(function () { toast("Prompt copied"); buzz(); },
-        function () { toast("Copy failed - long-press the prompt text instead"); });
+      navigator.clipboard.writeText(prompt).then(function () {
+        toast("Prompt copied - paste it into a new chat"); buzz();
+        $("#copyPrompt").textContent = "Copied - copy again";
+      }, function () { toast("Copy failed - open the prompt below and long-press it instead"); });
     });
     var sh = $("#sharePrompt");
     if (sh) sh.addEventListener("click", function () {
       navigator.share({ text: prompt }).catch(function () {});
     });
-    $("#pasteBack").addEventListener("click", importSheet);
+    bind("#pasteBack", importSheet);
   }
 
   /* ---------- a meeting with no AI in the room ----------

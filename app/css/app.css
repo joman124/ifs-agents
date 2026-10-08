@@ -533,6 +533,13 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .covitem { cursor: pointer; }
 .card .prose { white-space: pre-wrap; font-size: .95rem; }
 .card .prose:empty::before, .prose.none { color: var(--ink-faint); font-style: italic; }
+/* copy-prompt page: numbered steps, a quiet privacy line, the prompt folded */
+.cp-steps { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; font-size: .95rem; line-height: 1.45; }
+.cp-steps b { font-weight: 600; }
+.cp-note { margin: 14px 4px; line-height: 1.45; }
+.cp-prompt summary { cursor: pointer; font-size: .9rem; color: var(--ink); list-style-position: inside; }
+.cp-prompt[open] summary { margin-bottom: 10px; }
+.cp-prompt .prose { max-height: 46vh; overflow: auto; font-size: .78rem; overflow-wrap: anywhere; }
 .taglist { display: flex; flex-wrap: wrap; gap: 6px; }
 .taglist span { background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: .84rem; }
 

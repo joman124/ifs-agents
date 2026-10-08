@@ -686,6 +686,14 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .set-row .sr-main { flex: 1; }
 .set-row .sr-sub { display: block; font-size: .76rem; color: var(--ink-dim); }
 .set-pad { padding: 6px 16px 16px; }
+.bridge ol { margin: 0 0 14px 20px; padding: 0; font-size: .88rem; color: var(--ink-dim); }
+.bridge li { margin: 4px 0; }
+.bridge-box { margin-top: 4px; }
+.bridge-box input { font-size: .8rem; }
+.bridge-row { display: flex; gap: 8px; margin-top: 8px; }
+.bridge-row .btn { flex: 1; }
+details.advanced { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+details.advanced summary { cursor: pointer; font-size: .86rem; font-weight: 600; color: var(--ink-dim); }
 /* import preview: which field each piece of the text landed in */
 .prevrows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .prevrow {

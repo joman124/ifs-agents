@@ -20,6 +20,7 @@ which ui.js attaches before this script runs. */
   var AUTH = window.IFS.auth;
   var SY = window.IFS.sync;
   var F = window.IFS.files;
+  var P = window.IFS.portrait;
   var esc = UI.esc, toast = UI.toast, bind = UI.bind, buzz = UI.buzz, $ = UI.$;
   var openSheet = UI.openSheet, closeSheet = UI.closeSheet;
   var openPanel = UI.openPanel, closePanel = UI.closePanel;
@@ -48,7 +49,10 @@ which ui.js attaches before this script runs. */
         (prev ? ", was " + S.feelingLabel(prev).toLowerCase() : "")
       : "";
     return '<div class="rt-row" data-to="' + esc(target.slug) + '">' +
-      '<div class="rt-head"><span class="rt-who">' + esc(heading || target.name) + "</span>" +
+      '<div class="rt-head"><span class="rt-who">' +
+      // a custom heading ("A -> B") names two parts, and one face would be half of it
+      (heading ? "" : '<span class="mini-ava' + P.cls(target) + '">' + P.face(target) + "</span>") +
+      esc(heading || target.name) + "</span>" +
       (said ? '<span class="rt-said">' + esc(said) + "</span>" : "") + "</div>" +
       '<div class="likert">' + S.FEELINGS.map(function (f) {
         return '<button data-val="' + f.val + '" title="' + esc(f.blurb) + '">' +
@@ -235,7 +239,10 @@ which ui.js attaches before this script runs. */
       openPanel("Round the table", p.name + " \u00b7 " + (i + 1) + " of " + parts.length,
         '<div class="profile">' +
         '<div class="qprogress"><i style="width:' + Math.round((i / parts.length) * 100) + '%"></i></div>' +
-        '<div class="card"><div class="qtext serif">How are you, ' + esc(p.name) +
+        '<div class="card">' +
+        // whose turn it is, said with a face as well as a name
+        '<div class="rt-speaker"><span class="avatar pic-med' + P.cls(p) + '">' + P.face(p) + "</span></div>" +
+        '<div class="qtext serif">How are you, ' + esc(p.name) +
         ", feeling toward each of the others" + (past ? "?" : " right now?") + "</div>" +
         '<div class="prose dim" style="margin-top:10px">Answer as ' + esc(p.name) +
         ", in its voice. Leave any of them blank - a part that will not say is answering too." +
@@ -298,7 +305,7 @@ which ui.js attaches before this script runs. */
         ' <span class="dim">' + esc(seat.blurb) + "</span></div>" +
         inSeat.map(function (p) {
           return '<button class="seatchip" data-seat-slug="' + esc(p.slug) + '">' +
-            '<span class="sc-i">' + esc(S.initial(p.name)) + "</span>" + esc(p.name) + "</button>";
+            '<span class="sc-i' + P.cls(p) + '">' + P.face(p) + "</span>" + esc(p.name) + "</button>";
         }).join("") + "</div>";
     }).join("");
 
@@ -306,6 +313,7 @@ which ui.js attaches before this script runs. */
 
     $("#tablePane").innerHTML =
       '<div class="room-card">' +
+      '<span class="kicker">' + window.IFS.icon("table", 15) + " Your meeting room</span>" +
       '<h2 class="serif room-name">' + esc(t.name || "The room") + "</h2>" +
       '<div class="prose">' + esc(t.room) + "</div>" +
       (t.details ? '<div class="prose dim" style="margin-top:10px">' + esc(t.details) + "</div>" : "") +
@@ -387,9 +395,15 @@ which ui.js attaches before this script runs. */
     return /^(#[0-9a-fA-F]{3,8}|var\(--[a-z-]+\))$/.test(String(c || "")) ? String(c) : fallback;
   }
 
+  /* A card is told in the names the parts spoke under, so the face beside a
+     line is found by that name. A part renamed or deleted since simply has
+     none, and so does Self. */
   function voiceLineHTML(v) {
+    var who = P.partNamed(v.name);
     return '<div class="mt-voice" style="--vc:' + safeColor(v.color, "var(--accent)") + '">' +
-      '<span class="mt-name">' + esc(v.name) + "</span>" + esc(v.line) + "</div>";
+      '<span class="mt-name">' +
+      (who ? '<span class="mini-ava' + P.cls(who) + '">' + P.face(who) + "</span>" : "") +
+      esc(v.name) + "</span>" + esc(v.line) + "</div>";
   }
 
   /* The meeting, kept. Enough of it to bring the room back without reopening
@@ -552,7 +566,15 @@ which ui.js attaches before this script runs. */
     var t = ST.state.table;
     var current = t.seats[slug] || "away";
     openSheet(
-      '<h2 class="sheet-title serif">' + esc(p.name) + "</h2>" +
+      /* The Table tab is where the parts sit side by side, so it is also a
+         natural place to notice one has no face yet: the portrait here opens
+         the same picture sheet the profile does. */
+      '<div class="seat-who">' +
+      '<button class="portrait small" id="stPicture" aria-label="' + (P.has(p) ? "Change" : "Add") + " the picture of " + esc(p.name) + '">' +
+      '<span class="avatar' + P.cls(p) + '">' + P.face(p, "Picture of " + p.name) + "</span>" +
+      '<span class="portrait-cam" aria-hidden="true">' + window.IFS.icon("camera", 13) + "</span></button>" +
+      '<div class="seat-name"><h2 class="sheet-title serif">' + esc(p.name) + "</h2>" +
+      '<div class="dim">' + esc(p.type) + (P.has(p) ? "" : " &middot; no picture yet") + "</div></div></div>" +
       '<p class="dim">There is no pressure to sit. Being near the room without joining in is a real answer, and it gets recorded as one.</p>' +
       '<div class="seg" id="stSeat" style="flex-direction:column;gap:3px">' +
       R.SEATS.map(function (s) {
@@ -572,6 +594,7 @@ which ui.js attaches before this script runs. */
       toast(p.name + ": " + R.seatLabel(b.dataset.val).toLowerCase());
     });
     bind("#stOpen", function () { closeSheet(); openProfile(slug); });
+    bind("#stPicture", function () { window.IFS.ui.pictureSheet(slug); });
   }
 
   function invitePartsSheet() {
@@ -583,8 +606,8 @@ which ui.js attaches before this script runs. */
       '<p class="dim">Watch who comes. There is no pressure &mdash; a part might prefer the side of the room, or an adjoining room, and that is welcome too. Tap to move anyone.</p>' +
       parts.map(function (p) {
         var seat = t.seats[p.slug] || "away";
-        return '<button class="menu-item" data-slug="' + esc(p.slug) + '"><span class="mi-icon">' +
-          esc(S.initial(p.name)) + '</span><span class="mi-main">' + esc(p.name) +
+        return '<button class="menu-item" data-slug="' + esc(p.slug) + '"><span class="mi-icon' + P.cls(p) + '">' +
+          P.face(p) + '</span><span class="mi-main">' + esc(p.name) +
           '<span class="mi-sub">' + esc(R.seatLabel(seat)) + "</span></span></button>";
       }).join("") +
       '<div style="height:12px"></div>' +

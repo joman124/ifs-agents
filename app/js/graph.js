@@ -36,6 +36,10 @@
      enforced directly, once per frame. */
   var MIN_GAP = 64;
 
+  /* The radius of a part's circle. Named because the picture inside it has to
+     be cut to the same size. Self is a little larger and never has one. */
+  var PART_R = 22;
+
   /* How far out a pinch or the wheel can pull back, in screen-widths. Parts
      can be dragged well past the first screen, so the view has to reach them. */
   var MAX_ZOOM_OUT = 4;
@@ -95,7 +99,7 @@
     var idx = { self: 0 };
     parts.forEach(function (p) {
       idx[p.slug] = nodes.length;
-      nodes.push({ id: p.slug, label: p.name, type: p.type, heat: S.partHeat(p, today) });
+      nodes.push({ id: p.slug, label: p.name, type: p.type, heat: S.partHeat(p, today), image: S.cleanImage(p.image) });
     });
     var edges = [];
     var seen = {};
@@ -183,7 +187,12 @@
     }
 
     var defs = document.createElementNS(NS, "defs");
-    defs.innerHTML = '<marker id="arrow" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" opacity=".7"/></marker>';
+    /* The circle a picture is cut to. In the node's own coordinates (the
+       group sits at the node's centre), so one clip serves every node. It stops
+       just inside the coloured ring, which is the part's type and has to stay
+       whole whether or not there is a face in it. */
+    defs.innerHTML = '<marker id="arrow" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" opacity=".7"/></marker>' +
+      '<clipPath id="nodeFace"><circle r="' + (PART_R - 1.25) + '"/></clipPath>';
     svg.appendChild(defs);
     var edgeLayer = document.createElementNS(NS, "g");
     var nodeLayer = document.createElementNS(NS, "g");
@@ -333,12 +342,24 @@
       grp.setAttribute("class", "node" + (n.self ? " self" : "") +
         (!n.self && n.heat >= .8 ? " warm" : ""));
       grp.style.transition = "opacity .2s";
-      var r = n.self ? 26 : 22;
+      var r = n.self ? 26 : PART_R;
       var c = document.createElementNS(NS, "circle");
       c.setAttribute("r", r);
       if (!n.self) {
         c.setAttribute("fill", "var(--surface)");
         c.setAttribute("stroke", typeColor[n.type] || "var(--unknown)");
+      }
+      /* A part with a picture shows it where the initial would be. The
+         picture is cut to a circle, centred and cropped to fill (it is
+         already square, so "slice" only matters for odd imports). */
+      var face = null;
+      if (n.image) {
+        face = document.createElementNS(NS, "image");
+        face.setAttribute("href", n.image);
+        face.setAttribute("x", -PART_R); face.setAttribute("y", -PART_R);
+        face.setAttribute("width", PART_R * 2); face.setAttribute("height", PART_R * 2);
+        face.setAttribute("preserveAspectRatio", "xMidYMid slice");
+        face.setAttribute("clip-path", "url(#nodeFace)");
       }
       var initial = document.createElementNS(NS, "text");
       initial.setAttribute("dy", "5");
@@ -352,7 +373,9 @@
       var maxLabel = W < 480 ? 12 : 18;
       name.textContent = n.self ? ""
         : (n.label.length > maxLabel ? n.label.slice(0, maxLabel - 1).trim() + "…" : n.label);
-      grp.appendChild(c); grp.appendChild(initial); grp.appendChild(name);
+      grp.appendChild(c);
+      if (face) grp.appendChild(face); else grp.appendChild(initial);
+      grp.appendChild(name);
       nodeLayer.appendChild(grp);
 
       // drag to move; a near-still press-and-release is a tap (select)

@@ -12,6 +12,7 @@ process.env.SESSION_SECRET = "test-session-secret";
 
 var login = require("../api/login.js");
 var sync = require("../api/sync.js");
+var syncImages = require("../api/sync-images.js");
 var signup = require("../api/signup.js");
 
 var calls = [];
@@ -137,6 +138,57 @@ module.exports = async function (t) {
     t.eq(write.code, 200, "a valid token writes");
     t.ok(calls[0].url.indexOf("innertable:state:bob") !== -1 &&
       calls[0].url.indexOf("alice") === -1, "a username in the body cannot redirect the write");
+
+    /* ---- pictures: the same gate, on a key of their own ---- */
+    var noToken = res();
+    await syncImages({ method: "GET", headers: {} }, noToken);
+    t.eq(noToken.code, 401, "pictures: no token is refused");
+
+    var forgedImg = res();
+    await syncImages({ method: "GET", headers: { authorization: "Bearer " + signWith("not-the-secret", { u: "alice", exp: Date.now() + 60000 }) } }, forgedImg);
+    t.eq(forgedImg.code, 401, "pictures: a token signed with the wrong secret is refused");
+
+    var staleImg = res();
+    await syncImages({ method: "GET", headers: { authorization: "Bearer " + signWith(process.env.SESSION_SECRET, { u: "alice", exp: Date.now() - 1000 }) } }, staleImg);
+    t.eq(staleImg.code, 401, "pictures: an expired token is refused");
+
+    calls.length = 0;
+    nextResult = '{"images":{}}';
+    var readImg = res();
+    await syncImages({ method: "GET", headers: { authorization: "Bearer " + aliceToken } }, readImg);
+    t.eq(readImg.code, 200, "pictures: a valid token reads");
+    t.eq(readImg.body, { images: '{"images":{}}' }, "and gets them back under `images`, not `state`");
+    t.ok(calls.length === 1 && calls[0].url.indexOf("innertable:images:alice") !== -1 &&
+      calls[0].url.indexOf("innertable:state:") === -1,
+      "alice's token reads alice's pictures, not her profiles");
+
+    nextResult = null;
+    var emptyImg = res();
+    await syncImages({ method: "GET", headers: { authorization: "Bearer " + aliceToken } }, emptyImg);
+    t.eq(emptyImg.body, { images: null }, "an account with none gets null");
+
+    calls.length = 0;
+    var writeImg = res();
+    await syncImages({ method: "POST", headers: { authorization: "Bearer " + bobToken }, body: { images: '{"images":{}}', username: "alice" } }, writeImg);
+    t.eq(writeImg.code, 200, "pictures: a valid token writes");
+    t.ok(calls[0].url.indexOf("innertable:images:bob") !== -1 && calls[0].url.indexOf("alice") === -1,
+      "a username in the body cannot redirect the write");
+    t.eq(calls[0].opts.body, '{"images":{}}', "and what was sent is what is stored");
+
+    calls.length = 0;
+    var missing = res();
+    await syncImages({ method: "POST", headers: { authorization: "Bearer " + bobToken }, body: { state: "{}" } }, missing);
+    t.eq(missing.code, 400, "pictures: a body with no `images` is refused - a profiles blob sent here by mistake is not stored");
+    t.eq(calls.length, 0, "and nothing is written");
+
+    var tooBig = res();
+    await syncImages({ method: "POST", headers: { authorization: "Bearer " + bobToken }, body: { images: "x".repeat(900001) } }, tooBig);
+    t.eq(tooBig.code, 413, "pictures: more than the server will take is refused with a reason");
+    t.eq(calls.length, 0, "before it reaches the database");
+
+    var wrongVerb = res();
+    await syncImages({ method: "DELETE", headers: { authorization: "Bearer " + bobToken } }, wrongVerb);
+    t.eq(wrongVerb.code, 405, "pictures: other methods are refused");
   } finally {
     globalThis.fetch = realFetch;
   }

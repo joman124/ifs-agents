@@ -46,6 +46,22 @@ behavior; enemies; allies; wants/needs; unburdened)`.
 | `coverage` | map | Per-category interview status. Drives the ongoing-questions engine. See below. |
 | `sessions` | list | Append-only session log. See below. |
 
+### The picture (Inner Table app only)
+
+The webapp can give a part a picture, kept on the part as two extra fields that
+are **not part of the `parts/<slug>.md` format**:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `image` | string | A small square JPEG as a base64 `data:image/...` URL, or empty. Never anything else: no web addresses, no SVG. |
+| `image_at` | ISO time | When the picture was last set *or removed*. It is the picture's own clock, so that taking it away on one device beats an older copy on another. |
+
+A picture is bulky, and it is for the person rather than the model, so it is
+left out of exported profiles and out of every prompt, and a profile read back
+from markdown simply has none. Merging such a profile onto a stored part keeps
+the picture the part already had. JSON backups include it, and sync carries it
+on its own endpoint (`/api/sync-images`) rather than inside the profile blob.
+
 ### `relationships` entries
 
 ```yaml

@@ -88,6 +88,7 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 
 | File | Lines | What it owns |
 |---|--:|---|
+| `icons.js` | 59 | The line-icon set (`IFS.icon(name, size)`) used by the shell, menus and settings |
 | `schema.js` | 718 | Part shape, the 9 coverage categories, 5 edge types, the 5-point feeling scale, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `edgeWeight`, `setFeeling`/`pairFeeling`/`pairTone`/`feelingHistory`, `mapCounts`, `initial` |
 | `questions.js` | 130 | The IFS question bank (33 questions), `nextCategory`, `applyAnswers` |
 | `reference.js` | 207 | Fraser's Table protocol (build/tools/seats/closing), the 8-page reference library, the first-run coach cues and the daily check-in prompts |
@@ -105,10 +106,15 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `ui-learn.js` | 49 | The Learn library sheet and its pages |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
 
-## The four tabs
+## The three tabs, and the profile menu
 
-1. **Parts** — library with coverage rings and readiness dots, headed by the
-   **daily check-in**: once a day it asks one rotating question and offers the
+The bottom tab bar holds the three places the work happens. Settings is not a
+tab: it lives behind the **profile avatar** in the top-right corner, alongside
+the theme switch and sign out.
+
+1. **Parts** — opens on a greeting header, then a grid of part cards (type,
+   positive intent, a "profile depth" bar, readiness and how long it has been
+   quiet), headed by the **daily check-in** hero card: once a day it asks one rotating question and offers the
    part that has gone quietest, with a way straight into a session. A profile
    page has a single primary next-step CTA, tap-to-edit fields, and
    per-category coverage.
@@ -142,14 +148,22 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
    meeting card**, where it is filed on that meeting's date rather than today.
    A card says whether a round was recorded; one whose attendees have since
    been deleted says so instead of offering a round nobody can answer.
-4. **Settings** — account (sign in/up/out, "Sync now", sign-out closes your parts
+4. **Settings** (from the profile avatar, not a tab) — a jump bar of
+   sections, then account (sign in/up/out, "Sync now", sign-out closes your parts
    and returns to the sign-in screen), push notifications (tied to the signed-in
    account), provider keys, voice, theme, backup/restore, transcripts.
    "Find my voices" lists the ElevenLabs account's own voices (clones first) so
    no ID is copied by hand; "Test this key" does a live round-trip for
    whichever LLM provider is active instead of failing silently mid-session.
 
-The **ⓘ in the topbar** opens the reference library from anywhere.
+The **ⓘ in the topbar** opens the reference library from anywhere. The
+**profile avatar** next to it opens a menu: Settings, How this works, the
+Light / Dark / Auto theme switch, and Sign out.
+
+Visual language: line icons from `js/icons.js` (one stroke weight, drawn in
+`currentColor`), DM Sans for text and Newsreader for headings — both
+self-hosted in `app/fonts/` so the app makes no third-party requests and
+works offline. All colour comes from the tokens at the top of `app.css`.
 
 ## Data model
 

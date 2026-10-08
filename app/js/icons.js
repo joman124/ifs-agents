@@ -38,6 +38,7 @@ script that draws markup, so push.js and ui.js can both reach it. */
     vibrate: '<rect x="8" y="4" width="8" height="16" rx="2"/><path d="M4 9v6M20 9v6"/>',
     file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/>',
     pen: '<path d="M4 20h4L19 9l-4-4L4 16Z"/>',
+    camera: '<path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/>',
     leaf: '<path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14Zm0 0 7-7"/>'
   };
 

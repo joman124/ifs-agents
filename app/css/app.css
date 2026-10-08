@@ -348,9 +348,9 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .part-card:active { transform: scale(.985); }
 .pc-top { display: flex; align-items: center; gap: 10px; }
 .pc-avatar {
-  width: 42px; height: 42px; border-radius: 50%; flex: none;
+  width: 48px; height: 48px; border-radius: 50%; flex: none; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-serif); font-size: 1.2rem; font-weight: 600;
+  font-family: var(--font-serif); font-size: 1.3rem; font-weight: 600;
   color: var(--tc); background: color-mix(in srgb, var(--tc) 18%, transparent);
   border: 1px solid color-mix(in srgb, var(--tc) 45%, transparent);
 }
@@ -492,19 +492,25 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 }
 .panel-title { flex: 1; font-weight: 650; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .panel-title small { display: block; font-weight: 400; color: var(--ink-dim); font-size: .74rem; }
+/* the profile's bar: the part's face beside its name, kept while the page scrolls */
+.panel-title.has-face { display: flex; align-items: center; gap: 10px; }
+.panel-title .pt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.panel-title .pt-face {
+  width: 36px; height: 36px; border-radius: 50%; flex: none; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent); border: 1.5px solid var(--accent);
+  font: 700 .95rem/1 Georgia, serif;
+}
+.panel-title .pt-face.has-pic { background: none; }
 .panel-actions { display: flex; gap: 4px; }
 .panel-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ---------- profile view ---------- */
 .profile { padding: 18px 18px calc(40px + var(--sab)); max-width: 640px; margin: 0 auto; }
-.profile-hero { text-align: center; padding: 8px 0 18px; }
-.profile-hero .avatar {
-  width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 10px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 2rem; font-family: Georgia, serif; font-weight: 700;
-  background: var(--accent-soft); color: var(--accent);
-  border: 2px solid var(--accent);
-}
+.profile-hero { --tc: var(--accent); text-align: center; padding: 8px 0 18px; }
+.profile-hero.t-manager { --tc: var(--manager); }
+.profile-hero.t-firefighter { --tc: var(--firefighter); }
+.profile-hero.t-exile { --tc: var(--exile); }
 .profile-hero h1 { margin: 0; font-size: 1.7rem; }
 .profile-hero .sub { color: var(--ink-dim); font-size: .88rem; margin-top: 4px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
@@ -592,7 +598,7 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .msg .voice:last-child { margin-bottom: 0; }
 .msg .voice .vhead { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
 .msg .voice .vava {
-  width: 21px; height: 21px; border-radius: 50%; flex: none;
+  width: 24px; height: 24px; border-radius: 50%; flex: none; overflow: hidden;
   display: inline-flex; align-items: center; justify-content: center;
   font-family: Georgia, serif; font-weight: 700; font-size: .66rem;
   background: color-mix(in srgb, var(--vc, var(--accent)) 20%, transparent);
@@ -1052,15 +1058,15 @@ input.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
 }
 .seat-head .dim { text-transform: none; letter-spacing: 0; font-size: .92em; }
 .seatchip {
-  display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; gap: 9px;
   background: var(--surface2); border: 1px solid var(--line); border-radius: 999px;
-  padding: 5px 12px 5px 5px; margin: 0 6px 6px 0; font-size: .86rem; cursor: pointer;
+  padding: 4px 14px 4px 4px; margin: 0 6px 8px 0; font-size: .88rem; cursor: pointer;
 }
 .seatchip:active { transform: scale(.97); }
 .seatchip .sc-i {
-  width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft);
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: .72rem; font-weight: 700; flex: none;
+  width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft);
+  display: inline-flex; align-items: center; justify-content: center; overflow: hidden;
+  font-size: .8rem; font-weight: 700; flex: none;
 }
 .menu-item.tool.on .mi-icon { color: var(--good); }
 
@@ -1084,8 +1090,8 @@ input.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
 }
 .mt-voice:last-child { margin-bottom: 0; }
 .mt-voice .mt-name {
-  display: block; font-size: .64rem; font-weight: 700; letter-spacing: .07em;
-  text-transform: uppercase; color: var(--vc, var(--accent)); margin-bottom: 2px;
+  display: flex; align-items: center; font-size: .64rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--vc, var(--accent)); margin-bottom: 3px;
 }
 .logrow { cursor: pointer; }
 .logrow:active { background: var(--surface2); }
@@ -1116,7 +1122,7 @@ input.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
 .seating.go .chair { animation: chairIn .5s cubic-bezier(.3,.9,.3,1) var(--d, 0ms) forwards; }
 @keyframes chairIn { to { opacity: 1; transform: none; } }
 .chair-i {
-  width: 42px; height: 42px; border-radius: 50%; flex: none;
+  width: 52px; height: 52px; border-radius: 50%; flex: none; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   background: var(--accent-soft); color: var(--accent);
   border: 2px solid var(--accent);
@@ -1169,7 +1175,7 @@ input.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
 .ritual-q { font-size: clamp(1.5rem, 5.4vw, 2.2rem); font-weight: 500; line-height: 1.15; letter-spacing: -.015em; margin: 0; max-width: 15em; }
 .ritual-part { display: flex; align-items: center; gap: 11px; margin: 18px 0; }
 .ritual-part .rt-i {
-  width: 40px; height: 40px; border-radius: 50%; flex: none;
+  width: 44px; height: 44px; border-radius: 50%; flex: none; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   background: rgba(240, 201, 135, .16); color: var(--self);
   border: 1px solid rgba(240, 201, 135, .4);
@@ -1232,4 +1238,95 @@ input.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
 
 /* ---------- no-AI meeting: who is speaking ---------- */
 .sm-who { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .9rem; margin: 8px 2px 2px; }
-.sm-who .sm-ava { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: .78rem; flex: none; }
+.sm-who .sm-ava { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; color: #fff; font-size: .78rem; flex: none; }
+
+/* ================= a part's picture =================
+   Everywhere the app draws a part as a circle with its initial in it, the
+   picture can stand in for the initial: the circle keeps its own size,
+   border and colour, and the picture simply fills it. A part with one and a
+   part without sit side by side without either looking out of place. */
+img.pic {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+  border-radius: inherit; -webkit-user-drag: none; user-select: none;
+}
+.has-pic { padding: 0; overflow: hidden; }
+.pc-avatar.has-pic, .chair-i.has-pic, .seatchip .sc-i.has-pic, .msg .voice .vava.has-pic,
+.ritual-part .rt-i.has-pic, .mini-ava.has-pic, .map-card .mc-ava.has-pic { background: none; }
+.sm-who .sm-ava.has-pic { background: none !important; }
+.menu-item .mi-icon.has-pic { width: 30px; height: 30px; border-radius: 50%; display: block; flex: none; }
+.ring .ring-initial.has-pic { inset: 7px; border-radius: 50%; }
+
+/* the small face beside a name in a list: relationships, meeting cards, rounds */
+.mini-ava {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 20px; height: 20px; border-radius: 50%; margin-right: 7px; vertical-align: -5px;
+  background: var(--accent-soft); color: var(--accent); overflow: hidden;
+  font: 700 .62rem/1 Georgia, serif; letter-spacing: 0; text-transform: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.mt-voice .mt-name .mini-ava { margin-right: 6px; vertical-align: baseline; }
+.rt-who { display: inline-flex; align-items: center; }
+
+/* the profile's portrait, and the same circle on the Table tab's seat sheet:
+   tapping it is the way to a picture, so it wears a camera */
+.portrait, .portrait .avatar, .avatar.pic-big, .avatar.pic-med { border-radius: 50%; }
+.portrait { position: relative; display: block; padding: 0; margin: 0 auto 10px; }
+.portrait .avatar, .avatar.pic-big, .avatar.pic-med {
+  width: 84px; height: 84px; margin: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2rem; font-family: Georgia, serif; font-weight: 700;
+  background: var(--accent-soft); color: var(--accent);
+  border: 2px solid var(--accent);
+  transition: transform .15s ease;
+}
+.portrait:active .avatar { transform: scale(.97); }
+.portrait .avatar.has-pic, .avatar.pic-big.has-pic, .avatar.pic-med.has-pic {
+  background: none; border-color: var(--tc, var(--accent));
+}
+.portrait .avatar.has-pic { width: 112px; height: 112px; border-width: 3px; box-shadow: 0 6px 20px rgba(0,0,0,.28); }
+.portrait-cam {
+  position: absolute; right: -2px; bottom: -2px; width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--accent-ink); border: 3px solid var(--bg);
+}
+.portrait-cam .icon { stroke-width: 2; }
+.hero-look {
+  margin: 10px auto 0; max-width: 30em; padding: 0 8px;
+  color: var(--ink-dim); font-size: .92rem; font-style: italic; line-height: 1.5;
+}
+.chip .icon { display: inline-block; vertical-align: -2px; margin-right: 3px; }
+
+.seat-who { display: flex; align-items: center; gap: 14px; margin: 4px 0 10px; }
+.seat-who .portrait { margin: 0; flex: none; }
+.portrait.small .avatar, .portrait.small .avatar.has-pic { width: 64px; height: 64px; font-size: 1.6rem; border-width: 2px; box-shadow: none; }
+.portrait.small .portrait-cam { width: 24px; height: 24px; border-width: 2px; border-color: var(--bg2); }
+.seat-who .seat-name { min-width: 0; }
+.seat-who .sheet-title { margin: 0; }
+.rt-speaker { display: flex; justify-content: center; margin-bottom: 14px; }
+.avatar.pic-med { width: 76px; height: 76px; font-size: 1.8rem; }
+.avatar.pic-big { width: 132px; height: 132px; font-size: 2.6rem; }
+.pic-now { display: flex; justify-content: center; margin: 12px 0 16px; }
+
+.map-card .mc-ava {
+  width: 38px; height: 38px; border-radius: 50%; flex: none; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent); border: 2px solid var(--accent);
+  font: 700 1rem/1 Georgia, serif;
+}
+.map-card { padding-left: 12px; }
+
+/* framing a new picture: a square window onto it, with the circle drawn over */
+.crop {
+  position: relative; width: min(100%, 300px, 44dvh); aspect-ratio: 1; margin: 12px auto 4px;
+  overflow: hidden; border-radius: 16px; background: #111;
+  touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none;
+}
+.crop:active { cursor: grabbing; }
+.crop-img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; will-change: transform; }
+.crop-ring {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, .52);
+  outline: 2px solid rgba(255, 255, 255, .85); outline-offset: -2px;
+}
+.crop-zoom { padding: 0; border: 0; background: none; height: 30px; accent-color: var(--accent); }
+.crop-zoom:focus { outline-offset: 2px; }

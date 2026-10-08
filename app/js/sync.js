@@ -23,6 +23,14 @@
      switch can never land in the new account's slot. */
   var reconciledFor = null;
 
+  /* Pictures sync on their own endpoint (see api/sync-images.js), so a set of
+     photos too big for the server to take can never stop the profiles from
+     syncing. The same rule as above applies to them: nothing goes up until a
+     pull has said what the server holds, and `picturesAt` is the fingerprint
+     of that - a push only happens when what is here no longer matches it. */
+  var picturesKnown = false;
+  var picturesAt = "";
+
   function authHeaders() {
     return { "Content-Type": "application/json", "Authorization": "Bearer " + AUTH.getToken() };
   }
@@ -37,9 +45,47 @@
     if (!AUTH.isLoggedIn() || !reconciled) return;
     if (AUTH.getUsername() !== reconciledFor) return;   // account changed under us
     try {
-      var r = await fetch("/api/sync", { method: "POST", headers: authHeaders(), body: JSON.stringify({ state: ST.exportAll() }) });
+      var r = await fetch("/api/sync", { method: "POST", headers: authHeaders(), body: JSON.stringify({ state: ST.exportAll({ images: false }) }) });
       lastStatus = r.ok ? "synced" : "sync failed";
-    } catch (e) { lastStatus = "offline"; }
+    } catch (e) { lastStatus = "offline"; return; }
+    await pushPictures();
+  }
+
+  /* Best-effort and silent: pictures failing to sync is not "sync failed" -
+     the profiles did sync - and the next push simply tries again, because
+     `picturesAt` only moves on success. */
+  async function pushPictures() {
+    if (!picturesKnown) return;
+    var mine = ST.imageFingerprint();
+    if (mine === picturesAt) return;
+    var who = AUTH.getUsername();
+    try {
+      var r = await fetch("/api/sync-images", { method: "POST", headers: authHeaders(), body: JSON.stringify({ images: ST.exportImages() }) });
+      // the account may have changed while the request was in flight
+      if (r.ok && AUTH.getUsername() === who && picturesKnown) picturesAt = mine;
+    } catch (e) { /* offline, or too large: try again on the next push */ }
+  }
+
+  /* Fold the server's pictures into this device's, last writer wins by each
+     picture's own stamp (ST.importImages). Runs after the profiles are in,
+     because a picture only lands on a part that is here. A server that
+     cannot be asked leaves `picturesKnown` false, and then pictures simply
+     stay on this device for now rather than risking an overwrite. */
+  async function pullPictures() {
+    try {
+      var r = await fetch("/api/sync-images", { headers: authHeaders() });
+      if (!r.ok) return;
+      var data = await r.json();
+      if (data.images) {
+        // like the profiles above, what comes down is not a local edit and
+        // must not queue a push of its own
+        suppressPush = true;
+        try { ST.importImages(data.images); }
+        finally { suppressPush = false; }
+      }
+      picturesAt = data.images ? ST.imageFingerprint(data.images) : "";
+      picturesKnown = true;
+    } catch (e) { /* offline, or a blob this build cannot read: leave it alone */ }
   }
 
   /* Returns true if remote data changed anything locally, so the caller can
@@ -56,6 +102,7 @@
       reconciledFor = AUTH.getUsername();
       lastStatus = "synced";
       if (!data.state) {          // nothing up there yet: seed it from here
+        await pullPictures();
         schedulePush();
         return false;
       }
@@ -64,6 +111,7 @@
       // it has not heard about must not undo ones made here
       try { ST.importAll(data.state, { sync: true }); }
       finally { suppressPush = false; }
+      await pullPictures();
       // importAll merges rather than replaces, so local now holds the union
       // of both devices - send that back so the server has it too
       schedulePush();
@@ -72,7 +120,10 @@
   }
 
   /* Signing out must also drop the permission to write. */
-  function reset() { reconciled = false; reconciledFor = null; clearTimeout(pushTimer); lastStatus = ""; }
+  function reset() {
+    reconciled = false; reconciledFor = null; clearTimeout(pushTimer); lastStatus = "";
+    picturesKnown = false; picturesAt = "";
+  }
 
   function status() { return lastStatus; }
 

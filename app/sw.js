@@ -1,7 +1,7 @@
 /* Inner Table - service worker: cache-first app shell for offline use,
    plus the push/notificationclick handlers that let it show notifications
    even when the app isn't open. */
-var CACHE = "inner-table-v40";
+var CACHE = "inner-table-v41";
 var SHELL = [
   "./",
   "index.html",
@@ -14,6 +14,7 @@ var SHELL = [
   "js/reference.js",
   "js/markdown.js",
   "js/store.js",
+  "js/portrait.js",
   "js/templates.js",
   "js/llm.js",
   "js/voice.js",
@@ -24,6 +25,7 @@ var SHELL = [
   "js/push.js",
   "js/ui.js",
   "js/ui-table.js",
+  "js/ui-portrait.js",
   "js/ui-learn.js",
   "js/app.js",
   "manifest.webmanifest",

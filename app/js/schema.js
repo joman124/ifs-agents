@@ -108,6 +108,64 @@
       .replace(/^-+|-+$/g, "") || "unnamed-part";
   }
 
+  /* ---- A part's picture ----
+     Something to hold up beside "what it looks like": a photo, a drawing, a
+     screenshot of whatever the person sees when they close their eyes.
+
+     It is kept on the part itself as a small square JPEG in a data URL, so it
+     travels with a backup, survives a rename, and needs no second store on
+     the device. Small is the point - see portrait.js, which crops and shrinks
+     whatever was picked to a few tens of kilobytes before it gets here.
+
+     Two things are validated, because a backup file is just JSON someone can
+     hand-edit and a picture ends up inside an src attribute: the URL has to be
+     a base64 raster image (no SVG, which can carry script; no http(s), which
+     would make the app fetch from a stranger's server just by opening a
+     part), and it has to fit under a ceiling, so a pasted photo cannot swell
+     the device store until it stops saving. Anything else is not a picture.
+
+     `image_at` is the picture's own clock. Setting a picture and removing one
+     are both writes, and a removal has to be able to beat an older copy
+     of the picture on another device or it would simply come back. The part's
+     `updated` stamp cannot do that job: it moves on every edit to any field. */
+  var IMAGE_MAX_CHARS = 90000;
+  var IMAGE_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+\/]+={0,2}$/;
+
+  function cleanImage(v) {
+    if (typeof v !== "string" || v.length > IMAGE_MAX_CHARS) return "";
+    return IMAGE_RE.test(v) ? v : "";
+  }
+
+  /* A stamp is only ever compared as a string, so it has to be one that sorts
+     as time does: the UTC form toISOString() writes, or nothing. A date parsed
+     leniently ("Oct 1", a +05:00 offset) would compare wrongly against it. */
+  var STAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+  function cleanStamp(v) {
+    return (typeof v === "string" && STAMP_RE.test(v) && !isNaN(Date.parse(v))) ? v : "";
+  }
+
+  /* Set a part's picture, or take it away with a falsy `dataURL`. Returns
+     false - and leaves the part untouched - for something that is not an
+     acceptable picture, so a caller can say so instead of storing nothing. */
+  function setImage(part, dataURL, whenISO) {
+    if (!part) return false;
+    var img = dataURL ? cleanImage(dataURL) : "";
+    if (dataURL && !img) return false;
+    var when = cleanStamp(whenISO);
+    if (!when) {
+      /* Two writes in the same millisecond, or a clock that has stepped back,
+         must still read as one after the other - a removal that ties with the
+         picture it removes would lose to it. Same step the store takes past a
+         tombstone. */
+      when = new Date().toISOString();
+      var prev = cleanStamp(part.image_at);
+      if (prev && when <= prev) when = new Date(Date.parse(prev) + 1).toISOString();
+    }
+    part.image = img;
+    part.image_at = when;
+    return true;
+  }
+
   function blankPart(name) {
     var coverage = {};
     CATEGORIES.forEach(function (c) { coverage[c] = "untouched"; });
@@ -123,6 +181,8 @@
       age: "",
       location: "",
       appearance: "",
+      image: "",
+      image_at: "",
       origin: "",
       emotions: [],
       fears: [],
@@ -269,6 +329,14 @@
     if (out.type === "unknown") out.type = base.type;
     if (out.trust_in_self === "unknown") out.trust_in_self = base.trust_in_self;
 
+    /* A picture is neither a sentence to join nor a list to union. The
+       incoming side wins when it has one, like every other field; when it has
+       none the stored one stays, along with the stamp it was set under. That
+       is what makes a model's rewrite or a markdown profile - neither can
+       carry a picture - safe to merge. Taking a picture away is not a merge,
+       it is an edit, and travels between devices by its stamp (store.js). */
+    if (!out.image) { out.image = base.image || ""; out.image_at = base.image_at || ""; }
+
     ["emotions", "fears", "hopes_goals", "behaviors", "wants_needs"]
       .forEach(function (k) { out[k] = unionList(base[k], out[k]); });
 
@@ -317,6 +385,12 @@
      `keep` supplies the surviving name, slug and type; `absorb` fills gaps. */
   function mergeDuplicate(keep, absorb) {
     var out = mergeParts(absorb, keep);
+
+    /* The survivor's own picture stands. If it had none and took the other
+       half's, that is a new fact about the survivor, so it is stamped now: left
+       on the old half's clock it could lose to a removal recorded on
+       the survivor's slug in between. */
+    if (!keep.image && out.image) out.image_at = new Date().toISOString();
 
     NARRATIVE_SECTIONS.forEach(function (sec) {
       var a = (keep.narrative[sec.key] || "").trim();
@@ -386,6 +460,8 @@
     });
     if (PART_TYPES.indexOf(p.type) < 0) p.type = "unknown";
     if (TRUST_LEVELS.indexOf(p.trust_in_self) < 0) p.trust_in_self = "unknown";
+    p.image = cleanImage(raw.image);
+    p.image_at = cleanStamp(raw.image_at);
     ["emotions", "fears", "hopes_goals", "behaviors", "wants_needs"].forEach(function (k) {
       if (Array.isArray(raw[k])) {
         p[k] = raw[k].filter(function (x) { return typeof x === "string" && x.trim(); });
@@ -688,6 +764,10 @@
     NARRATIVE_SECTIONS: NARRATIVE_SECTIONS,
     slugify: slugify,
     initial: initial,
+    IMAGE_MAX_CHARS: IMAGE_MAX_CHARS,
+    cleanImage: cleanImage,
+    cleanStamp: cleanStamp,
+    setImage: setImage,
     blankPart: blankPart,
     readiness: readiness,
     READY_AT: READY_AT,

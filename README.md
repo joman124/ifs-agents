@@ -128,10 +128,13 @@ It follows one spine — **add a part → gather → integrate → connect**:
   endpoint of their own, so photos can never be what stops your profiles
   syncing), and are never sent to an AI or written into an exported `.md` — they
   are for you, not for the model.
-- **Live guided sessions** (intake, check-in, mapping, embody, table meeting)
-  as a chat, powered by your own Gemini, Anthropic, or OpenAI API key — the key
-  and all profiles stay on your device. No key? A **copy-prompt mode** generates
-  the portable prompt for any chat you already use, and imports the result back.
+- **Live guided sessions** (just talk, intake, check-in, mapping, embody, table
+  meeting) as a chat inside the app, on your own AI account: **Connect with
+  OpenRouter** in one tap, or paste a key from Anthropic, OpenRouter, OpenAI or
+  Google — the app tells which from the key. Signed in, the connection is kept
+  with your account (encrypted) so every device you use is connected; messages
+  go straight from your device to that provider. Or link Claude, ChatGPT or
+  Gemini and sessions open there; or use **copy-prompt mode** with any chat.
 - **Voice first**: sessions are spoken by default where the browser supports
   it. The answer to an IFS question arrives in the pause, spoken, long before
   anyone would type it. The microphone stays open *through* the reply, so you

@@ -1261,13 +1261,12 @@
         '<p class="dim" style="margin:8px 2px">Write or paste anything about the part first &mdash; even two sentences is plenty.</p>';
       return;
     }
-    var s = ST.state.settings;
-    if (s.provider !== "manual" && LLM.configured(s)) {
+    if (LLM.configured(ST.state.settings.ai)) {
       shapeNotesWithAI(text);
       return;
     }
     rawFallbackOptions(text,
-      "Sorting freeform notes automatically needs an AI provider (Settings &rarr; Live sessions). Without one:");
+      "Sorting freeform notes automatically needs an AI connected (Settings &rarr; Live sessions &rarr; Talk here). Without one:");
   }
 
   /* Manual mode / AI failure: real choices for raw text, never a dead end. */
@@ -1299,7 +1298,7 @@
       '<div class="readiness ok" style="margin-top:14px">Organizing your notes into a profile&hellip;</div>' +
       '<p class="dim" style="margin:8px 2px">Only what your text actually says goes in. The development % will reflect just the ground it covers.</p>';
     try {
-      var reply = await LLM.chat(ST.state.settings, T.convertNotes(), [{ role: "user", text: text }]);
+      var reply = await LLM.chat(ST.state.settings.ai, T.convertNotes(), [{ role: "user", text: text }]);
       if (!$("#importResult")) return; // sheet closed while waiting
       var res = MD.analyze(reply);
       if (res.profiles.length) {
@@ -1660,22 +1659,28 @@
     $("#seatingSkip").onclick = function (e) { e.stopPropagation(); finish(); };
   }
 
+  /* Where a session happens, in order: here, with the person's own AI
+     connected; in their linked AI app (Claude, ChatGPT, Gemini), through the
+     private link; as a prompt to copy, once they have chosen that. With none
+     of those set up yet, they are asked - once. */
   function startSession(mode, slugs, material) {
     closeSheet();
     var s = ST.state.settings;
-    /* Linked to Claude, ChatGPT or Gemini, but with no API key for running it
-       here: the session runs in that AI instead, through the link. */
-    if (s.provider !== "manual" && !LLM.configured(s)) {
-      linkedSession(mode, slugs, material);
-      return;
-    }
-    if (s.provider === "manual" || !LLM.configured(s)) {
+    if (LLM.configured(s.ai)) { runHere(mode, slugs, material); return; }
+    if (s.provider !== "manual") { linkedSession(mode, slugs, material); return; }
+    var copy = function () {
       // a meeting can still run with nobody in the guide's chair: each
       // seated part answered by the person in turn, no key and no detour
       if (mode === "meeting") meetingModeSheet(slugs, material);
       else manualSession(mode, slugs, material);
-      return;
-    }
+    };
+    if (s.copyPrompt) { copy(); return; }
+    setTimeout(function () {
+      window.IFS.ui.connect.chooseWhere({ mode: mode, slugs: slugs, material: material || "" }, copy);
+    }, 230);
+  }
+
+  function runHere(mode, slugs, material) {
     var begin = function () {
       session = {
         mode: mode, slugs: slugs, material: material || "",
@@ -1692,9 +1697,8 @@
   function resumeDraft() {
     var d = ST.state.draft;
     if (!d) return;
-    var s = ST.state.settings;
-    if (s.provider === "manual" || !LLM.configured(s)) {
-      toast("Set up an AI provider in Settings to resume this session");
+    if (!LLM.configured(ST.state.settings.ai)) {
+      toast("Connect an AI in Settings - Live sessions to pick this session up");
       return;
     }
     var slugs = (d.slugs || []).filter(function (sl) { return !!ST.getPart(sl); });
@@ -1726,11 +1730,11 @@
     var voiceCapable = V.canSpeak() || V.canListen();
     openPanel(
       MODE_TITLES[sess.mode],
-      partNames || "a new part",
+      partNames || (sess.mode === "talk" ? "an open conversation" : "a new part"),
       '<div class="chat">' +
       '<button class="groundbtn" id="groundBtn">&#9875; ground me</button>' +
       '<div class="chat-scroll" id="chatScroll">' +
-      '<div class="msg system-note">Private session · ' + esc(s.provider) + " · saved as you go · you can stop anytime</div>" +
+      '<div class="msg system-note">Private session · ' + esc(LLM.label(s.ai)) + " · saved as you go · you can stop anytime</div>" +
       "</div>" +
       '<div class="voice-orb idle" id="voiceOrb" aria-live="polite"><i></i><span class="vo-label"></span></div>' +
       '<div class="chat-input">' +
@@ -1979,7 +1983,7 @@
     var tip = typingEl();
     var live = null;
     try {
-      var reply = await LLM.chatStream(ST.state.settings, sess.system,
+      var reply = await LLM.chatStream(ST.state.settings.ai, sess.system,
         sess.messages.map(function (m) { return { role: m.role, text: m.text }; }),
         function (fullText) {
           if (session !== sess) return;
@@ -2243,6 +2247,7 @@
       '<p class="dim cp-note">' + privacy + "</p>" +
       '<details class="card cp-prompt"><summary>Read the prompt <span class="dim">&middot; ' + words + " words</span></summary>" +
       '<div class="prose">' + esc(prompt) + "</div></details>" +
+      '<button class="btn btn-ghost btn-big" id="cpHere">Talk here in Inner Table instead</button>' +
       "</div>");
     $("#copyPrompt").addEventListener("click", function () {
       navigator.clipboard.writeText(prompt).then(function () {
@@ -2255,6 +2260,7 @@
       navigator.share({ text: prompt }).catch(function () {});
     });
     bind("#pasteBack", importSheet);
+    bind("#cpHere", function () { window.IFS.ui.connect.open({ resume: { mode: mode, slugs: slugs, material: material || "" } }); });
   }
 
   /* ---------- a session handed to the person's linked AI ----------
@@ -2283,7 +2289,7 @@
           '<div class="prose">Sessions run in ' + esc(who) + " through your private link &mdash; it carries your parts&rsquo; history there and saves what the session learns back here. You haven&rsquo;t made a link yet.</div></div>" +
           '<button class="btn btn-primary btn-big" id="lsSetup">Set up the link</button><div style="height:10px"></div>' +
           otherWays());
-        bind("#lsSetup", function () { closePanel(); showView("settings"); setTimeout(function () { var g = $("#setSessions"); if (g) g.scrollIntoView({ block: "start" }); }, 80); });
+        bind("#lsSetup", window.IFS.ui.connect.showSessionsSettings);
         bindOtherWays();
         return;
       }
@@ -2320,15 +2326,15 @@
 
     function otherWays() {
       return '<details class="card cp-prompt"><summary>Other ways to hold this session</summary>' +
-        '<div class="prose dim" style="margin-bottom:10px">To talk inside Inner Table itself, it needs an API key &mdash; Settings &rarr; Live sessions &rarr; &ldquo;Run sessions inside this app with my own API key&rdquo;. That is billed by the provider, separately from a ' + esc(who) + " subscription.</div>" +
+        '<button class="btn btn-soft btn-big" id="lsKey">Talk here in Inner Table instead</button>' +
+        '<div class="prose dim" style="margin:8px 2px 12px">Connect your own AI account once and sessions run right here &mdash; paid from that account, separately from a ' + esc(who) + " subscription.</div>" +
         (meeting ? '<button class="btn btn-soft btn-big" id="lsSelf">Hold it myself &mdash; I speak for each part</button><div style="height:8px"></div>' : "") +
-        '<button class="btn btn-soft btn-big" id="lsManual">Copy-prompt mode &mdash; paste it into any AI chat</button>' +
-        '<div style="height:8px"></div><button class="btn btn-ghost btn-big" id="lsKey">Add an API key</button></details>';
+        '<button class="btn btn-soft btn-big" id="lsManual">Copy-prompt mode &mdash; paste it into any AI chat</button></details>';
     }
     function bindOtherWays() {
       bind("#lsManual", function () { manualSession(mode, slugs, material); });
       bind("#lsSelf", function () { closePanel(); seatingCeremony(slugs, function () { selfMeeting(slugs, material); }); });
-      bind("#lsKey", function () { closePanel(); showView("settings"); setTimeout(function () { var g = $("#setSessions"); if (g) g.scrollIntoView({ block: "start" }); var d = document.querySelector("#setSessions details.advanced"); if (d) d.open = true; }, 80); });
+      bind("#lsKey", function () { window.IFS.ui.connect.open({ resume: { mode: mode, slugs: slugs, material: material || "" } }); });
     }
 
     window.IFS.ui.linkAi.currentToken().then(go, function () {
@@ -2901,7 +2907,7 @@
      its own function rather than living inside the list's click handler. */
   function openTranscript(t) {
     var interviewish = ["intake", "checkin", "mapping"].indexOf(t.mode) >= 0;
-    var canExtract = interviewish && LLM.configured(ST.state.settings);
+    var canExtract = interviewish && LLM.configured(ST.state.settings.ai);
     openPanel(t.title, t.date,
       '<div class="transcript">' +
       (canExtract ? '<button class="btn btn-primary btn-big" id="extractT" style="margin-bottom:6px">Extract the profile from this transcript</button>' +
@@ -2926,7 +2932,7 @@
       if (t.mode === "checkin" && livedParts.length) sys = T.checkin(livedParts[0], ST.listParts());
       else if (t.mode === "mapping" && livedParts.length >= 2) sys = T.mapping(livedParts, ST.listParts());
       else sys = T.intake();
-      var reply = await LLM.chat(ST.state.settings, sys, [{
+      var reply = await LLM.chat(ST.state.settings.ai, sys, [{
         role: "user",
         text: "Here is the transcript of a session we already had. Do not continue the interview.\n\n" +
           t.text + "\n\n" + T.CLOSE_INSTRUCTION
@@ -2996,24 +3002,6 @@
     });
   }
 
-  /* A key that is wrong is otherwise silent until the first session fails
-     halfway through a sentence. One round trip, said plainly. */
-  async function testProviderKey(btn) {
-    var s = ST.state.settings;
-    var cfg = PROVIDERS[s.provider];
-    if (!cfg || !s[cfg.key]) { toast("Add the API key first"); return; }
-    btn.disabled = true;
-    btn.textContent = "Checking…";
-    try {
-      await LLM.chat(s, "Reply with the single word: ready.", [{ role: "user", text: "ready?" }]);
-      toast(cfg.label + " is working - " + s[cfg.model] + " answered");
-    } catch (e) {
-      toast(e.message || (cfg.label + " did not answer"));
-    }
-    btn.disabled = false;
-    btn.textContent = "Test this key";
-  }
-
   /* Push first, then pull: local edits made offline reach the server before
      the server's copy is merged back in, so neither side is lost. */
   async function syncNow() {
@@ -3030,11 +3018,18 @@
   }
 
   /* ================= settings ================= */
-  var lastAi = "anthropic";   // which platform "Link my AI" returns to after a stint in copy-prompt
+  /* One line on where a session started now would happen. */
+  function sessionsStartLine(s, here, linked) {
+    if (here) return "Sessions you start run here, with " + esc(LLM.label(s.ai)) + ".";
+    if (linked) return "Sessions you start open in " + esc(PROVIDER_NAMES[s.provider]) + ". Connect an AI here to have them run in Inner Table instead.";
+    if (s.copyPrompt) return 'Sessions you start give you a prompt to copy into any AI chat. <button class="linkbtn" id="askWhere">Ask me each time instead</button>';
+    return "When you start a session, you&rsquo;ll be asked where you&rsquo;d like to talk.";
+  }
 
   function renderSettings() {
     var s = ST.state.settings;
     var linked = s.provider !== "manual";
+    var here = LLM.configured(s.ai);
     var row = function (ic, main, sub, action, danger) {
       return '<div class="set-row"><span class="sr-icon' + (danger ? " danger" : "") + '">' + icon(ic, 18) + "</span>" +
         '<span class="sr-main"' + (danger ? ' style="color:var(--danger)"' : "") + ">" + main + '<span class="sr-sub">' + sub + "</span></span>" +
@@ -3057,21 +3052,16 @@
       "</div>" +
 
       '<div class="set-group" id="setSessions"><h3>Live sessions</h3>' +
-      '<div class="set-pad"><div class="seg" id="modeSeg">' +
-      segBtn("manual", "Copy-prompt", linked ? "link" : "manual") + segBtn("link", "Link my AI", linked ? "link" : "manual") +
-      "</div>" +
-      (linked
-        ? '<div class="seg" id="provSeg" style="margin-top:10px">' +
-          segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) + segBtn("gemini", "Gemini", s.provider) +
-          "</div>" + window.IFS.ui.linkAi.html(s.provider) +
-          '<details class="advanced"' + (PROVIDERS[s.provider] && s[PROVIDERS[s.provider].key] ? " open" : "") + '>' +
-          "<summary>Talk inside this app instead, with my own API key</summary>" +
-          '<p class="dim" style="margin:10px 2px 0">Without a key, every session you start here opens in ' + ({ anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini" }[s.provider] || "your AI") +
-          ' through your link. With one, it runs right here. An API key is billed by the provider, separately from a subscription.</p>' +
-          '<div id="provFields"></div>' +
-          '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent straight to the provider. Anything you share in a session falls under that provider&rsquo;s data policies.</p>' +
-          "</details>"
-        : '<p class="dim" style="margin:12px 2px 0">Each session makes a prompt to paste into any AI chat; paste the updated profile back here.</p>') +
+      row("chat", "Talk here in Inner Table",
+        here ? "connected &middot; " + esc(LLM.label(s.ai)) : "connect your own AI account &middot; a few cents a session",
+        '<button class="btn ' + (here ? "btn-soft" : "btn-primary") + '" id="aiConnect">' + (here ? "Manage" : "Connect") + "</button>") +
+      '<div class="set-pad"><div class="sr-copy"><b>Your AI app</b><span class="sr-sub">' +
+      (here ? "talk with your parts there too, through a private link" : "without an AI connected here, sessions open in it, through a private link") +
+      "</span></div>" +
+      '<div class="seg" id="provSeg" style="margin-top:10px">' +
+      segBtn("manual", "None", s.provider) + segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) + segBtn("gemini", "Gemini", s.provider) +
+      "</div>" + (linked ? window.IFS.ui.linkAi.html(s.provider) : "") +
+      '<p class="dim" style="margin:12px 2px 0">' + sessionsStartLine(s, here, linked) + "</p>" +
       "</div></div>" +
 
       '<div class="set-group" id="setVoice"><h3>Voice</h3>' +
@@ -3127,20 +3117,16 @@
       var target = document.getElementById(b.dataset.jump);
       if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
-    $("#modeSeg").addEventListener("click", function (e) {
-      var b = e.target.closest("button"); if (!b) return;
-      if (b.dataset.val === "manual") { if (linked) lastAi = s.provider; s.provider = "manual"; }
-      else if (!linked) s.provider = lastAi;
-      ST.save(); renderSettings(); buzz();
+    bind("#aiConnect", function () {
+      if (LLM.configured(ST.state.settings.ai)) window.IFS.ui.connect.manage(renderSettings);
+      else window.IFS.ui.connect.open({ done: renderSettings });
     });
-    if (linked) {
-      renderProviderFields();
-      window.IFS.ui.linkAi.mount();
-      $("#provSeg").addEventListener("click", function (e) {
-        var b = e.target.closest("button"); if (!b) return;
-        s.provider = b.dataset.val; ST.save(); renderSettings(); buzz();
-      });
-    }
+    bind("#askWhere", function () { s.copyPrompt = false; ST.save(); renderSettings(); buzz(); });
+    $("#provSeg").addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      s.provider = b.dataset.val; ST.save(); renderSettings(); buzz();
+    });
+    if (linked) window.IFS.ui.linkAi.mount();
     $("#themeSeg").addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
       s.theme = b.dataset.val; ST.save(); applyTheme(); renderSettings(); buzz();
@@ -3211,36 +3197,6 @@
 
   function segBtn(val, label, cur) {
     return '<button data-val="' + val + '"' + (cur === val ? ' class="on"' : "") + ">" + label + "</button>";
-  }
-
-  var PROVIDERS = {
-    gemini: { label: "Gemini", key: "geminiKey", model: "geminiModel", ph: "AIza...",
-      hint: 'Free keys at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a> &mdash; sign in, <b>Create API key</b>, paste it above. The free tier covers ordinary use of <code>gemini-2.5-flash</code>; on it, Google may use your prompts to improve their models, so keep depth work out of live sessions.' },
-    anthropic: { label: "Anthropic", key: "anthropicKey", model: "anthropicModel", ph: "sk-ant-...",
-      hint: 'Keys at <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>.' },
-    openai: { label: "OpenAI", key: "openaiKey", model: "openaiModel", ph: "sk-...",
-      hint: 'Keys at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>.' }
-  };
-
-  function renderProviderFields() {
-    var s = ST.state.settings;
-    var el = $("#provFields");
-    var cfg = PROVIDERS[s.provider];
-    if (!cfg) return;
-    el.innerHTML =
-      '<label class="fieldlabel">' + cfg.label + ' API key</label>' +
-      '<input type="password" id="provKey" autocomplete="off" placeholder="' + cfg.ph + '" value="' + esc(s[cfg.key]) + '">' +
-      '<label class="fieldlabel">Model</label>' +
-      '<input type="text" id="provModel" value="' + esc(s[cfg.model]) + '">' +
-      '<button class="btn btn-soft" id="provTest" style="margin-top:12px">Test this key</button>' +
-      '<p class="dim" style="margin:10px 2px 0">' + cfg.hint + "</p>";
-    $("#provTest").addEventListener("click", function () { testProviderKey(this); });
-    $("#provKey").addEventListener("input", function (e) {
-      s[cfg.key] = e.target.value.trim(); ST.save();
-    });
-    $("#provModel").addEventListener("input", function (e) {
-      s[cfg.model] = e.target.value.trim(); ST.save();
-    });
   }
 
   /* ================= onboarding ================= */
@@ -3483,6 +3439,8 @@
   window.IFS.ui = {
     init: init,
     toast: toast,
+    startSession: startSession,
+    renderSettings: function () { if (currentView === "settings") renderSettings(); },
     refresh: function (msg) {
       renderParts();
       if (msg) toast(msg);

@@ -17,5 +17,11 @@
     "api/bridge.js": {
       "includeFiles": "app/js/**"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/connect/openrouter/:state",
+      "destination": "/api/ai-key?state=:state"
+    }
+  ]
 }

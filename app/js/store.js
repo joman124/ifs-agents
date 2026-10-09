@@ -65,7 +65,18 @@
       settings: {
         onboarded: false,
         theme: "auto",           // auto | dark | light
-        provider: "manual",      // manual | gemini | anthropic | openai
+        /* The AI that runs sessions here, inside Inner Table, on the person's
+           own account with it: { provider: anthropic | openrouter | openai |
+           gemini, key, model ("" = that provider's default), at: when it was
+           last connected or disconnected }. Signed in, it is kept with the
+           account (api/ai-key.js) and follows them to every device. */
+        ai: { provider: "", key: "", model: "", at: "" },
+        /* Their AI app, linked through the private link (api/bridge.js):
+           sessions without an AI connected here open there instead.
+           manual = none linked. */
+        provider: "manual",      // manual | anthropic | openai | gemini
+        copyPrompt: false,       // chose copy-a-prompt as the way to hold sessions
+        // keys from before settings.ai; carried into it once by adopt()
         geminiKey: "",
         geminiModel: "gemini-2.5-flash",
         anthropicKey: "",
@@ -110,6 +121,25 @@
     if (parsed.draft) state.draft = parsed.draft;
     if (parsed.table) Object.assign(state.table, parsed.table);
     if (parsed.settings) Object.assign(state.settings, parsed.settings);
+    carryOldKey(state.settings);
+  }
+
+  /* Before settings.ai there was one key field per provider, and the
+     platform picker chose between them. Whichever key was in use becomes the
+     connection, once; a model left at the old default moves to the current one. */
+  var OLD_DEFAULT_MODELS = { anthropicModel: "claude-sonnet-5", openaiModel: "gpt-5.1", geminiModel: "gemini-2.5-flash" };
+  function carryOldKey(s) {
+    if (!s.ai || typeof s.ai !== "object") s.ai = { provider: "", key: "", model: "", at: "" };
+    if (s.ai.key || s.ai.at) return;
+    var order = [s.provider, "anthropic", "openai", "gemini"];
+    for (var i = 0; i < order.length; i++) {
+      var p = order[i];
+      if (!p || p === "manual" || !s[p + "Key"]) continue;
+      var model = s[p + "Model"] || "";
+      if (model === OLD_DEFAULT_MODELS[p + "Model"]) model = "";
+      s.ai = { provider: p, key: s[p + "Key"], model: model, at: "" };
+      return;
+    }
   }
 
   function saveTable(t) {

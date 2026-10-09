@@ -1384,3 +1384,11 @@ img.pic {
 
 /* framing a wide photo: the window takes the width, not a fixed square */
 .crop.wide { width: min(100%, 440px, 64dvh); }
+
+/* ---- connecting the person's own AI (ui-connect.js) ---- */
+.cx-note { margin: 8px 2px 14px; font-size: .84rem; }
+.cx-note.cx-error { color: var(--danger); }
+.cx-or { display: flex; align-items: center; gap: 10px; margin: 6px 0 12px; color: var(--ink-dim); font-size: .8rem; }
+.cx-or::before, .cx-or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+#cxKey, #cxModel { width: 100%; box-sizing: border-box; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }

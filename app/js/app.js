@@ -26,8 +26,18 @@
       if (fromAi.length) window.IFS.ui.refresh("Saved from your AI: " + fromAi.join(", "));
       else if (changed) window.IFS.ui.refresh("Synced with your other device");
     });
+    // the AI connection is kept with the account too: connected or
+    // disconnected on another device, this one follows
+    window.IFS.sync.syncAi().then(function (changed) { if (changed) window.IFS.ui.renderSettings(); });
   }
-  pullNow();
+  // back from OpenRouter's sign-in, the connection is already on the account
+  if (/[?&](connected|connect_error)=/.test(location.search)) {
+    lastPull = Date.now();
+    window.IFS.sync.pull();
+    window.IFS.ui.connect.handleReturn();
+  } else {
+    pullNow();
+  }
   /* An installed app is rarely restarted - it is brought back from the
      background. Pull then too, so a session saved from another app in the
      meantime is here when the person looks, and is in before this device's

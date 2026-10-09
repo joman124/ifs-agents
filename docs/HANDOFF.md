@@ -76,7 +76,9 @@ api/                 serverless functions (Vercel): signup, login, sync,
                      AND an inbox key the app folds in on pull and acks on push;
                      it also carries a meeting's readings + card and a "just
                      talk" conversation note - the synced `journal`, which is
-                     what lets the next conversation, in either place, remember)
+                     what lets the next conversation, in either place, remember),
+                     ai-key (the person's own AI connection, AES-GCM-sealed per
+                     account, plus OpenRouter's one-tap PKCE sign-in)
   root package.json  holds the `web-push` dependency for the functions only
 test/                node test/run.js — 741 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
@@ -104,7 +106,7 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `store.js` | 959 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart`, table-only `exportTable`/`importTable`; the pictures blob (`exportImages`/`importImages`/`imageFingerprint`) and `exportAll({images:false})` for sync |
 | `portrait.js` | 194 | A part's picture and the room's photo: drawing (`face`/`cls`, the picture or the initial inside a circle) and making (open a picked file, crop, shrink to a small JPEG in a named shape: square for a part, 16:9 for the room) |
 | `templates.js` | 425 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
-| `llm.js` | 272 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
+| `llm.js` | 300 | One connection `{provider, key, model}` (`settings.ai`): Anthropic, OpenRouter, OpenAI, Gemini; provider detected from the key's shape; chat + SSE streaming, retry; the system prompt is cached (Anthropic `cache_control`, and on OpenRouter's Claude models); current Claude models run at medium effort with server-side refusal fallback |
 | `voice.js` | 360 | Web Speech dictation + TTS, optional ElevenLabs voice |
 | `graph.js` | 615 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat; a part's picture fills its circle; a dragged part stays where it is dropped (per device, per account) |
 | `auth.js` | 62 | Session token storage, sign-in/up/out flows against `api/` |
@@ -114,6 +116,8 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `ui-table.js` | 776 | The Table tab: the room (and its photo), seating, meetings, the round of the table and the readings-history sheet |
 | `ui-portrait.js` | 299 | Choosing and framing a picture: the sheet, the drag/pinch/zoom cropper, remove. One flow for a part and for the room |
 | `ui-learn.js` | 49 | The Learn library sheet and its pages |
+| `ui-bridge.js` | 124 | Settings → Live sessions → *Your AI app*: makes, shows and revokes the private link |
+| `ui-connect.js` | 249 | *Talk here in Inner Table*: Connect with OpenRouter, paste-any-key (detected, test-called, kept with the account), manage/disconnect, the one-time "where would you like to talk?" choice, and picking a session back up after OpenRouter's sign-in |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
 
 ## The three tabs, and the profile menu
@@ -237,6 +241,31 @@ flatten the other device's parts, so nothing goes up blind, and a queued push
 is pinned to the username that queued it. A pull merges through
 `store.importAll`'s existing merge logic rather than overwriting, so the
 Invariants around merges still hold across devices.
+
+### The AI connection — `api/ai-key.js` ⇄ `app/js/sync.js`
+
+Everyone runs sessions on their own AI account. `settings.ai` holds the one
+connection; for a signed-in person it is also kept at `innertable:ai:<username>`,
+sealed with AES-256-GCM under a key derived from `SESSION_SECRET` (no new env
+var), and handed back only to that account's own session — never to the private
+link. `syncAi()` runs beside every pull: last word wins by `at`, so a connect or
+a disconnect on one device reaches the others; a key from before this existed
+(no `at`) goes up once. `store.adopt` carries the old per-provider key fields
+into `settings.ai` once.
+
+**Connect with OpenRouter** is OAuth PKCE run server-side: the app asks
+`POST /api/ai-key {action:"openrouter"}`, which parks the verifier and username
+under a one-time `innertable:oauth:<state>` (15 min) and returns OpenRouter's
+sign-in URL; OpenRouter returns to `/api/ai-key?state=…&code=…`, which exchanges
+the code for a key made for that person, picks the newest
+`anthropic/claude-sonnet-*`, saves it, and redirects to `/?connected=openrouter`.
+Because the verifier never lives in the browser, it works even when the sign-in
+comes back in a different browser from the installed app.
+
+Where a session runs (`ui.js` `startSession`): here if `settings.ai` is
+connected; else in the linked AI app (`settings.provider`, the hand-off page);
+else copy-prompt once the person chose it (`settings.copyPrompt`); else they
+are asked once (`connect.chooseWhere`).
 
 ### Pictures — `api/sync-images.js` ⇄ `app/js/sync.js`
 

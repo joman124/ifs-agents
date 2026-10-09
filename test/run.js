@@ -4,7 +4,7 @@
    one after another: several of them replace global.fetch. */
 "use strict";
 
-var SUITES = ["schema", "markdown", "files", "questions", "reference", "store", "voice", "auth", "sync", "isolation", "deletion", "reminders", "templates", "portrait", "bridge"];
+var SUITES = ["schema", "markdown", "files", "questions", "reference", "store", "voice", "auth", "sync", "isolation", "deletion", "reminders", "templates", "portrait", "bridge", "aikey", "llm"];
 
 var pass = 0;
 var failures = [];

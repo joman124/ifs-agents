@@ -1,7 +1,7 @@
 /* Inner Table - service worker: cache-first app shell for offline use,
    plus the push/notificationclick handlers that let it show notifications
    even when the app isn't open. */
-var CACHE = "inner-table-v47";
+var CACHE = "inner-table-v48";
 var SHELL = [
   "./",
   "index.html",
@@ -28,6 +28,7 @@ var SHELL = [
   "js/ui-portrait.js",
   "js/ui-learn.js",
   "js/ui-bridge.js",
+  "js/ui-connect.js",
   "js/app.js",
   "manifest.webmanifest",
   "icons/icon.svg",
@@ -59,6 +60,8 @@ self.addEventListener("fetch", function (e) {
   if (url.origin !== location.origin) return;
   // never cache sync/login - a cached GET would hand back a stale state blob
   if (url.pathname.indexOf("/api/") === 0) return;
+  // nor the way back from OpenRouter's sign-in: it is a server redirect
+  if (url.pathname.indexOf("/connect/") === 0) return;
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(function (hit) {
       if (hit) {

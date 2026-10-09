@@ -338,9 +338,12 @@
 
   /* Same as upsertPart, but for profiles that came back from a model or an
      import: fields it left out are kept rather than wiped. */
-  function mergePart(part, keepStamp) {
+  /* how: "session" for what a session or a paste hands back (never loses
+     stored text - see schema.mergeSession); otherwise the plain merge, which
+     is what another device's copy of the same part needs. */
+  function mergePart(part, keepStamp, how) {
     if (!part || !part.slug) return part;
-    var merged = S.mergeParts(state.parts[part.slug], part);
+    var merged = (how === "session" ? S.mergeSession : S.mergeParts)(state.parts[part.slug], part);
     upsertPart(merged, keepStamp);
     return merged;
   }

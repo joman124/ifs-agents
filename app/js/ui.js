@@ -1198,7 +1198,7 @@
       '<button class="btn btn-primary btn-big" id="importConfirm">' +
       (profiles.length === 1 ? "Add " + esc(profiles[0].name) + " to the library" : "Add all to library") + '</button>';
     $("#importConfirm").addEventListener("click", function () {
-      profiles.forEach(function (p) { ST.mergePart(p); });
+      profiles.forEach(function (p) { ST.mergePart(p, false, "session"); });
       closeSheet(); renderParts(); buzz(12);
       toast("Welcomed: " + profiles.map(function (p) { return p.name; }).join(", "));
       if (profiles.length === 1) openProfile(profiles[0].slug);
@@ -1246,7 +1246,7 @@
         missingHTML +
         '<button class="btn btn-primary btn-big" id="importSalvage">Import what was found</button>';
       $("#importSalvage").addEventListener("click", function () {
-        ST.mergePart(p);
+        ST.mergePart(p, false, "session");
         closeSheet(); renderParts(); buzz(12);
         toast("Welcomed: " + p.name);
         openProfile(p.slug);
@@ -1663,6 +1663,12 @@
   function startSession(mode, slugs, material) {
     closeSheet();
     var s = ST.state.settings;
+    /* Linked to Claude, ChatGPT or Gemini, but with no API key for running it
+       here: the session runs in that AI instead, through the link. */
+    if (s.provider !== "manual" && !LLM.configured(s)) {
+      linkedSession(mode, slugs, material);
+      return;
+    }
     if (s.provider === "manual" || !LLM.configured(s)) {
       // a meeting can still run with nobody in the guide's chair: each
       // seated part answered by the person in turn, no key and no detour
@@ -2064,7 +2070,7 @@
      saves. Anything the model left out is kept, so a thin closing reply can
      never quietly delete a field. */
   function reviewMerge(incoming, done) {
-    var merged = incoming.map(function (p) { return S.mergeParts(ST.getPart(p.slug), p); });
+    var merged = incoming.map(function (p) { return S.mergeSession(ST.getPart(p.slug), p); });
     openSheet(
       '<h2 class="sheet-title serif">' + (merged.length === 1 ? "Update " + esc(merged[0].name) + "?" : "Update " + merged.length + " profiles?") + "</h2>" +
       '<p class="dim">Merged onto what you already had &mdash; nothing the session skipped gets erased.</p>' +
@@ -2249,6 +2255,87 @@
       navigator.share({ text: prompt }).catch(function () {});
     });
     bind("#pasteBack", importSheet);
+  }
+
+  /* ---------- a session handed to the person's linked AI ----------
+     The app has no way to call Claude or ChatGPT on the person's own account -
+     only an API key would do that. What it has is their private link, which
+     those apps run sessions through (start_session / save_session in
+     api/bridge.js). So the session opens there, already asked for, and what
+     it learns comes back here on the next sync. */
+  var PROVIDER_NAMES = { anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini" };
+
+  function linkedSession(mode, slugs, material) {
+    var s = ST.state.settings;
+    var who = PROVIDER_NAMES[s.provider] || "your AI";
+    var parts = slugs.map(ST.getPart).filter(Boolean);
+    var title = MODE_TITLES[mode];
+    var meeting = mode === "meeting";
+    var page = function (inner) {
+      openPanel(title, "in " + who, '<div class="profile">' + inner + "</div>");
+    };
+    page('<div class="card"><div class="prose dim">Checking your link&hellip;</div></div>');
+
+    var go = function (token) {
+      if (!token) {
+        page(
+          '<div class="card"><h3>Link ' + esc(who) + " first</h3>" +
+          '<div class="prose">Sessions run in ' + esc(who) + " through your private link &mdash; it carries your parts&rsquo; history there and saves what the session learns back here. You haven&rsquo;t made a link yet.</div></div>" +
+          '<button class="btn btn-primary btn-big" id="lsSetup">Set up the link</button><div style="height:10px"></div>' +
+          otherWays());
+        bind("#lsSetup", function () { closePanel(); showView("settings"); setTimeout(function () { var g = $("#setSessions"); if (g) g.scrollIntoView({ block: "start" }); }, 80); });
+        bindOtherWays();
+        return;
+      }
+      var url = s.provider === "gemini" ? window.IFS.ui.linkAi.sessionUrl(token, mode, slugs, material) : "";
+      var h = T.handoff(mode, parts.map(function (p) { return { slug: p.slug, name: p.name }; }), material, s.provider, url);
+      var steps = [
+        h.url ? "<b>Open " + esc(who) + ".</b> A new chat opens with the session already asked for &mdash; just send it."
+              : "<b>Copy the message</b> and paste it into a new " + esc(who) + " chat.",
+        h.pasteNext ? "<b>Then paste what&rsquo;s on the table</b> &mdash; it was too long to send in the link. Copy it with the button below." : "",
+        "<b>" + esc(who) + " runs the session</b> from your parts&rsquo; history" + (mode === "talk" ? " and your last conversations" : "") + ", the way this app would.",
+        "<b>When you&rsquo;re done, say &ldquo;let&rsquo;s close.&rdquo;</b> It saves " +
+          (meeting ? "the meeting and the round of the table" : mode === "embody" ? "nothing it doesn&rsquo;t need to &mdash; a reaction leaves the profile as it is" : mode === "talk" ? "a note of the conversation and anything new about your parts" : "the updated profile") +
+          " to Inner Table, and you&rsquo;ll see &ldquo;Saved from your AI&rdquo; when you come back."
+      ].filter(Boolean);
+      page(
+        '<div class="card"><h3>This session runs in ' + esc(who) + '</h3><ol class="cp-steps">' +
+        steps.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol></div>" +
+        (h.url ? '<a class="btn btn-primary btn-big" id="lsOpen" href="' + esc(h.url) + '" target="_blank" rel="noopener">Open ' + esc(who) + "</a><div style=\"height:10px\"></div>" : "") +
+        '<button class="btn ' + (h.url ? "btn-soft" : "btn-primary") + ' btn-big" id="lsCopy">Copy the message</button><div style="height:10px"></div>' +
+        (h.pasteNext ? '<button class="btn btn-soft btn-big" id="lsCopyMat">Copy what&rsquo;s on the table</button><div style="height:10px"></div>' : "") +
+        (s.provider === "gemini" ? '<p class="dim cp-note">The Gemini app has no connectors, so the message carries your private session link. Gemini can read your parts through it but cannot save; paste its closing reply into Inner Table &mdash; Add a part.</p>' : "") +
+        otherWays());
+      bind("#lsOpen", function () { buzz(12); });
+      bind("#lsCopy", function () {
+        navigator.clipboard.writeText(h.message).then(function () { toast("Copied - paste it into a new " + who + " chat"); buzz(); },
+          function () { toast("Copy failed"); });
+      });
+      bind("#lsCopyMat", function () {
+        navigator.clipboard.writeText(h.pasteNext).then(function () { toast("Copied - paste it after the first message"); buzz(); },
+          function () { toast("Copy failed"); });
+      });
+      bindOtherWays();
+    };
+
+    function otherWays() {
+      return '<details class="card cp-prompt"><summary>Other ways to hold this session</summary>' +
+        '<div class="prose dim" style="margin-bottom:10px">To talk inside Inner Table itself, it needs an API key &mdash; Settings &rarr; Live sessions &rarr; &ldquo;Run sessions inside this app with my own API key&rdquo;. That is billed by the provider, separately from a ' + esc(who) + " subscription.</div>" +
+        (meeting ? '<button class="btn btn-soft btn-big" id="lsSelf">Hold it myself &mdash; I speak for each part</button><div style="height:8px"></div>' : "") +
+        '<button class="btn btn-soft btn-big" id="lsManual">Copy-prompt mode &mdash; paste it into any AI chat</button>' +
+        '<div style="height:8px"></div><button class="btn btn-ghost btn-big" id="lsKey">Add an API key</button></details>';
+    }
+    function bindOtherWays() {
+      bind("#lsManual", function () { manualSession(mode, slugs, material); });
+      bind("#lsSelf", function () { closePanel(); seatingCeremony(slugs, function () { selfMeeting(slugs, material); }); });
+      bind("#lsKey", function () { closePanel(); showView("settings"); setTimeout(function () { var g = $("#setSessions"); if (g) g.scrollIntoView({ block: "start" }); var d = document.querySelector("#setSessions details.advanced"); if (d) d.open = true; }, 80); });
+    }
+
+    window.IFS.ui.linkAi.currentToken().then(go, function () {
+      // offline, or the server could not be asked: say so, and keep every other way open
+      page('<div class="card"><h3>Couldn&rsquo;t reach your link</h3><div class="prose">Check your connection and try again &mdash; or hold this session another way.</div></div>' + otherWays());
+      bindOtherWays();
+    });
   }
 
   /* ---------- a meeting with no AI in the room ----------
@@ -2978,7 +3065,9 @@
           segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) + segBtn("gemini", "Gemini", s.provider) +
           "</div>" + window.IFS.ui.linkAi.html(s.provider) +
           '<details class="advanced"' + (PROVIDERS[s.provider] && s[PROVIDERS[s.provider].key] ? " open" : "") + '>' +
-          "<summary>Run sessions inside this app with my own API key</summary>" +
+          "<summary>Talk inside this app instead, with my own API key</summary>" +
+          '<p class="dim" style="margin:10px 2px 0">Without a key, every session you start here opens in ' + ({ anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini" }[s.provider] || "your AI") +
+          ' through your link. With one, it runs right here. An API key is billed by the provider, separately from a subscription.</p>' +
           '<div id="provFields"></div>' +
           '<p class="dim" style="margin:12px 2px 2px">Your key is stored only on this device and sent straight to the provider. Anything you share in a session falls under that provider&rsquo;s data policies.</p>' +
           "</details>"

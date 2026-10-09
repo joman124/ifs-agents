@@ -113,6 +113,8 @@ label.fieldlabel { display: block; font-size: .8rem; color: var(--ink-dim); marg
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
 .btn-big { width: 100%; padding: 15px 18px; font-size: 1.05rem; }
+a.btn { text-decoration: none; box-sizing: border-box; }
+a.btn-primary { color: var(--accent-ink); }
 .btn[disabled] { opacity: .45; pointer-events: none; }
 .iconbtn {
   width: 42px; height: 42px; border-radius: 50%;

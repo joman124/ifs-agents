@@ -639,14 +639,15 @@
     "summary: 2-4 plain sentences - what the person brought, which parts showed up and how, anything left open or flagged for next time. Their words where they matter; no diagnosis, no trauma detail.",
     "parts: the slugs of any parts that came up, comma-separated (empty if none)",
     "```",
-    "3. Only if you learned something new about a part - its own words, a fear, a need, how it relates to another - the COMPLETE updated profile for that part, each inside its own fenced block: ```markdown ... ``` - full YAML frontmatter plus all six narrative sections (In its own words / Origin story / What activates it / How it relates to other parts / What it needs / Session notes), in that order, built on its profile file below. A part that only came up in passing gets no profile, just a mention in the note.",
+    "3. Only if you learned something new about a part - its own words, a fear, a need, how it relates to another - an update for that part, each inside its own fenced block: ```markdown ... ``` in the profile format, holding ONLY what is new from this conversation. Inner Table adds it to what is already stored - lists are combined, new narrative is added under what is there, nothing is erased - so do not repeat what you already know, and leave every field and section with nothing new empty. A part that only came up in passing gets no update, just a mention in the note.",
     "",
-    "Profile rules (when you write one):",
-    "- Only what was said. Never invent, never delete what was already there.",
+    "Update rules (when you write one):",
+    "- The part's exact name, so it lands on the right profile.",
+    "- Only what was said in this conversation. Never invent.",
     "- Quote the part's own phrases in the narrative sections.",
-    "- Set coverage honestly; never downgrade partial/complete; declined stays declined.",
-    "- Append one sessions entry with today's date (" + S.todayISO() + "), mode: checkin, the categories touched, and a one-line note.",
-    "- Append a dated entry to the TOP of Session notes; never rewrite old notes."
+    "- coverage: only the categories this conversation actually explored - partial, or complete if richly answered; leave the rest untouched (stored coverage never goes down).",
+    "- One sessions entry: today's date (" + S.todayISO() + "), mode: checkin, the categories touched, and a one-line note.",
+    "- Session notes: one dated entry for today only."
   ].join("\n");
 
   function talk(roster, table, journal) {
@@ -681,10 +682,6 @@
       "3. Listen for parts. When what they describe sounds like a part they know, name it as a question, using its name: 'That sounds a bit like <the part> - does it?' When it sounds like a voice they haven't met, wonder aloud whether there is a part there worth getting to know. Never insist; they know their system better than you.",
       "4. Offer, never push. If a part is clearly present, you may offer to spend a few minutes with it - find it, notice how they feel toward it, get curious (the arc above) - or to let it speak for itself for a moment. If they say yes, do it well; then come back to the conversation. Before anything tender, ask permission, exactly as in a check-in.",
       "5. When the conversation winds down - or they say they are done - close as described below.",
-      "",
-      "## The profile files (update only the parts that came up, at the close)",
-      "",
-      roster.length ? roster.map(profileBlock).join("\n\n") : "(none yet)",
       "",
       JOURNAL_OUTPUT,
       "",
@@ -902,7 +899,60 @@
       "\n\nAll the rules above apply from the very first message. Begin now as instructed earlier.";
   }
 
+  /* ---------- handing a session to the person's linked AI ----------
+     The app can only run a session itself with an API key. Linked to Claude
+     or ChatGPT through the person's private link, the session runs there
+     instead - same prompts, same memory, saved back here - and all the app
+     has to do is open a new chat with the request already written.
+     parts: [{slug, name}]. sessionUrl: the plain-link route to the session,
+     for an AI that reads pages but has no connector (Gemini). */
+  var HANDOFF_ASK = {
+    talk: "I'd like to just talk",
+    checkin: "Let's do a check-in with {parts}",
+    embody: "I'd like to hear from {parts} about something",
+    mapping: "Let's map how {parts} relate",
+    meeting: "Let's hold a table meeting{with}",
+    intake: "I'd like to meet a new part"
+  };
+  var HANDOFF_URL = {
+    anthropic: "https://claude.ai/new?q=",
+    openai: "https://chatgpt.com/?q="
+  };
+  var HANDOFF_MAX_MATERIAL = 1500;
+
+  function handoff(mode, parts, material, provider, sessionUrl) {
+    parts = parts || [];
+    var names = parts.map(function (p) { return p.name; });
+    var list = names.length <= 2 ? names.join(" and ") : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+    var ask = (HANDOFF_ASK[mode] || HANDOFF_ASK.talk)
+      .replace("{parts}", list || "a part")
+      .replace("{with}", names.length ? " with " + list : "");
+    var mat = String(material || "").trim();
+    var long = mat.length > HANDOFF_MAX_MATERIAL;
+    var lines = [ask + (mode === "embody" || mode === "meeting"
+      ? (mat && !long ? ". What's on the table:\n\n" + mat : mat ? ". It's long, so I'll paste what's on the table next." : ".")
+      : ".")];
+    var how;
+    if (sessionUrl) {
+      how = "Please open this Inner Table link and follow the session instructions it gives for the rest of our conversation: " + sessionUrl;
+    } else {
+      how = "(Inner Table: call start_session with mode " + mode +
+        (parts.length ? " and parts " + parts.map(function (p) { return p.slug; }).join(", ") : "") +
+        (mat && !long && (mode === "embody" || mode === "meeting") ? " and the material above" : "") +
+        ", follow what it returns, and save with save_session when we close.)";
+    }
+    var message = lines.join("") + "\n\n" + how;
+    var base = HANDOFF_URL[provider];
+    return {
+      message: message,
+      url: base ? base + encodeURIComponent(message) : "",
+      // the person has to paste this themselves after the chat opens
+      pasteNext: long ? mat : ""
+    };
+  }
+
   window.IFS.templates = {
+    handoff: handoff,
     intake: intake, checkin: checkin, mapping: mapping, talk: talk,
     embody: embody, meeting: meeting, portable: portable, convertNotes: convertNotes,
     voicePacing: voicePacing,

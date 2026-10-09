@@ -376,6 +376,30 @@
     return out;
   }
 
+  /* What a session hands back - a model's closing profile, a pasted reply, a
+     save from the person's own AI - merged so that no written text is ever
+     lost. mergeParts lets a non-empty incoming section replace the stored one,
+     which is right for a complete rewritten profile and wrong for a short one
+     that carries only what is new: that would wipe everything said before.
+     So a section that does not carry the stored text forward is added to it
+     instead - on top for Session notes (newest first), below everywhere else.
+     A rewrite that dropped old wording therefore reads twice rather than
+     losing anything; duplication can be tidied, a lost sentence cannot. */
+  function mergeSession(base, incoming) {
+    var out = mergeParts(base, incoming);
+    if (!base) return out;
+    var flat = function (t) { return String(t || "").replace(/\s+/g, " ").trim().toLowerCase(); };
+    NARRATIVE_SECTIONS.forEach(function (sec) {
+      var b = String((base.narrative || {})[sec.key] || "").trim();
+      var i = String((incoming.narrative || {})[sec.key] || "").trim();
+      if (!b || !i) return;                                   // mergeParts already chose
+      if (flat(i).indexOf(flat(b).slice(0, 160)) >= 0) return; // carries the old text: a rewrite
+      if (flat(b).indexOf(flat(i)) >= 0) { out.narrative[sec.key] = b; return; } // nothing new
+      out.narrative[sec.key] = sec.key === "session_notes" ? i + "\n\n" + b : b + "\n\n" + i;
+    });
+    return out;
+  }
+
   /* Fold two profiles of the same part into one.
      Different from applying a model's rewrite: there both sides describe the
      same session and the newer text supersedes, so mergeParts lets the
@@ -835,6 +859,7 @@
     coverageScore: coverageScore,
     normalizeFeelings: normalizeFeelings,
     mergeParts: mergeParts,
+    mergeSession: mergeSession,
     mergeDuplicate: mergeDuplicate,
     normalizePart: normalizePart,
     todayISO: todayISO,

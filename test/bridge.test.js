@@ -169,6 +169,10 @@ module.exports = async function (t) {
   var stored2 = JSON.parse(db["innertable:state:ann"]);
   t.ok(stored2.journal.length === 1 && stored2.journal[0].via === "ai" && stored2.journal[0].parts[0] === "the-critic", "...into the synced state, marked as from the AI");
   t.ok(/the Critic was loud about the first week/.test(await start({ mode: "talk" })), "the next conversation remembers the last one");
+  await saveArgs({ profiles: "```markdown\n---\nname: The Critic\n---\n\n# The Critic\n\n## In its own words\nI get loud when a first week starts.\n```" });
+  var c2 = JSON.parse(db["innertable:state:ann"]).parts.filter(function (p) { return p.slug === "the-critic"; })[0];
+  t.ok(/I'm early, not cruel/.test(c2.narrative.in_its_own_words) && /I get loud when a first week starts/.test(c2.narrative.in_its_own_words),
+    "a talk's short update is added to the part's words, never swapped for them");
 
   // -- a meeting saves its readings and its card
   var mtSave = await start({ mode: "meeting", parts: ["the-critic", "the-dreamer"], material: "x" });

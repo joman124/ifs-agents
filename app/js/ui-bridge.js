@@ -52,8 +52,10 @@
 
   function html(provider) {
     var p = STEPS[provider] || STEPS.anthropic;
+    var name = { anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini" }[provider] || "your AI";
     return '<div class="bridge">' +
-      '<p class="dim" style="margin:14px 2px 6px">' + p.lead + "</p>" +
+      '<p class="dim" style="margin:14px 2px 6px"><b>Sessions you start in Inner Table open in ' + name + '</b>, with your parts&rsquo; history, and save back here when they end. You can also just start talking in ' + name + ' &mdash; it knows to use your parts.</p>' +
+      '<p class="dim" style="margin:10px 2px 6px">' + p.lead + "</p>" +
       "<ol>" + p.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol>" +
       '<div id="bridgeBox" class="bridge-box"><p class="dim" style="margin:0">Checking for your link&hellip;</p></div>' +
       '<p class="dim" style="margin:10px 2px 0">Your AI can <b>talk with you as someone who knows your parts</b> &mdash; just start talking, or ask it to &ldquo;check in with The Critic&rdquo; or &ldquo;hold a table meeting about the job offer&rdquo; &mdash; using Inner Table&rsquo;s own sessions. When a conversation ends it <b>saves</b> what was learned: profile updates, a meeting&rsquo;s readings, and a short note of the conversation, so the next one &mdash; there or here &mdash; picks up where you left off. Everything merges in and nothing is erased. It cannot delete a part, see your pictures, or read your session transcripts or keys. Anyone holding the link can do the same, so keep it private; revoke it any time.</p>' +
@@ -84,7 +86,7 @@
   }
 
   async function act(box, method, done) {
-    try { render(box, await call(method)); toast(done); }
+    try { known = await call(method); render(box, known); toast(done); }
     catch (e) { toast(e.message); }
   }
 
@@ -93,12 +95,30 @@
     var box = $("#bridgeBox");
     if (!box) return;
     try {
-      var token = await call("GET");
+      var token = known = await call("GET");
       if (document.body.contains(box)) render(box, token);
     } catch (e) {
       if (document.body.contains(box)) box.innerHTML = '<p class="dim" style="margin:0">' + esc(e.message) + "</p>";
     }
   }
 
-  window.IFS.ui.linkAi = { html: html, mount: mount };
+  /* The current link's token, or null if none has been made. Asked once per
+     app run and remembered; a link made or revoked here updates it. */
+  var known; // undefined until asked
+  async function currentToken() {
+    if (known !== undefined) return known;
+    known = await call("GET");
+    return known;
+  }
+
+  /* The plain-link route to one session, for an AI that reads pages but takes
+     no connector (Gemini). */
+  function sessionUrl(token, mode, slugs, material) {
+    var q = "&session=" + encodeURIComponent(mode) +
+      (slugs || []).map(function (sl) { return "&part=" + encodeURIComponent(sl); }).join("") +
+      (material ? "&material=" + encodeURIComponent(String(material).slice(0, 1500)) : "");
+    return urlFor(token) + q;
+  }
+
+  window.IFS.ui.linkAi = { html: html, mount: mount, currentToken: currentToken, sessionUrl: sessionUrl };
 })();

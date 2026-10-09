@@ -47,7 +47,7 @@
 
   function anyAiMessage(url) {
     return "Here is a private, read-only link to my Inner Table profile - my inner parts, from Internal Family Systems self-exploration: " +
-      url + "\n\nPlease open it and use it to understand my parts. This is journalling, not therapy: no trauma processing and no unburdening.";
+      url + "\n\nPlease open it and use it to understand my parts. When I ask for a check-in with a part, a part's reaction to something, or a table meeting, open the session link the page describes and follow those instructions for the rest of our conversation. This is journalling, not therapy: no trauma processing and no unburdening.";
   }
 
   function html(provider) {
@@ -56,7 +56,7 @@
       '<p class="dim" style="margin:14px 2px 6px">' + p.lead + "</p>" +
       "<ol>" + p.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol>" +
       '<div id="bridgeBox" class="bridge-box"><p class="dim" style="margin:0">Checking for your link&hellip;</p></div>' +
-      '<p class="dim" style="margin:10px 2px 0">Your AI can <b>read</b> your parts and your table &mdash; nothing else. It cannot change anything, and your session transcripts and keys are never shared. Anyone holding the link can read your parts, so keep it private; revoke it any time.</p>' +
+      '<p class="dim" style="margin:10px 2px 0">Your AI can <b>read</b> your parts and your table, and <b>run Inner Table&rsquo;s own sessions</b> with them &mdash; ask it to &ldquo;check in with The Critic&rdquo; or &ldquo;hold a table meeting about the job offer&rdquo;, and it picks up from what your parts have already said. It cannot change anything: when a session ends it gives you the updated profile to paste back in. Your session transcripts and keys are never shared. Anyone holding the link can read your parts, so keep it private; revoke it any time.</p>' +
       "</div>";
   }
 

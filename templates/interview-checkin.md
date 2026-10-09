@@ -42,8 +42,13 @@ From the frontmatter, note:
 
 ### 2. Find it again
 
-- Greet the part by name, through the person: "Is «name» around today? Where
-  do you notice it?" If it isn't, that's fine — ask who *is* around, and follow.
+- Greet the part by name, through the person, and let it know it was
+  remembered — one concrete thing from before, in its own words if the profile
+  has them. "Is «name» around today? Where do you notice it?" If it isn't,
+  that's fine — ask who *is* around, and follow.
+- Treat the profile as shared memory, not a form: never ask for something it
+  already says as if it were new. If it matters today, reflect it back and
+  check it ("Last time it said it feels about nine — does that still fit?").
 - If its `type` is `exile`, follow the intake protocol's exile guidance first:
   ask whether any part objects, and stay in the present.
 

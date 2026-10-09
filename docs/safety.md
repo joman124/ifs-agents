@@ -60,6 +60,13 @@ Part profiles are intimate personal data.
   delete a part or erase a field). Conversation notes can be forgotten one by
   one under Settings → Session transcripts.
   Keep it private, and revoke it in Settings if it may have leaked.
+- **Talk here in Inner Table** runs sessions on your own AI account. Signed in,
+  its API key is kept with your account, encrypted, so your other devices are
+  connected too; it is never readable through the private link. What you say
+  in a session goes straight from your device to that provider (Anthropic,
+  OpenRouter, OpenAI or Google) and falls under its data policy. Disconnect in
+  Settings → Live sessions, and revoke the key at the provider if it may have
+  leaked.
 
 ## For people using this with others
 

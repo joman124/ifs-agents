@@ -154,6 +154,59 @@
     });
   }
 
+  /* ---- the AI connection, kept with the account (api/ai-key.js) ----
+     The last word wins, by when it was said: connecting on the phone reaches
+     the laptop, and so does disconnecting. A key typed in before accounts
+     kept one (no time on it) goes up the first time this device finds the
+     account holding nothing newer. Returns true if this device's changed. */
+  async function syncAi() {
+    if (!AUTH.isLoggedIn()) return false;
+    try {
+      var r = await fetch("/api/ai-key", { headers: authHeaders() });
+      if (!r.ok) return false;
+      var remote = (await r.json()).ai;
+      var local = ST.state.settings.ai || {};
+      if (remote && (remote.at || "") > (local.at || "")) {
+        ST.state.settings.ai = { provider: remote.provider || "", key: remote.key || "",
+          model: remote.model || "", at: remote.at };
+        ST.save();
+        return true;
+      }
+      if ((local.key || local.at) && (!remote || (local.at || "") > (remote.at || ""))) {
+        if (!local.at) { local.at = new Date().toISOString(); ST.save(); }
+        await sendAi(local);
+      }
+      return false;
+    } catch (e) { return false; }
+  }
+
+  async function sendAi(ai) {
+    var r = await fetch("/api/ai-key", { method: "POST", headers: authHeaders(),
+      body: JSON.stringify({ ai: { provider: ai.provider, key: ai.key, model: ai.model, at: ai.at } }) });
+    if (!r.ok) throw new Error("Could not save it to your account");
+  }
+
+  /* Connect or (with an empty key) disconnect: here at once, and on the
+     account so the person's other devices follow. Resolves to whether the
+     account took it - a device that is offline or signed out keeps it here. */
+  async function setAi(ai) {
+    var next = { provider: ai.key ? ai.provider : "", key: ai.key || "", model: ai.key ? ai.model || "" : "",
+      at: new Date().toISOString() };
+    ST.state.settings.ai = next;
+    ST.save();
+    if (!AUTH.isLoggedIn()) return false;
+    try { await sendAi(next); return true; } catch (e) { return false; }
+  }
+
+  /* The address of OpenRouter's sign-in, made for this account. */
+  async function openRouterUrl() {
+    var r = await fetch("/api/ai-key", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "openrouter" }) });
+    var j = {};
+    try { j = await r.json(); } catch (e) {}
+    if (!r.ok || !j.url) throw new Error(j.error || "Could not reach the server - check your connection");
+    return j.url;
+  }
+
   /* Signing out must also drop the permission to write. */
   function reset() {
     reconciled = false; reconciledFor = null; clearTimeout(pushTimer); lastStatus = "";
@@ -166,6 +219,7 @@
   ST.onChange(schedulePush);
 
   window.IFS.sync = { push: push, pull: pull, reset: reset, status: status,
+    syncAi: syncAi, setAi: setAi, openRouterUrl: openRouterUrl,
     // names of parts the last pull brought in from a session the person's AI saved
     fromAi: function () { return lastFromAi.slice(); } };
 })();

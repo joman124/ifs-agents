@@ -73,6 +73,42 @@ module.exports = async function (t) {
   var names = c.env.IFS.store.listParts().map(function (p) { return p.slug; }).sort();
   t.eq(names, ["critic", "dreamer"], "the other device's parts arrive without erasing this one's");
 
+  /* ---- sessions the person's AI saved are folded in, then acknowledged ---- */
+  var withInbox = JSON.stringify({ app: "inner-table", version: 1,
+    parts: { critic: { slug: "critic", name: "The Critic", positive_intent: "keep me safe" } } });
+  var d = setup(function (n) {
+    if (n === 1) return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ state: withInbox,
+      inbox: [{ id: "2026-10-09T05:00:00.000Z-aa", parts: [{ slug: "critic", name: "The Critic", age: "about 12" }] }] }); } });
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ ok: true }); } });
+  });
+  await d.env.IFS.sync.pull();
+  var critic = d.env.IFS.store.getPart("critic");
+  t.eq(critic.age, "about 12", "a session saved by the person's AI lands on the device");
+  t.eq(critic.positive_intent, "keep me safe", "...merged in, keeping what it left out");
+  t.eq(d.env.IFS.sync.fromAi(), ["The Critic"], "...and the app can say whose session arrived");
+  d.env.clock.tick(5000);
+  await flush();
+  var pushes = d.calls.filter(function (x) { return x.method === "POST" && x.url === "/api/sync"; });
+  t.ok(pushes.length >= 1 && JSON.parse(pushes[0].body).ack[0] === "2026-10-09T05:00:00.000Z-aa",
+    "the push that carries it acknowledges it");
+  t.ok(JSON.parse(pushes[0].body).state.indexOf("about 12") !== -1, "...in the same request as the state that now holds it");
+  d.env.IFS.store.upsertPart({ slug: "other", name: "Other" });
+  d.env.clock.tick(5000);
+  await flush();
+  pushes = d.calls.filter(function (x) { return x.method === "POST" && x.url === "/api/sync"; });
+  t.eq(JSON.parse(pushes[pushes.length - 1].body).ack, [], "once acknowledged, it is not acknowledged again");
+
+  /* ---- a part deleted here after the AI saved it stays deleted ---- */
+  var e = setup(function (n) {
+    if (n === 1) return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ state: JSON.stringify({ app: "inner-table", parts: {} }),
+      inbox: [{ id: "2026-01-01T00:00:00.000Z-bb", parts: [{ slug: "gone", name: "Gone", updated: "2026-01-01T00:00:00.000Z" }] }] }); } });
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ ok: true }); } });
+  });
+  e.env.IFS.store.upsertPart({ slug: "gone", name: "Gone" });
+  e.env.IFS.store.deletePart("gone");
+  await e.env.IFS.sync.pull();
+  t.eq(e.env.IFS.store.getPart("gone"), null, "an older save never brings back a part deleted since");
+
   /* ---- signing out withdraws the permission to write ---- */
   c.env.IFS.auth.logout();
   c.env.IFS.sync.reset();

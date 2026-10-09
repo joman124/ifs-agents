@@ -22,6 +22,12 @@ module.exports = async function (t) {
     if (op === "get") return { ok: true, json: async function () { return { result: db[key] === undefined ? null : db[key] }; } };
     if (op === "set") { db[key] = opts.body; return { ok: true, json: async function () { return { result: "OK" }; } }; }
     if (op === "del") { delete db[key]; return { ok: true, json: async function () { return { result: 1 }; } }; }
+    var res = function (v) { return { ok: true, json: async function () { return { result: v }; } }; };
+    var seg = key.split("/").map(decodeURIComponent);
+    var h = db[seg[0]] = (db[seg[0]] && typeof db[seg[0]] === "object") ? db[seg[0]] : {};
+    if (op === "hset") { h[seg[1]] = opts.body; return res(1); }
+    if (op === "hgetall") { var flat = []; Object.keys(h).forEach(function (f) { flat.push(f, h[f]); }); return res(flat); }
+    if (op === "hdel") { seg.slice(1).forEach(function (f) { delete h[f]; }); return res(1); }
     return { ok: false };
   };
 
@@ -83,8 +89,10 @@ module.exports = async function (t) {
     "2025-06-18", "an unknown protocol version falls back to the newest");
   t.eq((await rpc({ jsonrpc: "2.0", method: "notifications/initialized" })).code, 202, "a notification is acknowledged with no body");
   var tools = (await rpc({ jsonrpc: "2.0", id: 3, method: "tools/list" })).body.result.tools;
-  t.eq(tools.map(function (x) { return x.name; }), ["list_parts", "get_part", "get_table", "start_session"], "three read tools and the session starter");
-  t.ok(tools.every(function (x) { return x.annotations.readOnlyHint; }), "every tool is marked read-only");
+  t.eq(tools.map(function (x) { return x.name; }), ["list_parts", "get_part", "get_table", "start_session", "save_session"], "read tools, the session starter, and one save");
+  t.ok(tools.filter(function (x) { return x.name !== "save_session"; }).every(function (x) { return x.annotations.readOnlyHint; }), "every tool but the save is marked read-only");
+  var saveTool = tools.filter(function (x) { return x.name === "save_session"; })[0];
+  t.ok(!saveTool.annotations.readOnlyHint && saveTool.annotations.destructiveHint === false, "the save says it writes, and that it destroys nothing");
   var got = (await rpc({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "get_part", arguments: { slug: "the-critic" } } })).body;
   t.ok(/I am only trying to help/.test(got.result.content[0].text), "get_part returns the profile");
   t.ok(/No part with that slug/.test((await rpc({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "get_part", arguments: { slug: "the-bobpart" } } })).body.result.content[0].text),
@@ -102,7 +110,7 @@ module.exports = async function (t) {
   t.ok(/^# Run this guided session now/.test(ck), "a check-in comes back as instructions to run, not data to read");
   t.ok(/What you already know about The Critic/.test(ck) && /I am only trying to help/.test(ck), "...carrying the part's history as memory");
   t.ok(/polarized with The Dreamer/.test(ck), "...with other parts named, not slugged");
-  t.ok(/Add a part, then paste/.test(ck), "...and says how the updated profile gets back into the app");
+  t.ok(/call the save_session tool/.test(ck) && !/Add a part, then paste/.test(ck), "...and saves the updated profile itself instead of asking for a paste");
   t.ok(!/SECRET TRANSCRIPT/.test(ck), "transcripts never reach a session prompt either");
   t.ok(/the Critic|The Critic/.test(await start({ mode: "checkin", parts: ["The Critic"] })), "a part can be named instead of slugged");
   t.ok(/No part called "the-bobpart"/.test(await start({ mode: "checkin", parts: ["the-bobpart"] })), "another account's part cannot be started");
@@ -120,6 +128,37 @@ module.exports = async function (t) {
   t.ok(pg.messages[0].role === "user" && /What you already know about The Critic/.test(pg.messages[0].content.text), "a prompt carries the same session");
   var viaPage = (await call("GET", { query: { t: made, session: "checkin", part: "the-critic" } })).sent;
   t.ok(/What you already know about The Critic/.test(viaPage), "the plain-link route serves sessions too");
+  t.ok(/Add a part, then paste/.test(viaPage) && !/call the save_session tool/.test(viaPage), "...and, with no tool to save, asks for a paste");
+
+  // -- AI side: saving a session
+  var save = function (text) {
+    return rpc({ jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "save_session", arguments: { profiles: text } } })
+      .then(function (r) { return r.body.result.content[0].text; });
+  };
+  var profile = "```markdown\n---\nname: The Critic\ntype: manager\nage: about 12\nfears: [being seen as lazy]\ncoverage:\n  emotions_feelings: partial\nsessions:\n  - date: 2026-10-09\n    mode: checkin\n    categories: [emotions_feelings]\n    note: softened when thanked\n---\n\n# The Critic\n\n## In its own words\nI'm early, not cruel.\n\n## Session notes\n2026-10-09 - felt curious toward it.\n```";
+  t.ok(/^Saved to Inner Table: The Critic/.test(await save(profile)), "a session's profile saves");
+  var stored = JSON.parse(db["innertable:state:ann"]);
+  var critic = stored.parts.filter(function (p) { return p.slug === "the-critic"; })[0];
+  t.eq(critic.age, "about 12", "the save lands in the synced state");
+  t.eq(critic.positive_intent, "keep me from failing", "a field the session left out is kept, not erased");
+  t.ok(critic.emotions.indexOf("dread") >= 0 && critic.fears.indexOf("being seen as lazy") >= 0, "lists are unioned");
+  t.eq(critic.relationships.length, 1, "relationships survive a save that does not mention them");
+  t.ok(/I'm early, not cruel/.test(critic.narrative.in_its_own_words), "the session's own words land");
+  t.ok(/^\d{4}-\d{2}-\d{2}T/.test(critic.updated), "a save is stamped as an edit, so it outranks older copies");
+  t.ok(!/SECRET/.test(JSON.stringify(stored.parts)) && stored.transcripts.length === 1, "everything else in the state is left exactly as it was");
+  t.eq(Object.keys(db["innertable:inbox:ann"]).length, 1, "the save also waits in the inbox for the app");
+  t.ok(/I'm early, not cruel/.test(await start({ mode: "checkin", parts: ["the-critic"] })), "the next session already knows what the last one learned");
+  t.ok(/^Not saved: No profile could be read/.test(await save("just some chat")), "something that is not a profile is refused in words");
+  t.ok(/^Not saved: profiles was empty/.test(await save("")), "an empty save is refused");
+  t.eq(Object.keys(db["innertable:inbox:ann"]).length, 1, "...and neither refusal writes anything");
+  var newPart = await save("```markdown\n---\nname: The Watcher\n---\n\n# The Watcher\n```");
+  t.ok(/The Watcher/.test(newPart) && JSON.parse(db["innertable:state:ann"]).parts.some(function (p) { return p.slug === "the-watcher"; }), "an intake's new part is created");
+  t.eq((await call("POST", { query: { t: made }, body: [] })).code, 202, "an empty batch is harmless");
+
+  // the page route never writes, whatever it is asked
+  var beforeInbox = JSON.stringify(db["innertable:inbox:ann"]);
+  await call("GET", { query: { t: made, session: "save_session", profiles: profile } });
+  t.eq(JSON.stringify(db["innertable:inbox:ann"]), beforeInbox, "a GET never saves");
   t.ok(/start_session/.test(page.sent), "the profile page tells a page-reading AI that sessions exist");
 
   // -- tokens: malformed never touches storage; revoked reads nothing
@@ -136,6 +175,18 @@ module.exports = async function (t) {
   t.eq((await call("DELETE", asApp("ann"))).body.token, null, "revoking succeeds");
   t.eq((await call("GET", { query: { t: second } })).code, 404, "a revoked link reads nothing");
   t.eq((await call("GET", asApp("ann"))).body.token, null, "and the app shows no link");
+
+  // -- the app syncs parts keyed by slug, not as a list; that must read the same
+  var carlTok = (await call("POST", asApp("carl"))).body.token;
+  db["innertable:state:carl"] = JSON.stringify({ app: "inner-table", parts: {
+    "the-pleaser": { slug: "the-pleaser", name: "The Pleaser", positive_intent: "keep everyone happy" } }, table: null });
+  var carlRpc = function (m) { return call("POST", { query: { t: carlTok }, body: m }); };
+  t.ok(/The Pleaser/.test((await carlRpc({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_parts", arguments: {} } })).body.result.content[0].text),
+    "parts synced as an object keyed by slug are listed");
+  await carlRpc({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "save_session", arguments: { profiles: "```markdown\n---\nname: The Pleaser\nage: seven\n---\n\n# The Pleaser\n```" } } });
+  var carl = JSON.parse(db["innertable:state:carl"]);
+  t.ok(!Array.isArray(carl.parts) && carl.parts["the-pleaser"].age === "seven" && carl.parts["the-pleaser"].positive_intent === "keep everyone happy",
+    "a save keeps the state in the shape the app wrote it");
 
   // -- bob has his own, separate world
   var bobTok = (await call("POST", asApp("bob"))).body.token;

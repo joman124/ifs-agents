@@ -763,9 +763,16 @@
      back in through the import box, which merges rather than replaces. */
   var BRING_BACK = "After the profile block, tell the person in one sentence to copy it into Inner Table - Add a part, then paste - where it merges into the profile they already have rather than replacing it.";
 
+  /* ...or, when the person's own AI runs the session through their link, it
+     saves the profile itself: the save_session tool merges it in exactly as
+     the paste would, and the chat stays a conversation instead of ending on
+     a wall of YAML. */
+  var SAVE_STEP = "2. Save it: call the save_session tool with the COMPLETE updated profile for $1 in its profiles argument, each inside its own fenced block: ```markdown ... ``` - full YAML frontmatter plus all six narrative sections (In its own words / Origin story / What activates it / How it relates to other parts / What it needs / Session notes), in that order. Do not paste the profile into the chat. When the save succeeds, tell the person in one sentence that it is saved in Inner Table. If it fails, show them the profile block(s) instead and ask them to paste them into Inner Table - Add a part.";
+
   /* opts.roster: every part the person has, so other parts are named rather
      than slugged. opts.bridge: the session was started by the person's own
-     AI through their private link, not pasted in by hand. */
+     AI through their private link, not pasted in by hand. opts.save: that AI
+     has the save_session tool, so it saves the profile instead of showing it. */
   function portable(mode, parts, material, table, opts) {
     opts = opts || {};
     var roster = opts.roster || parts;
@@ -778,8 +785,21 @@
     sys = sys.replace(/The app will tell you the session is closing\. When it does, respond with:/,
       "When the person says the session is over - 'let's close', 'that's enough for today', 'end the session' - respond with:");
     var writesProfiles = mode === "intake" || mode === "checkin" || mode === "mapping";
-    return (opts.bridge ? BRIDGE_HEADER : PORTABLE_HEADER) + sys + "\n\n" + PORTABLE_VOICE +
-      (writesProfiles ? "\n\n" + portableFormatSpec() + "\n\n" + BRING_BACK : "") +
+    if (opts.save) {
+      sys = sys.replace(/2\. The COMPLETE updated profile for (.*?), each inside its own fenced block: .*? in that order\./, function (m, who) {
+        return SAVE_STEP.replace("$1", who);
+      });
+    }
+    if (mode === "meeting" && opts.bridge) {
+      // the meeting is not in the app, so the app is not there to take the readings
+      sys = sys.replace("say plainly that the app can record these readings, and that they thicken the threads between those parts on the map.",
+        "say plainly that they can record these readings in Inner Table - Table tab, Round the table - where they thicken the threads between those parts on the map.");
+    }
+    var voice = opts.save
+      ? PORTABLE_VOICE.replace(/- Do NOT read profile files aloud, ever\..*$/m, "- Do NOT read profile files aloud, ever. Save them with save_session when the session is over.")
+      : PORTABLE_VOICE;
+    return (opts.bridge ? BRIDGE_HEADER : PORTABLE_HEADER) + sys + "\n\n" + voice +
+      (writesProfiles ? "\n\n" + portableFormatSpec() + (opts.save ? "" : "\n\n" + BRING_BACK) : "") +
       "\n\nAll the rules above apply from the very first message. Begin now as instructed earlier.";
   }
 

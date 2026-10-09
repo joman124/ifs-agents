@@ -121,8 +121,10 @@ module.exports = async function (t) {
     var mine = res();
     await sync({ method: "GET", headers: { authorization: "Bearer " + aliceToken } }, mine);
     t.eq(mine.code, 200, "a valid token reads");
-    t.ok(calls.length === 1 && calls[0].url.indexOf("innertable:state:alice") !== -1,
+    t.ok(calls.length >= 1 && calls[0].url.indexOf("innertable:state:alice") !== -1,
       "alice's token reads alice's key");
+    t.ok(calls.every(function (c) { return /innertable:(state|inbox):alice(\/|$)/.test(c.url); }),
+      "...and nothing outside alice's own keys - her inbox of saved sessions included");
 
     calls.length = 0;
     var bobToken = signWith(process.env.SESSION_SECRET, { u: "bob", exp: Date.now() + 60000 });
@@ -138,6 +140,14 @@ module.exports = async function (t) {
     t.eq(write.code, 200, "a valid token writes");
     t.ok(calls[0].url.indexOf("innertable:state:bob") !== -1 &&
       calls[0].url.indexOf("alice") === -1, "a username in the body cannot redirect the write");
+
+    /* acknowledging saved sessions clears only the writer's own inbox */
+    calls.length = 0;
+    var acked = res();
+    await sync({ method: "POST", headers: { authorization: "Bearer " + bobToken }, body: { state: '{"parts":{}}', ack: ["2026-10-09T05:00:00.000Z-ab12cd34"] } }, acked);
+    t.eq(acked.code, 200, "a push can carry acknowledgements");
+    t.ok(calls.some(function (c) { return /\/hdel\/innertable:inbox:bob\/2026-10-09T05/.test(c.url); }) &&
+      calls.every(function (c) { return c.url.indexOf("alice") === -1; }), "...which clear bob's inbox, never anyone else's");
 
     /* ---- pictures: the same gate, on a key of their own ---- */
     var noToken = res();

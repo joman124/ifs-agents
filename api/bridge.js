@@ -2,17 +2,23 @@
    Lets a person's own AI (Claude, ChatGPT, anything that takes a connector
    URL or can read a web page) READ their parts, and run the app's own guided
    sessions with them - check-ins, mapping, a part's reaction, a table meeting -
-   using the same prompts the app uses. It still changes nothing: a session's
-   updated profile comes back to the app by the person pasting it in.
+   using the same prompts the app uses, and SAVE what a session learned.
+
+   Saving only ever merges (the app's own merge: nothing is erased, coverage
+   never goes backwards, declined stays declined). It writes twice: into the
+   synced state, so the next session already knows, and into an inbox the
+   app folds in on its next sync - because the app pushes its whole state, and
+   a device that had not pulled yet would otherwise write over the save.
 
    One private link per account, one endpoint, two audiences:
    - the app (Bearer session token, no ?t=) creates, shows and revokes the link;
-   - the AI (?t=<link token>) reads - as an MCP server over POST, or as one
-     plain markdown page over GET.
+   - the AI (?t=<link token>) reads and saves sessions as an MCP server over
+     POST, or reads as one plain markdown page over GET (which never writes).
 
-   The link token is the credential, so it is long, random, revocable, and
-   grants read-only access to parts and the table. Transcripts are never
-   served, and neither is anything outside the synced parts/table state. */
+   The link token is the credential, so it is long, random and revocable. It
+   reads parts and the table, and its one write merges a session's profiles
+   in - it cannot delete a part, empty a field, or touch pictures. Transcripts
+   are never served, and neither is anything outside the synced state. */
 "use strict";
 
 var crypto = require("crypto");
@@ -25,6 +31,7 @@ var PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 function linkKey(token) { return "innertable:bridge:" + token; }
 function ownerKey(user) { return "innertable:bridgeof:" + user; }
 function stateKey(user) { return "innertable:state:" + user; }
+function inboxKey(user) { return "innertable:inbox:" + user; }
 
 async function redis(cmd, body) {
   var r = await fetch(process.env.UPSTASH_REDIS_REST_URL + "/" + cmd, {
@@ -102,27 +109,65 @@ function listMarkdown(parts) {
   }).join("\n");
 }
 
-async function loadState(user) {
+/* Saves the app has not folded in yet, oldest first. A storage hiccup here
+   reads as "none" rather than failing the read it rides along with. */
+async function loadPending(user) {
+  try {
+    var flat = await redis("hgetall/" + inboxKey(user));
+    var out = [];
+    for (var i = 0; flat && i + 1 < flat.length; i += 2) {
+      try { out.push({ id: flat[i], entry: JSON.parse(flat[i + 1]) }); } catch (e) {}
+    }
+    out.sort(function (a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; });
+    return out;
+  } catch (e) { return []; }
+}
+
+/* The synced blob as stored, with pending saves folded in. */
+async function loadFull(user) {
   var raw = await redis("get/" + stateKey(user));
   if (!raw) return null;
-  try {
-    var s = JSON.parse(raw);
-    return { parts: Array.isArray(s.parts) ? s.parts : [], table: s.table || null };
-  } catch (e) { return null; }
+  var s;
+  try { s = JSON.parse(raw); } catch (e) { return null; }
+  if (!s || typeof s !== "object") return null;
+  var pending = await loadPending(user);
+  return sessions.overlay(s, pending.map(function (x) { return x.entry; }));
+}
+
+async function loadState(user) {
+  var s = await loadFull(user);
+  if (!s) return null;
+  return { parts: sessions.partsOf(s), table: s.table || null };
 }
 
 var EMPTY = "Nothing has synced from the Inner Table app yet. Open the app, then Settings > Account > Sync now.";
 
 /* What every session-capable surface says, once: how to start one. */
-var SESSION_HELP = "To run a guided session with these parts - which is what this link is for - call start_session (or open this link with &session=<mode>&part=<slug>) and follow what it returns for the rest of the conversation. Modes: checkin (one part: deepen what is known, aimed at where its profile is thin), embody (one part speaks for itself about something real), mapping (two parts: how they relate), meeting (a table meeting: several parts react to something real, with Self in the chair), intake (meet a new part). The session prompt carries the part's history, so the AI greets it as someone already known.";
+var SESSION_HELP = "To run a guided session with these parts - which is what this link is for - call start_session (or open this link with &session=<mode>&part=<slug>) and follow what it returns for the rest of the conversation; with the connector, the session saves its updated profile back with save_session when it closes. Modes: checkin (one part: deepen what is known, aimed at where its profile is thin), embody (one part speaks for itself about something real), mapping (two parts: how they relate), meeting (a table meeting: several parts react to something real, with Self in the chair), intake (meet a new part). The session prompt carries the part's history, so the AI greets it as someone already known.";
 
 async function sessionText(user, args) {
-  var raw = await redis("get/" + stateKey(user));
-  if (!raw) return EMPTY;
-  var state;
-  try { state = JSON.parse(raw); } catch (e) { return EMPTY; }
-  var r = sessions.build({ parts: Array.isArray(state.parts) ? state.parts : [], table: state.table || null }, args);
+  var state = await loadFull(user);
+  if (!state) return EMPTY;
+  var r = sessions.build(state, args);
   return r.error ? "Could not start that session: " + r.error : r.text;
+}
+
+/* Merge a session's profile(s) in. Returns the words the AI relays. */
+async function saveSession(user, args) {
+  var state = await loadFull(user);
+  if (!state) return EMPTY;
+  // saves wait in the inbox until the app is opened; a link that keeps saving
+  // to an app nobody opens is not something to keep accepting
+  if ((await loadPending(user)).length >= 50) {
+    return "Not saved: 50 sessions are already waiting for the Inner Table app. Ask the person to open the app once so they sync in, then save again.";
+  }
+  var prep = sessions.prepareSave(state, args && args.profiles);
+  if (prep.error) return "Not saved: " + prep.error;
+  var id = new Date().toISOString() + "-" + crypto.randomBytes(4).toString("hex");
+  // the inbox first: if the state write fails, the app still gets the save
+  await redis("hset/" + inboxKey(user) + "/" + encodeURIComponent(id), JSON.stringify({ at: id.slice(0, 24), parts: prep.parts }));
+  await redis("set/" + stateKey(user), JSON.stringify(sessions.applyToState(state, prep.parts)));
+  return "Saved to Inner Table: " + prep.names.join(", ") + ". It was merged into what was already there - nothing was erased - and the app picks it up the next time it is opened.";
 }
 
 /* ---------- the plain page (GET) ---------- */
@@ -131,7 +176,7 @@ async function profileMarkdown(user) {
   var st = await loadState(user);
   if (!st) return EMPTY;
   return ["# Inner Table profile",
-    "This is one person's own Internal Family Systems self-exploration profile, shared with you read-only so you can understand their inner parts. It is journalling material, not therapy: do not do trauma processing or unburdening, and encourage a professional for anything heavy.",
+    "This is one person's own Internal Family Systems self-exploration profile, shared with you so you can understand their inner parts and run guided sessions with them. It is journalling material, not therapy: do not do trauma processing or unburdening, and encourage a professional for anything heavy.",
     "", "## Guided sessions", SESSION_HELP,
     "", "## Parts", listMarkdown(st.parts)]
     .concat(st.parts.map(function (p) { return "\n---\n\n" + partMarkdown(p); }))
@@ -155,7 +200,14 @@ var TOOLS = [
       parts: { type: "array", items: { type: "string" }, description: "Part slugs from list_parts (names also work)." },
       material: { type: "string", description: "For embody and meeting: what is on the table - a decision, situation, draft, or plan, in the person's words. Leave empty to have the session ask for it." }
     }, required: ["mode"] } }
-].map(function (t) { return Object.assign({ annotations: { readOnlyHint: true } }, t); });
+].map(function (t) { return Object.assign({ annotations: { readOnlyHint: true } }, t); }).concat([
+  { name: "save_session",
+    description: "Save what a guided session learned into Inner Table. Call this when a session started with start_session closes, with the complete updated profile(s) the session instructions describe. It merges into the existing profile - nothing is ever erased - and the person's app picks it up on its next sync.",
+    inputSchema: { type: "object", properties: {
+      profiles: { type: "string", description: "The complete updated profile(s), each in its own ```markdown fenced block with YAML frontmatter and the six narrative sections." }
+    }, required: ["profiles"] },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true } }
+]);
 
 /* The same sessions as MCP prompts, for clients that offer a prompt menu. */
 var PROMPTS = [
@@ -181,11 +233,12 @@ function promptArgs(name, a) {
 }
 
 async function callTool(user, name, args) {
+  if (name === "start_session") return sessionText(user, Object.assign({}, args, { canSave: true }));
+  if (name === "save_session") return saveSession(user, args);
   var st = await loadState(user);
   if (!st) return EMPTY;
   if (name === "list_parts") return listMarkdown(st.parts);
   if (name === "get_table") return tableMarkdown(st.table);
-  if (name === "start_session") return sessionText(user, args);
   if (name === "get_part") {
     var want = str(args && args.slug).toLowerCase();
     var p = st.parts.filter(function (x) { return str(x.slug).toLowerCase() === want; })[0];
@@ -206,7 +259,7 @@ async function handleRpc(user, msg) {
       protocolVersion: PROTOCOLS.indexOf(asked) >= 0 ? asked : PROTOCOLS[0],
       capabilities: { tools: {}, prompts: {} },
       serverInfo: { name: "inner-table", version: "1.0.0" },
-      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Call list_parts first. When the person wants to check in with a part, hear from one, map two, hold a table meeting, or meet a new part, call start_session and follow the instructions it returns for the rest of the conversation - they carry the part's history, so greet it as someone already known. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
+      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Call list_parts first. When the person wants to check in with a part, hear from one, map two, hold a table meeting, or meet a new part, call start_session and follow the instructions it returns for the rest of the conversation - they carry the part's history, so greet it as someone already known - and when the session closes, save what it learned with save_session. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
     });
   }
   if (msg.method === "ping") return ok({});
@@ -215,7 +268,7 @@ async function handleRpc(user, msg) {
   if (msg.method === "prompts/get") {
     var pp = msg.params || {};
     if (!PROMPTS.some(function (x) { return x.name === pp.name; })) return bad(-32602, "Unknown prompt: " + pp.name);
-    var body = await sessionText(user, promptArgs(pp.name, pp.arguments));
+    var body = await sessionText(user, Object.assign(promptArgs(pp.name, pp.arguments), { canSave: true }));
     return ok({ description: "Inner Table " + pp.name + " session",
       messages: [{ role: "user", content: { type: "text", text: body } }] });
   }

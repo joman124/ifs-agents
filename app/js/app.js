@@ -15,12 +15,26 @@
     navigator.storage.persist().catch(function () {});
   }
 
-  // if this device is signed in, fold in whatever the other device changed
-  if (window.IFS.auth.isLoggedIn()) {
+  // if this device is signed in, fold in whatever the other device - or the
+  // person's own AI, saving a session through their link - changed
+  var lastPull = 0;
+  function pullNow() {
+    if (!window.IFS.auth.isLoggedIn()) return;
+    lastPull = Date.now();
     window.IFS.sync.pull().then(function (changed) {
-      if (changed) window.IFS.ui.refresh("Synced with your other device");
+      var fromAi = window.IFS.sync.fromAi();
+      if (fromAi.length) window.IFS.ui.refresh("Saved from your AI: " + fromAi.join(", "));
+      else if (changed) window.IFS.ui.refresh("Synced with your other device");
     });
   }
+  pullNow();
+  /* An installed app is rarely restarted - it is brought back from the
+     background. Pull then too, so a session saved from another app in the
+     meantime is here when the person looks, and is in before this device's
+     next push. A minute between pulls is plenty. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && Date.now() - lastPull > 60000) pullNow();
+  });
 
   // PWA: register the service worker when served over http(s)
   if ("serviceWorker" in navigator && location.protocol !== "file:") {

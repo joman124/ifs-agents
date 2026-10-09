@@ -92,39 +92,9 @@ which ui.js attaches before this script runs. */
      meeting's date and not today. Returns what changed, so the round can be
      shown back rather than only saved. */
   function applyRound(picked, dateISO) {
-    var changes = [];
-    Object.keys(picked).forEach(function (from) {
-      var p = ST.getPart(from);
-      if (!p) return;
-      var rows = picked[from];
-      var said = [];
-      Object.keys(rows).forEach(function (to) {
-        var other = ST.getPart(to);
-        if (!other || to === from) return;
-        var before = S.getFeeling(p, to);
-        var set = S.setFeeling(p, to, rows[to], dateISO);
-        if (!set) return;
-        said.push(other.name + ": " + S.feelingLabel(rows[to]).toLowerCase());
-        changes.push({ from: p.name, to: other.name, rating: rows[to],
-                       was: before ? before.rating : 0,
-                       // false when a back-filled round sits behind a newer
-                       // reading: it still counts, but it is not where they
-                       // stand now, and saying so would be a lie
-                       current: set.current });
-      });
-      if (!said.length) return;
-      // a reading is something said about relationships, so the coverage flag
-      // climbs exactly the way drawing an edge makes it climb
-      if (p.coverage.relationships === "untouched") p.coverage.relationships = "partial";
-      p.narrative.relates_to_others = (p.narrative.relates_to_others ? p.narrative.relates_to_others + "\n\n" : "") +
-        dateISO + " - round the table: " + said.join("; ") + ".";
-      p.sessions.push({
-        date: dateISO, mode: "mapping", categories: ["relationships"],
-        note: "rated how it feels toward " + said.length + (said.length === 1 ? " part" : " parts") + " at the table"
-      });
-      ST.upsertPart(p);
-    });
-    return changes;
+    var res = S.applyReadings(ST.getPart, picked, dateISO);
+    res.touched.forEach(function (slug) { ST.upsertPart(ST.getPart(slug)); });
+    return res.changes;
   }
 
   /* The round, shown back. The number that matters is not the rating but the

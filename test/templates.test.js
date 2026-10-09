@@ -101,7 +101,20 @@ module.exports = function (t) {
   t.ok(/Save them with save_session/.test(saving) && !/switch to the keyboard\/transcript view/.test(saving), "...in voice mode too");
   t.ok(/Exact profile file format/.test(saving), "the saved profile is still held to the exact import format");
   var linkedMeeting = T.portable("meeting", [critic, dreamer], "x", null, { bridge: true, save: true });
-  t.ok(/record these readings in Inner Table - Table tab, Round the table/.test(linkedMeeting), "a linked meeting says where its readings get recorded");
+  t.ok(/call the save_session tool once, with readings/.test(linkedMeeting), "a linked meeting saves its readings and card itself");
+  var pageMeeting = T.portable("meeting", [critic, dreamer], "x", null, { bridge: true });
+  t.ok(/record these readings in Inner Table - Table tab, Round the table/.test(pageMeeting), "a meeting with no way to save says where to record the readings");
+
+  /* just talk */
+  var tk = T.talk([known, dreamer2], room, [{ id: "j1", date: "2026-10-01", via: "ai", summary: "Talked about the promotion.", parts: ["the-watcher"] }]);
+  t.ok(/This is an open conversation/.test(tk) && /The Watcher \(manager\)/.test(tk), "a talk knows the whole system");
+  t.ok(/2026-10-01 \(in their own AI app\): Talked about the promotion/.test(tk), "...remembers the last conversation, and where it happened");
+  t.ok(/pick up one thread from it/.test(tk), "...and opens by picking up a thread");
+  t.ok(/```journal/.test(tk) && /The app will tell you the session is closing/.test(tk), "...and closes with a note");
+  t.ok(/## The profile files/.test(tk) && /name: The Watcher/.test(tk), "...with the files to update any part that came up");
+  t.ok(/first open conversation/.test(T.talk([], null, [])), "a first talk knows it is the first");
+  var tkCopy = T.portable("talk", [], "", null, { roster: [known], journal: [] });
+  t.ok(/When the person says the session is over/.test(tkCopy) && /```journal/.test(tkCopy), "a copied talk closes with a note to paste back");
 
   /* the copy-paste versions */
   ["intake", "checkin", "mapping", "embody", "meeting"].forEach(function (mode) {

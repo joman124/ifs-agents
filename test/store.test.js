@@ -235,4 +235,20 @@ module.exports = function (t) {
     "a file that is not a table file is refused");
   t.throws(function () { dst.IFS.store.importTable('not json'); },
     "and so is a file that is not json at all");
+
+  /* --- the conversation journal: merged by id, deletions stick --- */
+  var jv = fresh();
+  var JS = jv.IFS.store;
+  var jid = JS.addJournal({ summary: "Talked about the move.", parts: ["the-critic"] });
+  t.ok(jid && JS.state.journal.length === 1 && JS.state.journal[0].via === "app", "a conversation note is kept");
+  t.ok(JSON.parse(JS.exportAll()).journal.length === 1, "...and travels with the synced state");
+  JS.mergeHistory({ journal: [{ id: "j-ai-1", date: "2026-10-09", via: "ai", summary: "Talked in the AI app." }] });
+  JS.mergeHistory({ journal: [{ id: "j-ai-1", date: "2026-10-09", via: "ai", summary: "Talked in the AI app." }] });
+  t.eq(JS.state.journal.length, 2, "a note saved by the AI is merged once, however often it arrives");
+  JS.deleteJournal("j-ai-1");
+  var blob = JSON.stringify({ app: "inner-table", parts: {}, journal: [{ id: "j-ai-1", date: "2026-10-09", via: "ai", summary: "Talked in the AI app." }] });
+  JS.importAll(blob, { sync: true });
+  t.eq(JS.state.journal.filter(function (j) { return j.id === "j-ai-1"; }).length, 0, "a forgotten conversation does not come back from another device");
+  JS.mergeHistory({ meetings: [{ id: "m-ai-1", date: "2026-10-09", topic: "Job", parts: [], voices: [], synthesis: "x", via: "ai" }] });
+  t.ok(JS.state.table.meetings.some(function (m) { return m.id === "m-ai-1"; }), "a meeting held in the AI app is filed on the table");
 };

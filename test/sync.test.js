@@ -98,6 +98,19 @@ module.exports = async function (t) {
   pushes = d.calls.filter(function (x) { return x.method === "POST" && x.url === "/api/sync"; });
   t.eq(JSON.parse(pushes[pushes.length - 1].body).ack, [], "once acknowledged, it is not acknowledged again");
 
+  /* ---- a meeting and a conversation saved by the AI arrive too ---- */
+  var f = setup(function (n) {
+    if (n === 1) return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ state: JSON.stringify({ app: "inner-table", parts: {} }),
+      inbox: [{ id: "2026-10-09T06:00:00.000Z-cc", parts: [],
+        meetings: [{ id: "m-ai-9", date: "2026-10-09", topic: "Job", parts: [], voices: [], synthesis: "Wait a week.", via: "ai" }],
+        journal: [{ id: "j-ai-9", date: "2026-10-09", via: "ai", summary: "Talked about the job." }] }] }); } });
+    return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ ok: true }); } });
+  });
+  await f.env.IFS.sync.pull();
+  t.ok(f.env.IFS.store.state.table.meetings.some(function (m) { return m.id === "m-ai-9"; }), "a meeting the AI held lands on the Table tab");
+  t.ok(f.env.IFS.store.state.journal.some(function (j) { return j.id === "j-ai-9"; }), "a conversation the AI had is remembered here too");
+  t.eq(f.env.IFS.sync.fromAi(), ["a table meeting", "a conversation"], "...and the app can say what arrived");
+
   /* ---- a part deleted here after the AI saved it stays deleted ---- */
   var e = setup(function (n) {
     if (n === 1) return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ state: JSON.stringify({ app: "inner-table", parts: {} }),

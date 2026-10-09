@@ -146,6 +146,10 @@
         ST.mergePart(clean);
         if (lastFromAi.indexOf(clean.name) < 0) lastFromAi.push(clean.name);
       });
+      // a meeting's card and a conversation's note travel the same way
+      ST.mergeHistory({ meetings: entry.meetings, journal: entry.journal });
+      if (Array.isArray(entry.meetings) && entry.meetings.length && lastFromAi.indexOf("a table meeting") < 0) lastFromAi.push("a table meeting");
+      if (Array.isArray(entry.journal) && entry.journal.length && lastFromAi.indexOf("a conversation") < 0) lastFromAi.push("a conversation");
       if (pendingAck.indexOf(entry.id) < 0) pendingAck.push(entry.id);
     });
   }

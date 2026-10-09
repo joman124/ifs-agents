@@ -215,4 +215,16 @@ module.exports = function (t) {
   var absent = MD.summarizeMeeting(["**The Critic:** Only me."], ["The Critic", "The Ghost"]);
   t.eq(absent.voices.length, 1, "a seated part that never spoke contributes no line");
   t.eq(MD.summarizeMeeting([], ["The Critic"]).voices.length, 0, "an empty meeting summarises to nothing");
+
+  /* --- a fenced block in another language never throws the pairing off --- */
+  var talkClose = "Thank you.\n\n```journal\nsummary: Talked about work; the Critic was loud.\nparts: the-critic, titus\n```\n\n```markdown\n---\nname: The Critic\n---\n\n# The Critic\n```";
+  var afterNote = MD.extractProfiles(talkClose);
+  t.eq(afterNote.length, 1, "a profile after a journal note is still found");
+  t.eq(afterNote[0].name, "The Critic", "...whole");
+  var jn = MD.extractJournal(talkClose);
+  t.eq(jn.summary, "Talked about work; the Critic was loud.", "the conversation note's summary reads");
+  t.eq(jn.parts, ["the-critic", "titus"], "...and its parts");
+  t.eq(MD.extractJournal("```journal\nsummary: It wrapped\nonto two lines.\nparts: []\n```").summary, "It wrapped onto two lines.", "a wrapped summary is joined");
+  t.eq(MD.extractJournal("```journal\nparts: a\n```"), null, "a note with no summary is no note");
+  t.eq(MD.extractJournal("no fences here"), null, "no note, no note");
 };

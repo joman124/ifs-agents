@@ -123,7 +123,7 @@ module.exports = async function (t) {
   t.ok(/At the table\*\* \(seated and taking part\): The Critic, The Dreamer/.test(mt), "parts named for a meeting take a seat for it");
   t.ok(/Take the job\?/.test(mt) && /Kitchen/.test(mt), "a meeting happens in the person's own room");
   var pl = (await rpc({ jsonrpc: "2.0", id: 9, method: "prompts/list" })).body.result.prompts.map(function (x) { return x.name; });
-  t.eq(pl, ["checkin", "embody", "mapping", "meeting", "intake"], "every session is also an MCP prompt");
+  t.eq(pl, ["talk", "checkin", "embody", "mapping", "meeting", "intake"], "every session is also an MCP prompt");
   var pg = (await rpc({ jsonrpc: "2.0", id: 10, method: "prompts/get", params: { name: "checkin", arguments: { part: "the-critic" } } })).body.result;
   t.ok(pg.messages[0].role === "user" && /What you already know about The Critic/.test(pg.messages[0].content.text), "a prompt carries the same session");
   var viaPage = (await call("GET", { query: { t: made, session: "checkin", part: "the-critic" } })).sent;
@@ -136,7 +136,7 @@ module.exports = async function (t) {
       .then(function (r) { return r.body.result.content[0].text; });
   };
   var profile = "```markdown\n---\nname: The Critic\ntype: manager\nage: about 12\nfears: [being seen as lazy]\ncoverage:\n  emotions_feelings: partial\nsessions:\n  - date: 2026-10-09\n    mode: checkin\n    categories: [emotions_feelings]\n    note: softened when thanked\n---\n\n# The Critic\n\n## In its own words\nI'm early, not cruel.\n\n## Session notes\n2026-10-09 - felt curious toward it.\n```";
-  t.ok(/^Saved to Inner Table: The Critic/.test(await save(profile)), "a session's profile saves");
+  t.ok(/^Saved to Inner Table: profiles for The Critic/.test(await save(profile)), "a session's profile saves");
   var stored = JSON.parse(db["innertable:state:ann"]);
   var critic = stored.parts.filter(function (p) { return p.slug === "the-critic"; })[0];
   t.eq(critic.age, "about 12", "the save lands in the synced state");
@@ -149,11 +149,49 @@ module.exports = async function (t) {
   t.eq(Object.keys(db["innertable:inbox:ann"]).length, 1, "the save also waits in the inbox for the app");
   t.ok(/I'm early, not cruel/.test(await start({ mode: "checkin", parts: ["the-critic"] })), "the next session already knows what the last one learned");
   t.ok(/^Not saved: No profile could be read/.test(await save("just some chat")), "something that is not a profile is refused in words");
-  t.ok(/^Not saved: profiles was empty/.test(await save("")), "an empty save is refused");
+  t.ok(/^Not saved: nothing to save/.test(await save("")), "an empty save is refused");
   t.eq(Object.keys(db["innertable:inbox:ann"]).length, 1, "...and neither refusal writes anything");
   var newPart = await save("```markdown\n---\nname: The Watcher\n---\n\n# The Watcher\n```");
   t.ok(/The Watcher/.test(newPart) && JSON.parse(db["innertable:state:ann"]).parts.some(function (p) { return p.slug === "the-watcher"; }), "an intake's new part is created");
   t.eq((await call("POST", { query: { t: made }, body: [] })).code, 202, "an empty batch is harmless");
+
+  // -- just talk: an open conversation that knows the system and remembers
+  var saveArgs = function (a) {
+    return rpc({ jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "save_session", arguments: a } })
+      .then(function (r) { return r.body.result.content[0].text; });
+  };
+  var tk = await start({ mode: "talk" });
+  t.ok(/This is an open conversation/.test(tk) && /The Critic/.test(tk) && /The Dreamer/.test(tk), "a talk knows every part");
+  t.ok(/first open conversation/.test(tk), "...and knows when there is no earlier conversation yet");
+  t.ok(/call the save_session tool once, with journal/.test(tk), "...and saves a note of itself at the close");
+  var noted = await saveArgs({ journal: "```journal\nsummary: Talked about the new job; the Critic was loud about the first week.\nparts: the-critic\n```" });
+  t.ok(/a note of this conversation/.test(noted), "a conversation note saves");
+  var stored2 = JSON.parse(db["innertable:state:ann"]);
+  t.ok(stored2.journal.length === 1 && stored2.journal[0].via === "ai" && stored2.journal[0].parts[0] === "the-critic", "...into the synced state, marked as from the AI");
+  t.ok(/the Critic was loud about the first week/.test(await start({ mode: "talk" })), "the next conversation remembers the last one");
+
+  // -- a meeting saves its readings and its card
+  var mtSave = await start({ mode: "meeting", parts: ["the-critic", "the-dreamer"], material: "x" });
+  t.ok(/call the save_session tool once, with readings/.test(mtSave), "a linked meeting saves its round itself");
+  var saved = await saveArgs({ readings: [
+      { from: "The Critic", toward: "The Dreamer", feeling: "warm" },
+      { from: "the-dreamer", toward: "the-critic", feeling: "wary" },
+      { from: "Nobody", toward: "The Critic", feeling: "close" }],
+    meeting: { topic: "Take the job?", synthesis: "Both want it to go well.", voices: [{ name: "The Critic", line: "Not yet." }] } });
+  t.ok(/2 readings/.test(saved) && /the meeting itself/.test(saved), "readings and the meeting save");
+  t.ok(/Skipped readings .*Nobody/.test(saved), "...and a reading naming no real part is skipped, and said so");
+  var st3 = JSON.parse(db["innertable:state:ann"]);
+  var c3 = st3.parts.filter(function (p) { return p.slug === "the-critic"; })[0];
+  var f3 = c3.feelings.filter(function (f) { return f.part === "the-dreamer"; })[0];
+  t.eq(f3.rating, 4, "a reading lands on the part that gave it");
+  t.eq(f3.prev, 2, "...keeping the reading before it");
+  t.ok(/round the table: The Dreamer: warm/.test(c3.narrative.relates_to_others), "...noted in its profile the way the app's round notes it");
+  var lastMeeting = st3.table.meetings[st3.table.meetings.length - 1];
+  t.ok(lastMeeting.via === "ai" && lastMeeting.topic === "Take the job?" && lastMeeting.parts.indexOf("the-dreamer") >= 0, "the meeting card is filed on the table");
+  t.ok(/Both want it to go well/.test(await start({ mode: "meeting", parts: ["the-critic", "the-dreamer"], material: "y" })), "the next meeting remembers it");
+  t.ok(/^Not saved: None of those readings/.test(await saveArgs({ readings: [{ from: "x", toward: "y", feeling: "warm" }] })), "readings that name no real parts are refused");
+  var inbox = Object.keys(db["innertable:inbox:ann"]).map(function (k) { return JSON.parse(db["innertable:inbox:ann"][k]); });
+  t.ok(inbox.some(function (e) { return e.meetings.length; }) && inbox.some(function (e) { return e.journal.length; }), "meetings and notes wait in the inbox for the app too");
 
   // the page route never writes, whatever it is asked
   var beforeInbox = JSON.stringify(db["innertable:inbox:ann"]);

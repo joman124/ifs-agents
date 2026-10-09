@@ -928,6 +928,7 @@
       : (ready.length >= 2 ? "all developed parts respond; Self synthesizes" : "needs two developed parts");
     openSheet(
       '<h2 class="sheet-title serif">Start something</h2>' +
+      menuItem("", "Just talk", "an open conversation · remembers your parts and your last talks", "mi-talk") +
       '<div class="mi-head">Add a part</div>' +
       menuItem("", "Upload or paste", "one .md file, a whole parts folder, or raw notes", "mi-import") +
       menuItem("", "Meet a new part", "guided intake interview · 10-20 min", "mi-intake") +
@@ -944,6 +945,7 @@
       menuItem("", "Table meeting", meetSub, "mi-meeting", !meetOn)
     );
     bind("#mi-intake", function () { closeSheet(); startSession("intake", []); });
+    bind("#mi-talk", function () { closeSheet(); startSession("talk", []); });
     bind("#mi-create", function () { createPartSheet(""); });
     bind("#mi-ask", function () {
       pickPart("Which part are you asking?", function (slug) {
@@ -984,6 +986,7 @@
   }
 
   var MENU_ICONS = {
+    "mi-talk": icon("mic"),
     "mi-intake": icon("spark"),
     "mi-checkin": icon("chat"),
     "mi-map": icon("map"),
@@ -1209,7 +1212,20 @@
   function reviewImport(text) {
     var box = $("#importResult");
     if (!box) return;
+    /* A conversation held in another AI chat closes with a note as well as
+       any profiles. Keep the note - keyed by its own text, so pasting the
+       same reply twice files it once. */
+    var note = MD.extractJournal(text);
+    if (note) {
+      var h = 0;
+      for (var i = 0; i < note.summary.length; i++) h = (h * 31 + note.summary.charCodeAt(i)) >>> 0;
+      ST.addJournal({ id: "jp" + h.toString(36), summary: note.summary, parts: note.parts, via: "app" });
+    }
     var res = MD.analyze(text);
+    if (note && !res.profiles.length) {
+      box.innerHTML = '<div class="readiness ok" style="margin-top:14px">&#10003; Conversation note saved &mdash; the next conversation will remember it.</div>';
+      return;
+    }
 
     if (res.profiles.length) {
       renderImportPreview(res.profiles,
@@ -1572,7 +1588,7 @@
   var session = null; // {mode, slugs, material, system, messages, busy, closed}
 
   var MODE_TITLES = {
-    intake: "Intake interview", checkin: "Check-in", mapping: "Relationship mapping",
+    intake: "Intake interview", checkin: "Check-in", mapping: "Relationship mapping", talk: "Conversation",
     embody: "Embodied reaction", meeting: "Table meeting"
   };
 
@@ -1583,6 +1599,7 @@
       mode === "checkin" ? T.checkin(parts[0], ST.listParts()) :
       mode === "mapping" ? T.mapping(parts, ST.listParts()) :
       mode === "embody" ? T.embody(parts[0], material, ST.listParts()) :
+      mode === "talk" ? T.talk(ST.listParts(), ST.state.table, ST.state.journal) :
       T.meeting(parts, material, ST.state.table, ST.listParts());
     /* Copy-prompt sessions always carried pacing rules; live ones never did,
        so voice mode got the written cadence read aloud fast. */
@@ -1675,14 +1692,14 @@
       return;
     }
     var slugs = (d.slugs || []).filter(function (sl) { return !!ST.getPart(sl); });
-    if (d.mode !== "intake" && !slugs.length) {
+    if (d.mode !== "intake" && d.mode !== "talk" && !slugs.length) {
       ST.clearDraft(); renderParts();
       toast("That draft's part no longer exists - draft removed");
       return;
     }
     session = {
       mode: d.mode, slugs: slugs, material: d.material || "",
-      system: buildSystem(d.mode, d.mode === "intake" ? [] : slugs, d.material || ""),
+      system: buildSystem(d.mode, d.mode === "intake" || d.mode === "talk" ? [] : slugs, d.material || ""),
       messages: (d.messages || []).slice(), busy: false, closed: false
     };
     openChatPanel(session, true);
@@ -2011,7 +2028,7 @@
     if (!session || session.busy) return;
     V.stopSpeaking(); V.stopListening(); micState(false);
     var sess = session;
-    var interviewish = ["intake", "checkin", "mapping"].indexOf(sess.mode) >= 0;
+    var interviewish = ["intake", "checkin", "mapping", "talk"].indexOf(sess.mode) >= 0;
     var reply = null;
     if (interviewish && sess.messages.length > 1) {
       toast("Closing gently and writing the profile...");
@@ -2073,8 +2090,12 @@
     sess.closed = true;
 
     var incoming = [];
+    var noted = false;
     if (reply) {
       try { incoming = MD.extractProfiles(reply); } catch (e) { console.error(e); }
+      // an open conversation leaves a note behind, so the next one remembers it
+      var note = sess.mode === "talk" ? MD.extractJournal(reply) : null;
+      if (note) noted = !!ST.addJournal({ summary: note.summary, parts: note.parts, via: "app" });
     }
     // log meeting/embody sessions on the parts without profile rewrite
     if (!interviewish) {
@@ -2145,7 +2166,8 @@
     };
 
     if (!incoming.length) {
-      toast(interviewish ? "Transcript saved - extract it anytime from Settings" : "Session saved");
+      toast(noted ? "Conversation saved - it will remember this next time"
+        : interviewish ? "Transcript saved - extract it anytime from Settings" : "Session saved");
       round(700);
       return;
     }
@@ -2170,13 +2192,16 @@
      copy them. */
   function manualSession(mode, slugs, material) {
     var parts = slugs.map(ST.getPart).filter(Boolean);
-    var prompt = T.portable(mode, parts, material, ST.state.table, { roster: ST.listParts() });
-    var writes = mode === "intake" || mode === "checkin" || mode === "mapping";
+    var prompt = T.portable(mode, parts, material, ST.state.table, { roster: ST.listParts(), journal: ST.state.journal });
+    var writes = mode === "intake" || mode === "checkin" || mode === "mapping" || mode === "talk";
     var names = parts.map(function (p) { return p.name; });
     var words = prompt.split(/\s+/).filter(Boolean).length;
 
     var finish =
-      writes ? [
+      mode === "talk" ? [
+        "<b>When you want to stop,</b> say &ldquo;let&rsquo;s close the session.&rdquo; It writes a short note of the conversation, and updates any part that came up.",
+        "<b>Copy that reply and bring it back</b> with the button below, so the next conversation &mdash; here or there &mdash; remembers this one."
+      ] : writes ? [
         "<b>When you want to stop,</b> say &ldquo;let&rsquo;s close the session.&rdquo; It thanks " +
           (names.length === 1 ? esc(names[0]) : "the part" + (mode === "mapping" ? "s" : "")) +
           " and writes the updated profile" + (mode === "mapping" ? "s" : "") + ".",
@@ -2192,7 +2217,9 @@
       "<b>Start a new chat</b> in any AI you trust &mdash; Claude, ChatGPT, Gemini &mdash; and paste it. It opens the session on its own. Voice mode works too."
     ].concat(finish);
 
-    var privacy = names.length
+    var privacy = mode === "talk"
+      ? "The prompt contains all your parts&rsquo; profiles and your recent conversation notes. "
+      : names.length
       ? "The prompt contains " + esc(names.join(", ")) + (names.length === 1 ? "&rsquo;s profile" : "&rsquo;s profiles") +
         (material ? " and the material you added" : "") + ". "
       : "";
@@ -2206,7 +2233,7 @@
       '<button class="btn btn-primary btn-big" id="copyPrompt">Copy the prompt</button>' +
       '<div style="height:10px"></div>' +
       (navigator.share ? '<button class="btn btn-soft btn-big" id="sharePrompt">Share to another app</button><div style="height:10px"></div>' : "") +
-      (writes ? '<button class="btn btn-soft btn-big" id="pasteBack">Bring the updated profile back</button>' : "") +
+      (writes ? '<button class="btn btn-soft btn-big" id="pasteBack">' + (mode === "talk" ? "Bring the conversation back" : "Bring the updated profile back") + "</button>" : "") +
       '<p class="dim cp-note">' + privacy + "</p>" +
       '<details class="card cp-prompt"><summary>Read the prompt <span class="dim">&middot; ' + words + " words</span></summary>" +
       '<div class="prose">' + esc(prompt) + "</div></details>" +
@@ -2742,7 +2769,16 @@
     var ts = ST.state.transcripts;
     var list = $("#sessionsList");
     if (!list) return;
-    list.innerHTML = ts.map(function (t) {
+    /* Conversation notes first: they are what the next conversation - here or
+       in the person's own AI - remembers, so they are worth being able to see,
+       and to delete. */
+    var notes = ST.state.journal.slice().reverse();
+    list.innerHTML = (notes.length ? '<div class="mi-head">Conversation notes &middot; what the next conversation remembers</div>' +
+      notes.map(function (j) {
+        return '<div class="sess-card" data-journal="' + esc(j.id) + '">' +
+          '<div class="sc-top"><span>' + esc(j.date) + "</span><span>" + (j.via === "ai" ? "your AI" : "in the app") + "</span></div>" +
+          '<div class="sc-note">' + esc(j.summary) + "</div></div>";
+      }).join("") + (ts.length ? '<div class="mi-head">Transcripts</div>' : "") : "") + ts.map(function (t) {
       return '<div class="sess-card" data-id="' + esc(t.id) + '">' +
         '<div class="sc-top"><span>' + esc(t.date) + "</span><span>" + esc(t.mode) + "</span></div>" +
         '<div class="sc-title">' + esc(t.title) + "</div>" +
@@ -2750,10 +2786,28 @@
     }).join("");
     document.querySelectorAll(".sess-card").forEach(function (el) {
       el.addEventListener("click", function () {
+        if (el.dataset.journal) { openJournalNote(el.dataset.journal); return; }
         var t = ST.state.transcripts.filter(function (x) { return x.id === el.dataset.id; })[0];
         if (t) openTranscript(t);
       });
     });
+  }
+
+  function openJournalNote(id) {
+    var j = ST.state.journal.filter(function (x) { return x.id === id; })[0];
+    if (!j) return;
+    var names = (j.parts || []).map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; });
+    openSheet(
+      '<h2 class="sheet-title serif">Conversation &middot; ' + esc(j.date) + "</h2>" +
+      '<p class="dim">' + (j.via === "ai" ? "Saved by your own AI through your link." : "From a conversation in the app.") +
+      " The next conversation picks up from notes like this one.</p>" +
+      '<div class="card"><div class="prose">' + esc(j.summary) + "</div></div>" +
+      (names.length ? '<p class="dim">Parts that came up: ' + esc(names.join(", ")) + "</p>" : "") +
+      '<button class="btn btn-danger btn-big" id="delJ">Forget this conversation</button>' +
+      '<button class="btn btn-ghost btn-big" id="keepJ">Close</button>'
+    );
+    bind("#delJ", function () { ST.deleteJournal(id); closeSheet(); renderSessions(); toast("Forgotten - it will not come up again"); });
+    bind("#keepJ", closeSheet);
   }
 
   /* Also reached from a meeting card on the Table tab, which is why this is
@@ -3022,8 +3076,9 @@
     bind("#syncNowBtn", syncNow);
     bind("#setInstall", doInstall);
     $("#openTranscripts").addEventListener("click", function () {
-      if (!ST.state.transcripts.length) { toast("No transcripts yet - live AI sessions save one each"); return; }
-      openPanel("Session transcripts", ST.state.transcripts.length + " saved",
+      if (!ST.state.transcripts.length && !ST.state.journal.length) { toast("No transcripts yet - live AI sessions save one each"); return; }
+      openPanel("Session transcripts", ST.state.transcripts.length + " saved" +
+        (ST.state.journal.length ? " &middot; " + ST.state.journal.length + " conversation notes" : ""),
         '<div class="view-pad" id="sessionsList"></div>');
       renderSessions();
     });

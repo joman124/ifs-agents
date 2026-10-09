@@ -747,6 +747,65 @@
     return out;
   }
 
+  /* Record a round of the table. picked: { fromSlug: { towardSlug: rating } }.
+     getPart(slug) returns the live part to write into. Each reading goes to
+     the part that gave it - directed and dated - and the part's profile notes
+     that it happened, the way drawing an edge does. Shared by the app's own
+     round (ui-table.js) and a round saved by the person's AI (api/_sessions.js),
+     so the two can never record a reading differently.
+     Returns { changes: [{from, to, rating, was, current}], touched: [slugs] }. */
+  function applyReadings(getPart, picked, dateISO) {
+    var changes = [], touched = [];
+    Object.keys(picked || {}).forEach(function (from) {
+      var p = getPart(from);
+      if (!p) return;
+      var rows = picked[from] || {};
+      var said = [];
+      Object.keys(rows).forEach(function (to) {
+        var other = getPart(to);
+        if (!other || to === from) return;
+        var before = getFeeling(p, to);
+        var set = setFeeling(p, to, rows[to], dateISO);
+        if (!set) return;
+        said.push(other.name + ": " + feelingLabel(rows[to]).toLowerCase());
+        changes.push({ from: p.name, to: other.name, rating: rows[to],
+                       was: before ? before.rating : 0,
+                       // false when a back-filled round sits behind a newer
+                       // reading: it still counts, but it is not where they
+                       // stand now, and saying so would be a lie
+                       current: set.current });
+      });
+      if (!said.length) return;
+      // a reading is something said about relationships, so the coverage flag
+      // climbs exactly the way drawing an edge makes it climb
+      if (p.coverage.relationships === "untouched") p.coverage.relationships = "partial";
+      p.narrative.relates_to_others = (p.narrative.relates_to_others ? p.narrative.relates_to_others + "\n\n" : "") +
+        dateISO + " - round the table: " + said.join("; ") + ".";
+      p.sessions.push({
+        date: dateISO, mode: "mapping", categories: ["relationships"],
+        note: "rated how it feels toward " + said.length + (said.length === 1 ? " part" : " parts") + " at the table"
+      });
+      touched.push(p.slug);
+    });
+    return { changes: changes, touched: touched };
+  }
+
+  /* Conversation notes: what an open conversation was about, so the next one
+     can pick up the thread. { id, date, via: "app"|"ai", summary, parts }. */
+  var JOURNAL_CAP = 60;
+  function normalizeJournal(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    var summary = typeof raw.summary === "string" ? raw.summary.trim().slice(0, 1200) : "";
+    if (!summary || typeof raw.id !== "string" || !raw.id) return null;
+    return {
+      id: raw.id.slice(0, 80),
+      date: typeof raw.date === "string" ? raw.date.slice(0, 10) : "",
+      via: raw.via === "ai" ? "ai" : "app",
+      summary: summary,
+      parts: Array.isArray(raw.parts) ? raw.parts.filter(function (x) { return typeof x === "string" && x; }).slice(0, 20) : []
+    };
+  }
+
   window.IFS.schema = {
     CATEGORIES: CATEGORIES,
     CATEGORY_LABELS: CATEGORY_LABELS,
@@ -793,6 +852,9 @@
     namedEdge: namedEdge,
     mapCounts: mapCounts,
     edgeWeight: edgeWeight,
-    quietestPart: quietestPart
+    quietestPart: quietestPart,
+    applyReadings: applyReadings,
+    JOURNAL_CAP: JOURNAL_CAP,
+    normalizeJournal: normalizeJournal
   };
 })();

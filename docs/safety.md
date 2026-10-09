@@ -55,8 +55,10 @@ Part profiles are intimate personal data.
   policies — check them before pasting profiles.
 - Compiled agents *contain the profile text*. Treat generated
   `.claude/agents/part-*.md` files with the same care as the profiles.
-- The **Link my AI** link lets whoever holds it read your parts and save
-  sessions into them (merged in — it cannot delete a part or erase a field).
+- The **Link my AI** link lets whoever holds it read your parts and your
+  conversation notes, and save sessions into them (merged in — it cannot
+  delete a part or erase a field). Conversation notes can be forgotten one by
+  one under Settings → Session transcripts.
   Keep it private, and revoke it in Settings if it may have leaked.
 
 ## For people using this with others

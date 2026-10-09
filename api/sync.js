@@ -38,7 +38,11 @@ async function readInbox(base, token, user) {
     for (var i = 0; Array.isArray(flat) && i + 1 < flat.length; i += 2) {
       try {
         var entry = JSON.parse(flat[i + 1]);
-        if (entry && Array.isArray(entry.parts)) out.push({ id: flat[i], parts: entry.parts });
+        if (entry && typeof entry === "object") {
+          out.push({ id: flat[i], parts: Array.isArray(entry.parts) ? entry.parts : [],
+            meetings: Array.isArray(entry.meetings) ? entry.meetings : [],
+            journal: Array.isArray(entry.journal) ? entry.journal : [] });
+        }
       } catch (e) {}
     }
     return out.sort(function (a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; });

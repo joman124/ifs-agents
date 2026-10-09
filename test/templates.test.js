@@ -111,10 +111,39 @@ module.exports = function (t) {
   t.ok(/2026-10-01 \(in their own AI app\): Talked about the promotion/.test(tk), "...remembers the last conversation, and where it happened");
   t.ok(/pick up one thread from it/.test(tk), "...and opens by picking up a thread");
   t.ok(/```journal/.test(tk) && /The app will tell you the session is closing/.test(tk), "...and closes with a note");
-  t.ok(/## The profile files/.test(tk) && /name: The Watcher/.test(tk), "...with the files to update any part that came up");
+  t.ok(/holding ONLY what is new from this conversation/.test(tk) && !/## The profile files/.test(tk), "...and asks for updates of what is new, not whole profile files");
+
+  /* a talk stays small enough for a linked AI to take as one tool result,
+     however many parts there are - it once carried every profile file whole */
+  var big = [];
+  for (var bi = 0; bi < 12; bi++) {
+    var bp = S.blankPart("Part " + bi);
+    bp.type = "manager";
+    bp.positive_intent = new Array(12).join("keeps the person safe from harm ");
+    bp.narrative.in_its_own_words = new Array(40).join("I am always watching, always ready. ");
+    bp.narrative.session_notes = new Array(60).join("2026-10-01 - a long session note about many things. ");
+    bp.narrative.origin_story = new Array(60).join("It began a long time ago. ");
+    bp.fears = ["being found out", "being late", "being seen"];
+    bp.sessions = [{ date: "2026-10-01", mode: "checkin", categories: [], note: "met again" }];
+    big.push(bp);
+  }
+  var bigTalk = T.portable("talk", [], "", null, { roster: big, journal: [], bridge: true, save: true });
+  t.ok(bigTalk.length < 40000, "a talk across twelve full parts stays under 40k characters (was " + bigTalk.length + ")");
   t.ok(/first open conversation/.test(T.talk([], null, [])), "a first talk knows it is the first");
   var tkCopy = T.portable("talk", [], "", null, { roster: [known], journal: [] });
   t.ok(/When the person says the session is over/.test(tkCopy) && /```journal/.test(tkCopy), "a copied talk closes with a note to paste back");
+
+  /* handing a session to the linked AI */
+  var hc = T.handoff("checkin", [{ slug: "titus", name: "Titus" }], "", "anthropic");
+  t.ok(hc.url.indexOf("https://claude.ai/new?q=") === 0, "a Claude hand-off opens a new Claude chat");
+  t.ok(/check-in with Titus/.test(hc.message) && /start_session with mode checkin and parts titus/.test(hc.message), "...asking for the session in words and for the tool");
+  t.ok(T.handoff("talk", [], "", "openai").url.indexOf("https://chatgpt.com/?q=") === 0, "a ChatGPT hand-off opens ChatGPT");
+  var hm = T.handoff("meeting", [{ slug: "a", name: "A" }, { slug: "b", name: "B" }], "Take the job?", "anthropic");
+  t.ok(/table meeting with A and B/.test(hm.message) && /Take the job\?/.test(hm.message), "a meeting hand-off carries who and what");
+  var hl = T.handoff("embody", [{ slug: "a", name: "A" }], new Array(400).join("long "), "anthropic");
+  t.ok(hl.pasteNext.length > 1500 && hl.url.length < 1200, "long material is pasted after, not crammed into the link");
+  var hg = T.handoff("talk", [], "", "gemini", "https://x/api/bridge?t=T&session=talk");
+  t.ok(!hg.url && /https:\/\/x\/api\/bridge\?t=T&session=talk/.test(hg.message), "Gemini, with no connector, gets the session link to open");
 
   /* the copy-paste versions */
   ["intake", "checkin", "mapping", "embody", "meeting"].forEach(function (mode) {

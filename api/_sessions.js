@@ -112,7 +112,7 @@ var MAX_PROFILES = 6;
 function nowISO() { return new Date().toISOString(); }
 
 function mergeOne(S, existing, incoming, stamp) {
-  var merged = S.mergeParts(existing || null, incoming);
+  var merged = S.mergeSession(existing || null, incoming);
   if (existing) {
     var seen = {}, log = [];
     (existing.sessions || []).concat(merged.sessions || []).forEach(function (x) {

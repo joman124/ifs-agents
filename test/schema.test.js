@@ -449,4 +449,30 @@ module.exports = function (t) {
   coldFull.narrative.origin_story = "It arrived the year of the school move, and never left.";
   t.eq(S.quietestPart([coldFull, coldBare], TODAY).name, "Bare",
     "between two equally quiet parts, the one with more left to say wins");
+
+  /* --- what a session hands back never loses stored text --- */
+  (function () {
+    var base = S.blankPart("Titus");
+    base.narrative.in_its_own_words = "I hold the line for other men.";
+    base.narrative.session_notes = "2026-09-01 - first met.";
+    base.fears = ["letting them down"];
+    var delta = S.blankPart("Titus");
+    delta.narrative.in_its_own_words = "I am tired of holding it alone.";
+    delta.narrative.session_notes = "2026-10-09 - talked about being tired.";
+    delta.fears = ["being alone with it"];
+    var m = S.mergeSession(base, delta);
+    t.ok(/hold the line/.test(m.narrative.in_its_own_words) && /tired of holding/.test(m.narrative.in_its_own_words),
+      "an update that only carries what is new is added to the stored words, not swapped for them");
+    t.eq(m.narrative.session_notes.indexOf("2026-10-09"), 0, "a new session note goes on top, newest first");
+    t.ok(/2026-09-01 - first met/.test(m.narrative.session_notes), "...and the old one stays");
+    t.eq(m.fears.length, 2, "lists are combined");
+    var full = S.blankPart("Titus");
+    full.narrative.in_its_own_words = "I hold the line for other men. And lately, I am tired.";
+    t.eq(S.mergeSession(base, full).narrative.in_its_own_words, full.narrative.in_its_own_words,
+      "a complete rewrite that carries the old text forward replaces it, as before");
+    var same = S.blankPart("Titus");
+    same.narrative.in_its_own_words = "hold the line";
+    t.eq(S.mergeSession(base, same).narrative.in_its_own_words, base.narrative.in_its_own_words, "nothing new adds nothing");
+    t.eq(S.mergeSession(null, delta).narrative.in_its_own_words, delta.narrative.in_its_own_words, "a new part is simply itself");
+  })();
 };

@@ -1580,10 +1580,10 @@
     var parts = slugs.map(ST.getPart).filter(Boolean);
     var sys =
       mode === "intake" ? T.intake() :
-      mode === "checkin" ? T.checkin(parts[0]) :
-      mode === "mapping" ? T.mapping(parts) :
-      mode === "embody" ? T.embody(parts[0], material) :
-      T.meeting(parts, material, ST.state.table);
+      mode === "checkin" ? T.checkin(parts[0], ST.listParts()) :
+      mode === "mapping" ? T.mapping(parts, ST.listParts()) :
+      mode === "embody" ? T.embody(parts[0], material, ST.listParts()) :
+      T.meeting(parts, material, ST.state.table, ST.listParts());
     /* Copy-prompt sessions always carried pacing rules; live ones never did,
        so voice mode got the written cadence read aloud fast. */
     return ST.state.settings.voiceOn ? sys + "\n\n" + T.voicePacing() : sys;
@@ -2166,7 +2166,7 @@
      copy them. */
   function manualSession(mode, slugs, material) {
     var parts = slugs.map(ST.getPart).filter(Boolean);
-    var prompt = T.portable(mode, parts, material, ST.state.table);
+    var prompt = T.portable(mode, parts, material, ST.state.table, { roster: ST.listParts() });
     var writes = mode === "intake" || mode === "checkin" || mode === "mapping";
     var names = parts.map(function (p) { return p.name; });
     var words = prompt.split(/\s+/).filter(Boolean).length;
@@ -2777,8 +2777,8 @@
     try {
       var livedParts = (t.parts || []).map(ST.getPart).filter(Boolean);
       var sys;
-      if (t.mode === "checkin" && livedParts.length) sys = T.checkin(livedParts[0]);
-      else if (t.mode === "mapping" && livedParts.length >= 2) sys = T.mapping(livedParts);
+      if (t.mode === "checkin" && livedParts.length) sys = T.checkin(livedParts[0], ST.listParts());
+      else if (t.mode === "mapping" && livedParts.length >= 2) sys = T.mapping(livedParts, ST.listParts());
       else sys = T.intake();
       var reply = await LLM.chat(ST.state.settings, sys, [{
         role: "user",

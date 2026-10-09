@@ -68,7 +68,9 @@ app/                 the webapp (this is what deploys)
   js/                see the table below
 api/                 serverless functions (Vercel): signup, login, sync,
                      push-subscribe, push-send, push-remind, vapid-public-key,
-                     bridge (read-only AI link: MCP + markdown, no new env vars)
+                     bridge (read-only AI link: MCP + markdown, no new env vars;
+                     start_session / prompts serve the app's own session prompts,
+                     built by api/_sessions.js from app/js - see vercel.json)
   root package.json  holds the `web-push` dependency for the functions only
 test/                node test/run.js — 545 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)

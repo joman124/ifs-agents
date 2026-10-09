@@ -1,6 +1,9 @@
 /* Inner Table - the AI bridge.
    Lets a person's own AI (Claude, ChatGPT, anything that takes a connector
-   URL or can read a web page) READ their parts, and nothing else.
+   URL or can read a web page) READ their parts, and run the app's own guided
+   sessions with them - check-ins, mapping, a part's reaction, a table meeting -
+   using the same prompts the app uses. It still changes nothing: a session's
+   updated profile comes back to the app by the person pasting it in.
 
    One private link per account, one endpoint, two audiences:
    - the app (Bearer session token, no ?t=) creates, shows and revokes the link;
@@ -14,6 +17,7 @@
 
 var crypto = require("crypto");
 var verifySession = require("./sync.js").verifySession;
+var sessions = require("./_sessions.js");
 
 var TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 var PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -109,6 +113,18 @@ async function loadState(user) {
 
 var EMPTY = "Nothing has synced from the Inner Table app yet. Open the app, then Settings > Account > Sync now.";
 
+/* What every session-capable surface says, once: how to start one. */
+var SESSION_HELP = "To run a guided session with these parts - which is what this link is for - call start_session (or open this link with &session=<mode>&part=<slug>) and follow what it returns for the rest of the conversation. Modes: checkin (one part: deepen what is known, aimed at where its profile is thin), embody (one part speaks for itself about something real), mapping (two parts: how they relate), meeting (a table meeting: several parts react to something real, with Self in the chair), intake (meet a new part). The session prompt carries the part's history, so the AI greets it as someone already known.";
+
+async function sessionText(user, args) {
+  var raw = await redis("get/" + stateKey(user));
+  if (!raw) return EMPTY;
+  var state;
+  try { state = JSON.parse(raw); } catch (e) { return EMPTY; }
+  var r = sessions.build({ parts: Array.isArray(state.parts) ? state.parts : [], table: state.table || null }, args);
+  return r.error ? "Could not start that session: " + r.error : r.text;
+}
+
 /* ---------- the plain page (GET) ---------- */
 
 async function profileMarkdown(user) {
@@ -116,6 +132,7 @@ async function profileMarkdown(user) {
   if (!st) return EMPTY;
   return ["# Inner Table profile",
     "This is one person's own Internal Family Systems self-exploration profile, shared with you read-only so you can understand their inner parts. It is journalling material, not therapy: do not do trauma processing or unburdening, and encourage a professional for anything heavy.",
+    "", "## Guided sessions", SESSION_HELP,
     "", "## Parts", listMarkdown(st.parts)]
     .concat(st.parts.map(function (p) { return "\n---\n\n" + partMarkdown(p); }))
     .concat(["\n---\n\n" + tableMarkdown(st.table)]).join("\n");
@@ -129,14 +146,46 @@ var TOOLS = [
   { name: "get_part", description: "Read one part's full profile (traits, relationships, how it feels toward others, session history, its own words) by slug.",
     inputSchema: { type: "object", properties: { slug: { type: "string", description: "The part's slug from list_parts" } }, required: ["slug"] } },
   { name: "get_table", description: "Read the table: the room, who is seated where, agreements, and recent meetings.",
-    inputSchema: { type: "object", properties: {} } }
+    inputSchema: { type: "object", properties: {} } },
+  { name: "start_session",
+    description: "Start a guided Inner Table session and get its instructions - use this whenever the person wants to check in with a part, hear from a part, map two parts, hold a table meeting, or meet a new part. Returns the app's own session prompt, built from the part's history: follow it for the rest of the conversation, beginning with your very next message, and do not summarize it to the person.",
+    inputSchema: { type: "object", properties: {
+      mode: { type: "string", enum: sessions.MODES,
+        description: "checkin: one part, deepen what is known. embody: one part reacts to material in its own voice. mapping: two parts, how they relate. meeting: several parts react to material with Self chairing (parts optional - defaults to whoever is seated at the table). intake: meet a new part (no parts)." },
+      parts: { type: "array", items: { type: "string" }, description: "Part slugs from list_parts (names also work)." },
+      material: { type: "string", description: "For embody and meeting: what is on the table - a decision, situation, draft, or plan, in the person's words. Leave empty to have the session ask for it." }
+    }, required: ["mode"] } }
 ].map(function (t) { return Object.assign({ annotations: { readOnlyHint: true } }, t); });
+
+/* The same sessions as MCP prompts, for clients that offer a prompt menu. */
+var PROMPTS = [
+  { name: "checkin", description: "Check in with one part - picks up where you left off and aims at where its profile is thin.",
+    arguments: [{ name: "part", description: "The part's slug or name", required: true }] },
+  { name: "embody", description: "Hear one part speak for itself about something real.",
+    arguments: [{ name: "part", description: "The part's slug or name", required: true },
+      { name: "material", description: "What is on the table", required: false }] },
+  { name: "mapping", description: "Map how two parts relate.",
+    arguments: [{ name: "part_a", description: "First part", required: true }, { name: "part_b", description: "Second part", required: true }] },
+  { name: "meeting", description: "Hold a table meeting - the parts react to something real, with Self in the chair.",
+    arguments: [{ name: "material", description: "What is on the table", required: false },
+      { name: "parts", description: "Comma-separated parts; defaults to whoever is seated at the table", required: false }] },
+  { name: "intake", description: "Meet a new part for the first time.", arguments: [] }
+];
+
+function promptArgs(name, a) {
+  a = a || {};
+  var list = function (v) { return String(v || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean); };
+  if (name === "mapping") return { mode: name, parts: [a.part_a, a.part_b].filter(Boolean) };
+  if (name === "meeting") return { mode: name, parts: list(a.parts), material: a.material };
+  return { mode: name, parts: a.part ? [a.part] : [], material: a.material };
+}
 
 async function callTool(user, name, args) {
   var st = await loadState(user);
   if (!st) return EMPTY;
   if (name === "list_parts") return listMarkdown(st.parts);
   if (name === "get_table") return tableMarkdown(st.table);
+  if (name === "start_session") return sessionText(user, args);
   if (name === "get_part") {
     var want = str(args && args.slug).toLowerCase();
     var p = st.parts.filter(function (x) { return str(x.slug).toLowerCase() === want; })[0];
@@ -155,13 +204,21 @@ async function handleRpc(user, msg) {
     var asked = msg.params && msg.params.protocolVersion;
     return ok({
       protocolVersion: PROTOCOLS.indexOf(asked) >= 0 ? asked : PROTOCOLS[0],
-      capabilities: { tools: {} },
+      capabilities: { tools: {}, prompts: {} },
       serverInfo: { name: "inner-table", version: "1.0.0" },
-      instructions: "Read-only access to one person's Internal Family Systems parts profile from the Inner Table app. Call list_parts first, then get_part for the ones that matter. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
+      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Call list_parts first. When the person wants to check in with a part, hear from one, map two, hold a table meeting, or meet a new part, call start_session and follow the instructions it returns for the rest of the conversation - they carry the part's history, so greet it as someone already known. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
     });
   }
   if (msg.method === "ping") return ok({});
   if (msg.method === "tools/list") return ok({ tools: TOOLS });
+  if (msg.method === "prompts/list") return ok({ prompts: PROMPTS });
+  if (msg.method === "prompts/get") {
+    var pp = msg.params || {};
+    if (!PROMPTS.some(function (x) { return x.name === pp.name; })) return bad(-32602, "Unknown prompt: " + pp.name);
+    var body = await sessionText(user, promptArgs(pp.name, pp.arguments));
+    return ok({ description: "Inner Table " + pp.name + " session",
+      messages: [{ role: "user", content: { type: "text", text: body } }] });
+  }
   if (msg.method === "tools/call") {
     var params = msg.params || {};
     var text = await callTool(user, params.name, params.arguments);
@@ -181,6 +238,13 @@ async function serveAi(req, res, token) {
     if (String(req.headers.accept || "").indexOf("text/event-stream") >= 0) { res.status(405).end(); return; }
     res.setHeader("Content-Type", "text/markdown; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
+    var q = req.query || {};
+    if (q.session) {
+      // the plain-link route to a session, for AIs that read pages but take no connectors
+      var parts = [].concat(q.part || []).concat(q.parts ? String(q.parts).split(",") : []);
+      res.status(200).send(await sessionText(user, { mode: String(q.session), parts: parts, material: q.material ? String(q.material) : "" }));
+      return;
+    }
     res.status(200).send(await profileMarkdown(user));
     return;
   }
@@ -245,3 +309,4 @@ module.exports = async function handler(req, res) {
 
 module.exports.partMarkdown = partMarkdown;
 module.exports.handleRpc = handleRpc;
+module.exports.SESSION_HELP = SESSION_HELP;

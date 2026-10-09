@@ -143,7 +143,7 @@ async function loadState(user) {
 var EMPTY = "Nothing has synced from the Inner Table app yet. Open the app, then Settings > Account > Sync now.";
 
 /* What every session-capable surface says, once: how to start one. */
-var SESSION_HELP = "To run a guided session with these parts - which is what this link is for - call start_session (or open this link with &session=<mode>&part=<slug>) and follow what it returns for the rest of the conversation; with the connector, the session saves its updated profile back with save_session when it closes. Modes: checkin (one part: deepen what is known, aimed at where its profile is thin), embody (one part speaks for itself about something real), mapping (two parts: how they relate), meeting (a table meeting: several parts react to something real, with Self in the chair), intake (meet a new part). The session prompt carries the part's history, so the AI greets it as someone already known.";
+var SESSION_HELP = "This link is for conversations, not just reading. Whenever the person wants to talk - about how they are, something on their mind, or their parts - call start_session (or open this link with &session=<mode>&part=<slug>) and follow what it returns for the rest of the conversation. If they just want to talk, use mode talk: it knows every part and remembers earlier conversations. Other modes: checkin (one part: deepen what is known, aimed at where its profile is thin), embody (one part speaks for itself about something real), mapping (two parts: how they relate), meeting (a table meeting with Self in the chair), intake (meet a new part). With the connector, every session saves what it learned with save_session when it closes - profiles, a note of the conversation, a meeting's readings - so the next conversation, here or in the app, picks up where this one left off.";
 
 async function sessionText(user, args) {
   var state = await loadFull(user);
@@ -161,13 +161,21 @@ async function saveSession(user, args) {
   if ((await loadPending(user)).length >= 50) {
     return "Not saved: 50 sessions are already waiting for the Inner Table app. Ask the person to open the app once so they sync in, then save again.";
   }
-  var prep = sessions.prepareSave(state, args && args.profiles);
+  var prep = sessions.prepareSave(state, args);
   if (prep.error) return "Not saved: " + prep.error;
   var id = new Date().toISOString() + "-" + crypto.randomBytes(4).toString("hex");
+  var history = { meetings: prep.meetings, journal: prep.journal };
   // the inbox first: if the state write fails, the app still gets the save
-  await redis("hset/" + inboxKey(user) + "/" + encodeURIComponent(id), JSON.stringify({ at: id.slice(0, 24), parts: prep.parts }));
-  await redis("set/" + stateKey(user), JSON.stringify(sessions.applyToState(state, prep.parts)));
-  return "Saved to Inner Table: " + prep.names.join(", ") + ". It was merged into what was already there - nothing was erased - and the app picks it up the next time it is opened.";
+  await redis("hset/" + inboxKey(user) + "/" + encodeURIComponent(id),
+    JSON.stringify({ at: id.slice(0, 24), parts: prep.parts, meetings: prep.meetings, journal: prep.journal }));
+  await redis("set/" + stateKey(user), JSON.stringify(sessions.applyToState(state, prep.parts, history)));
+  var what = [];
+  if (prep.names.length) what.push("profiles for " + prep.names.join(", ") + " (merged in - nothing was erased)");
+  if (prep.said.length) what.push(prep.said.length + " reading" + (prep.said.length === 1 ? "" : "s") + " from the round of the table");
+  if (prep.meetings.length) what.push("the meeting itself, so the next meeting remembers it");
+  if (prep.journal.length) what.push("a note of this conversation, so the next one can pick up the thread");
+  return "Saved to Inner Table: " + (what.join("; ") || "nothing new") + ". The app picks it up the next time it is opened." +
+    (prep.unknown.length ? " Skipped readings that did not name two of the person's parts: " + prep.unknown.join(", ") + "." : "");
 }
 
 /* ---------- the plain page (GET) ---------- */
@@ -196,21 +204,35 @@ var TOOLS = [
     description: "Start a guided Inner Table session and get its instructions - use this whenever the person wants to check in with a part, hear from a part, map two parts, hold a table meeting, or meet a new part. Returns the app's own session prompt, built from the part's history: follow it for the rest of the conversation, beginning with your very next message, and do not summarize it to the person.",
     inputSchema: { type: "object", properties: {
       mode: { type: "string", enum: sessions.MODES,
-        description: "checkin: one part, deepen what is known. embody: one part reacts to material in its own voice. mapping: two parts, how they relate. meeting: several parts react to material with Self chairing (parts optional - defaults to whoever is seated at the table). intake: meet a new part (no parts)." },
+        description: "talk: an open conversation that knows every part and remembers earlier conversations - the default whenever the person just wants to talk (no parts needed). checkin: one part, deepen what is known. embody: one part reacts to material in its own voice. mapping: two parts, how they relate. meeting: several parts react to material with Self chairing (parts optional - defaults to whoever is seated at the table). intake: meet a new part (no parts)." },
       parts: { type: "array", items: { type: "string" }, description: "Part slugs from list_parts (names also work)." },
       material: { type: "string", description: "For embody and meeting: what is on the table - a decision, situation, draft, or plan, in the person's words. Leave empty to have the session ask for it." }
     }, required: ["mode"] } }
 ].map(function (t) { return Object.assign({ annotations: { readOnlyHint: true } }, t); }).concat([
   { name: "save_session",
-    description: "Save what a guided session learned into Inner Table. Call this when a session started with start_session closes, with the complete updated profile(s) the session instructions describe. It merges into the existing profile - nothing is ever erased - and the person's app picks it up on its next sync.",
+    description: "Save what a session started with start_session learned into Inner Table, when it closes, exactly as the session instructions describe: updated profiles, a conversation's note, and a meeting's round-of-the-table readings and summary. Everything merges into what is there - nothing is ever erased - and the person's app picks it up on its next sync.",
     inputSchema: { type: "object", properties: {
-      profiles: { type: "string", description: "The complete updated profile(s), each in its own ```markdown fenced block with YAML frontmatter and the six narrative sections." }
-    }, required: ["profiles"] },
+      profiles: { type: "string", description: "Complete updated profile(s), each in its own ```markdown fenced block with YAML frontmatter and the six narrative sections." },
+      journal: { type: "string", description: "For a talk session: the conversation note, as a ```journal block with summary: and parts: lines." },
+      readings: { type: "array", description: "For a meeting: every reading from the round of the table.",
+        items: { type: "object", properties: {
+          from: { type: "string", description: "The part giving the reading (name or slug)" },
+          toward: { type: "string", description: "The part it is about (name or slug)" },
+          feeling: { type: "string", enum: ["hostile", "wary", "neutral", "warm", "close"] }
+        }, required: ["from", "toward", "feeling"] } },
+      meeting: { type: "object", description: "For a meeting: what it was about and where it landed.",
+        properties: {
+          topic: { type: "string" },
+          synthesis: { type: "string", description: "Self's synthesis, 1-3 sentences" },
+          voices: { type: "array", items: { type: "object", properties: { name: { type: "string" }, line: { type: "string" } } } }
+        } }
+    } },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true } }
 ]);
 
 /* The same sessions as MCP prompts, for clients that offer a prompt menu. */
 var PROMPTS = [
+  { name: "talk", description: "Just talk - an open conversation that knows your parts and remembers your last conversations.", arguments: [] },
   { name: "checkin", description: "Check in with one part - picks up where you left off and aims at where its profile is thin.",
     arguments: [{ name: "part", description: "The part's slug or name", required: true }] },
   { name: "embody", description: "Hear one part speak for itself about something real.",
@@ -228,6 +250,7 @@ function promptArgs(name, a) {
   a = a || {};
   var list = function (v) { return String(v || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean); };
   if (name === "mapping") return { mode: name, parts: [a.part_a, a.part_b].filter(Boolean) };
+  if (name === "talk" || name === "intake") return { mode: name };
   if (name === "meeting") return { mode: name, parts: list(a.parts), material: a.material };
   return { mode: name, parts: a.part ? [a.part] : [], material: a.material };
 }
@@ -259,7 +282,7 @@ async function handleRpc(user, msg) {
       protocolVersion: PROTOCOLS.indexOf(asked) >= 0 ? asked : PROTOCOLS[0],
       capabilities: { tools: {}, prompts: {} },
       serverInfo: { name: "inner-table", version: "1.0.0" },
-      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Call list_parts first. When the person wants to check in with a part, hear from one, map two, hold a table meeting, or meet a new part, call start_session and follow the instructions it returns for the rest of the conversation - they carry the part's history, so greet it as someone already known - and when the session closes, save what it learned with save_session. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
+      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Whenever the person wants to talk - about how they are, something on their mind, or their parts - call start_session first (mode talk if they just want to talk; checkin, embody, mapping, meeting or intake for something specific) and follow the instructions it returns for the rest of the conversation. They carry the person's parts and earlier conversations, so greet them as someone already known. When the conversation closes, save what it learned with save_session, exactly as those instructions say. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
     });
   }
   if (msg.method === "ping") return ok({});

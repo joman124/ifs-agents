@@ -47,7 +47,7 @@
 
   function anyAiMessage(url) {
     return "Here is a private link to my Inner Table profile - my inner parts, from Internal Family Systems self-exploration: " +
-      url + "\n\nPlease open it and use it to understand my parts. When I ask for a check-in with a part, a part's reaction to something, or a table meeting, open the session link the page describes and follow those instructions for the rest of our conversation. This is journalling, not therapy: no trauma processing and no unburdening.";
+      url + "\n\nPlease open it and use it to understand my parts. Whenever I want to talk - about how I am, or my parts - open the session link the page describes (mode talk, unless I ask for a check-in, a part's reaction, or a table meeting) and follow those instructions for the rest of our conversation. This is journalling, not therapy: no trauma processing and no unburdening.";
   }
 
   function html(provider) {
@@ -56,7 +56,7 @@
       '<p class="dim" style="margin:14px 2px 6px">' + p.lead + "</p>" +
       "<ol>" + p.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol>" +
       '<div id="bridgeBox" class="bridge-box"><p class="dim" style="margin:0">Checking for your link&hellip;</p></div>' +
-      '<p class="dim" style="margin:10px 2px 0">Your AI can <b>read</b> your parts and your table, and <b>run Inner Table&rsquo;s own sessions</b> with them &mdash; ask it to &ldquo;check in with The Critic&rdquo; or &ldquo;hold a table meeting about the job offer&rdquo;, and it picks up from what your parts have already said. When a check-in, mapping or new-part session ends, it <b>saves</b> what was learned straight into your parts: merged in, never erasing anything, and here the next time you open the app. It cannot delete a part, see your pictures, or read your session transcripts or keys. Anyone holding the link can do the same, so keep it private; revoke it any time.</p>' +
+      '<p class="dim" style="margin:10px 2px 0">Your AI can <b>talk with you as someone who knows your parts</b> &mdash; just start talking, or ask it to &ldquo;check in with The Critic&rdquo; or &ldquo;hold a table meeting about the job offer&rdquo; &mdash; using Inner Table&rsquo;s own sessions. When a conversation ends it <b>saves</b> what was learned: profile updates, a meeting&rsquo;s readings, and a short note of the conversation, so the next one &mdash; there or here &mdash; picks up where you left off. Everything merges in and nothing is erased. It cannot delete a part, see your pictures, or read your session transcripts or keys. Anyone holding the link can do the same, so keep it private; revoke it any time.</p>' +
       "</div>";
   }
 

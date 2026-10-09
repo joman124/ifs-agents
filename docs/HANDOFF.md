@@ -73,7 +73,10 @@ api/                 serverless functions (Vercel): signup, login, sync,
                      start_session / prompts serve the app's own session prompts,
                      built by api/_sessions.js from app/js - see vercel.json;
                      save_session merges a session's profiles into the state
-                     AND an inbox key the app folds in on pull and acks on push)
+                     AND an inbox key the app folds in on pull and acks on push;
+                     it also carries a meeting's readings + card and a "just
+                     talk" conversation note - the synced `journal`, which is
+                     what lets the next conversation, in either place, remember)
   root package.json  holds the `web-push` dependency for the functions only
 test/                node test/run.js — 741 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)

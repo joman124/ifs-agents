@@ -344,16 +344,27 @@
   /* Extract fenced profile blocks from an LLM reply that may contain prose
      around one or more ```markdown ...``` blocks each holding a profile.
      Falls back to bare profile text - one file, or a folder's worth. */
+  /* Every fenced block in a reply, paired opener-to-closer whatever its
+     language. Matching only the languages a profile uses let a block in any
+     other language (a ```journal note, say) throw the pairing off by one, so
+     the profile after it was read as the gap between two blocks - and lost. */
+  function fencedBlocks(text) {
+    var out = [];
+    var fence = /```([\w-]*)[ \t]*\r?\n([\s\S]*?)```/g;
+    var m;
+    while ((m = fence.exec(String(text || ""))) !== null) out.push({ lang: m[1].toLowerCase(), body: m[2] });
+    return out;
+  }
+
   function extractProfiles(text) {
     var found = [];
-    var fence = /```(?:markdown|md|yaml)?\s*\n([\s\S]*?)```/g;
-    var m;
-    while ((m = fence.exec(text)) !== null) {
-      var block = m[1];
+    fencedBlocks(text).forEach(function (b) {
+      if (["", "markdown", "md", "yaml"].indexOf(b.lang) < 0) return;
+      var block = b.body;
       if (/^\s*---/.test(block) && /\nname\s*:/.test("\n" + block)) {
         try { found.push(parse(block)); } catch (e) { /* skip non-profile blocks */ }
       }
-    }
+    });
     if (!found.length && /^﻿?\s*---/.test(stripLeadingComments(text))) {
       splitDocs(stripLeadingComments(text)).forEach(function (doc) {
         try { found.push(parse(doc)); } catch (e) { /* not a bare profile */ }
@@ -482,8 +493,32 @@
     return { voices: voices, synthesis: self ? firstSentences(dropFillerLead(self), 3, 260) : "" };
   }
 
+  /* The conversation note a "just talk" session closes with:
+       ```journal
+       summary: what it was about
+       parts: slug-a, slug-b
+       ```
+     Returns { summary, parts } or null. A note with no summary is no note. */
+  function extractJournal(text) {
+    var b = fencedBlocks(text).filter(function (x) { return x.lang === "journal"; })[0];
+    if (!b) return null;
+    var summary = "", parts = [], onSummary = false;
+    b.body.split(/\r?\n/).forEach(function (line) {
+      var m;
+      if ((m = /^\s*summary\s*:\s*(.*)$/i.exec(line))) { summary = m[1]; onSummary = true; return; }
+      if ((m = /^\s*parts\s*:\s*(.*)$/i.exec(line))) {
+        parts = m[1].replace(/[\[\]]/g, "").split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+        onSummary = false;
+        return;
+      }
+      if (onSummary && line.trim()) summary += " " + line.trim();   // a summary that wrapped
+    });
+    summary = summary.trim();
+    return summary ? { summary: summary, parts: parts } : null;
+  }
+
   window.IFS.md = {
-    serialize: serialize, parse: parse, extractProfiles: extractProfiles, analyze: analyze,
+    serialize: serialize, parse: parse, extractProfiles: extractProfiles, analyze: analyze, extractJournal: extractJournal,
     splitVoices: splitVoices, firstSentences: firstSentences, summarizeMeeting: summarizeMeeting
   };
 })();

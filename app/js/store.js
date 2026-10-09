@@ -40,8 +40,14 @@
          may just not have it yet. Without a record that a deletion happened,
          every other signed-in device pushed the part straight back and the
          delete undid itself. A tombstone is that record, and it travels. */
-      deleted: { parts: {}, transcripts: {} },  // slug/id -> ISO time of deletion
+      deleted: { parts: {}, transcripts: {}, journal: {} },  // slug/id -> ISO time of deletion
       transcripts: [],  // {id, date, mode, title, parts:[slugs], text}
+      /* What each open conversation was about, in a few sentences - written
+         at the close of a "just talk" session, in the app or by the person's
+         own AI through their link - so the next conversation can pick up the
+         thread. Unlike transcripts these do travel to that AI: they are the
+         memory, the transcript is the record. */
+      journal: [],      // {id, date, via: "app"|"ai", summary, parts:[slugs]}
       draft: null,      // in-progress session checkpoint {mode, slugs, material, messages, updated}
       table: {          // Fraser's Table: the room, built once and edited after
         built: false,
@@ -97,8 +103,10 @@
     if (parsed.deleted && typeof parsed.deleted === "object") {
       if (parsed.deleted.parts) state.deleted.parts = parsed.deleted.parts;
       if (parsed.deleted.transcripts) state.deleted.transcripts = parsed.deleted.transcripts;
+      if (parsed.deleted.journal) state.deleted.journal = parsed.deleted.journal;
     }
     if (parsed.transcripts) state.transcripts = parsed.transcripts;
+    if (Array.isArray(parsed.journal)) state.journal = parsed.journal.map(S.normalizeJournal).filter(Boolean);
     if (parsed.draft) state.draft = parsed.draft;
     if (parsed.table) Object.assign(state.table, parsed.table);
     if (parsed.settings) Object.assign(state.settings, parsed.settings);
@@ -440,6 +448,47 @@
     return m;
   }
 
+  /* Journal entries merge by id, newest last, capped - from a sync, a backup,
+     or a save the person's AI made. A tombstone keeps a deleted note deleted. */
+  function mergeJournal(list, viaSync) {
+    var have = {};
+    state.journal.forEach(function (j) { have[j.id] = 1; });
+    (Array.isArray(list) ? list : []).forEach(function (raw) {
+      var j = S.normalizeJournal(raw);
+      if (!j || have[j.id]) return;
+      if (viaSync && state.deleted.journal[j.id]) return;
+      if (!viaSync) delete state.deleted.journal[j.id];
+      have[j.id] = 1;
+      state.journal.push(j);
+    });
+    state.journal.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)); });
+    if (state.journal.length > S.JOURNAL_CAP) state.journal = state.journal.slice(-S.JOURNAL_CAP);
+  }
+
+  function addJournal(entry) {
+    var j = S.normalizeJournal(Object.assign({ id: "j" + Math.random().toString(36).slice(2, 10), date: S.todayISO() }, entry));
+    if (!j) return null;
+    mergeJournal([j], false);
+    save();
+    return j.id;
+  }
+
+  function deleteJournal(id) {
+    state.journal = state.journal.filter(function (j) { return j.id !== id; });
+    state.deleted.journal[id] = nowISO();
+    save();
+  }
+
+  /* What a session saved by the person's AI brings besides profiles: meeting
+     cards and conversation notes. Merged by id, so applying the same save
+     twice is harmless. */
+  function mergeHistory(h) {
+    if (!h || typeof h !== "object") return;
+    if (Array.isArray(h.meetings) && h.meetings.length) mergeTable({ meetings: h.meetings });
+    if (Array.isArray(h.journal) && h.journal.length) mergeJournal(h.journal, true);
+    save();
+  }
+
   function addTranscript(t) {
     t.id = "t" + Math.random().toString(36).slice(2, 10);
     state.transcripts.unshift(t);
@@ -482,6 +531,7 @@
       parts: parts,
       deleted: state.deleted,
       transcripts: state.transcripts,
+      journal: state.journal,
       table: table
     }, null, 2);
   }
@@ -653,8 +703,8 @@
   var TOMBSTONE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
   function pruneTombstones() {
     var cutoff = new Date(Date.now() - TOMBSTONE_TTL_MS).toISOString();
-    ["parts", "transcripts"].forEach(function (kind) {
-      var m = state.deleted[kind];
+    ["parts", "transcripts", "journal"].forEach(function (kind) {
+      var m = state.deleted[kind] || (state.deleted[kind] = {});
       Object.keys(m).forEach(function (k) { if (m[k] < cutoff) delete m[k]; });
     });
   }
@@ -679,7 +729,7 @@
        re-added, and the merge's own bookkeeping would make it look newer than
        the tombstone that should bury it. */
     if (viaSync && data.deleted && typeof data.deleted === "object") {
-      ["parts", "transcripts"].forEach(function (kind) {
+      ["parts", "transcripts", "journal"].forEach(function (kind) {
         var incoming = data.deleted[kind];
         if (!incoming || typeof incoming !== "object") return;
         Object.keys(incoming).forEach(function (k) {
@@ -695,6 +745,7 @@
       state.transcripts = state.transcripts.filter(function (t) {
         return !state.deleted.transcripts[t.id];
       });
+      state.journal = state.journal.filter(function (j) { return !state.deleted.journal[j.id]; });
     }
 
     Object.keys(data.parts).forEach(function (k) {
@@ -723,6 +774,7 @@
       });
       state.transcripts.sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
     }
+    if (Array.isArray(data.journal)) mergeJournal(data.journal, viaSync);
     pruneTombstones();
     save();
     return count;
@@ -946,6 +998,9 @@
     addMeeting: addMeeting,
     updateMeeting: updateMeeting,
     deleteTranscript: deleteTranscript,
+    addJournal: addJournal,
+    deleteJournal: deleteJournal,
+    mergeHistory: mergeHistory,
     exportAll: exportAll,
     exportImages: exportImages,
     importImages: importImages,

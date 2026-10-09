@@ -608,6 +608,90 @@
     ].filter(function (x, i, a) { return !(x === "" && a[i - 1] === ""); }).join("\n");
   }
 
+  /* ---------- just talk ----------
+     The open door: no part chosen, no agenda. The person brings whatever is
+     on their mind and the guide - who knows the whole system and remembers
+     earlier conversations - listens for which parts are in it. It can turn
+     into a check-in, a part speaking for itself, or nothing but a good
+     conversation; any of those is the session working. */
+
+  function systemLines(roster) {
+    return roster.map(function (p) {
+      var bits = [p.name + (p.type !== "unknown" ? " (" + p.type + ")" : "")];
+      if (p.positive_intent) bits.push("job: " + clip(p.positive_intent, 140));
+      var words = clip(p.narrative.in_its_own_words, 160);
+      if (words) bits.push("in its words: \"" + words + "\"");
+      var last = (p.sessions || []).slice(-1)[0];
+      if (last) bits.push("last met " + last.date + (last.note ? " - " + clip(last.note, 100) : ""));
+      var declined = S.CATEGORIES.filter(function (c) { return p.coverage[c] === "declined"; });
+      if (declined.length) bits.push("declined: " + declined.map(function (c) { return S.CATEGORY_LABELS[c]; }).join(", "));
+      return "- " + bits.join("; ");
+    });
+  }
+
+  var JOURNAL_OUTPUT = [
+    "## When the person closes the conversation",
+    "",
+    "The app will tell you the session is closing. When it does, respond with:",
+    "1. A one-or-two-sentence warm closing reflection.",
+    "2. A conversation note, so the next conversation can pick up the thread, in its own fenced block exactly like this:",
+    "```journal",
+    "summary: 2-4 plain sentences - what the person brought, which parts showed up and how, anything left open or flagged for next time. Their words where they matter; no diagnosis, no trauma detail.",
+    "parts: the slugs of any parts that came up, comma-separated (empty if none)",
+    "```",
+    "3. Only if you learned something new about a part - its own words, a fear, a need, how it relates to another - the COMPLETE updated profile for that part, each inside its own fenced block: ```markdown ... ``` - full YAML frontmatter plus all six narrative sections (In its own words / Origin story / What activates it / How it relates to other parts / What it needs / Session notes), in that order, built on its profile file below. A part that only came up in passing gets no profile, just a mention in the note.",
+    "",
+    "Profile rules (when you write one):",
+    "- Only what was said. Never invent, never delete what was already there.",
+    "- Quote the part's own phrases in the narrative sections.",
+    "- Set coverage honestly; never downgrade partial/complete; declined stays declined.",
+    "- Append one sessions entry with today's date (" + S.todayISO() + "), mode: checkin, the categories touched, and a one-line note.",
+    "- Append a dated entry to the TOP of Session notes; never rewrite old notes."
+  ].join("\n");
+
+  function talk(roster, table, journal) {
+    roster = roster || [];
+    var recent = (journal || []).slice(-5).reverse();
+    var history = table ? pastMeetings(table, roster) : [];
+    var edges = betweenLines(roster).filter(function (l) { return / (protects|is protected by|is polarized with|conflicts with|is allied with) /.test(l); });
+    return [
+      "This is an open conversation, not a structured session. The person has come to talk - about their day, something on their mind, a part, or nothing in particular - and you are the same guide they have talked with before. You know their inner system, and you remember earlier conversations.",
+      "",
+      GUIDE,
+      "",
+      SAFETY,
+      "",
+      "## What you already know - their inner system",
+      "",
+      "Shared memory, not a file to read out. Use it the way a friend who knows them well would: never ask for what is known as if it were new, show you remember, and believe them if something has changed.",
+      "",
+      roster.length ? systemLines(roster).join("\n") : "- No parts have been profiled yet.",
+      edges.length ? "\nHow they relate:\n" + edges.join("\n") : "",
+      history.length ? "\nRecent table meetings:\n" + history.join("\n") : "",
+      "",
+      recent.length
+        ? "## Your last conversations (newest first)\n\n" + recent.map(function (j) {
+            return "- " + (j.date || "earlier") + (j.via === "ai" ? " (in their own AI app)" : "") + ": " + j.summary;
+          }).join("\n")
+        : "## Your last conversations\n\nThis is your first open conversation with them.",
+      "",
+      "## How the conversation goes",
+      "1. Open warmly and briefly. If there is a last conversation above, pick up one thread from it - lightly, as a question, never a recap ('Last time the job interview was coming up - how did it go?'). Then ask what is on their mind today. If nothing comes, the daily question works: 'Who's been loudest in there lately?'",
+      "2. Mostly listen. Reflect in a sentence, ask one thing, follow them. It is fine for the whole conversation to be just this.",
+      "3. Listen for parts. When what they describe sounds like a part they know, name it as a question, using its name: 'That sounds a bit like <the part> - does it?' When it sounds like a voice they haven't met, wonder aloud whether there is a part there worth getting to know. Never insist; they know their system better than you.",
+      "4. Offer, never push. If a part is clearly present, you may offer to spend a few minutes with it - find it, notice how they feel toward it, get curious (the arc above) - or to let it speak for itself for a moment. If they say yes, do it well; then come back to the conversation. Before anything tender, ask permission, exactly as in a check-in.",
+      "5. When the conversation winds down - or they say they are done - close as described below.",
+      "",
+      "## The profile files (update only the parts that came up, at the close)",
+      "",
+      roster.length ? roster.map(profileBlock).join("\n\n") : "(none yet)",
+      "",
+      JOURNAL_OUTPUT,
+      "",
+      "Begin now: open the conversation" + (recent.length ? ", picking up one thread from last time," : "") + " and ask what is on their mind."
+    ].join("\n");
+  }
+
   /* Turns arbitrary raw text (journaling, fragments, a chat excerpt) into a
      full profile, honestly - only categories the text actually supports get
      marked partial/complete, so the coverage percentage stays truthful. */
@@ -781,10 +865,25 @@
     else if (mode === "checkin") sys = checkin(parts[0], roster);
     else if (mode === "mapping") sys = mapping(parts, roster);
     else if (mode === "embody") sys = embody(parts[0], material, roster);
+    else if (mode === "talk") sys = talk(roster, table, opts.journal);
     else sys = meeting(parts, material, table, roster);
     sys = sys.replace(/The app will tell you the session is closing\. When it does, respond with:/,
       "When the person says the session is over - 'let's close', 'that's enough for today', 'end the session' - respond with:");
-    var writesProfiles = mode === "intake" || mode === "checkin" || mode === "mapping";
+    var writesProfiles = mode === "intake" || mode === "checkin" || mode === "mapping" || mode === "talk";
+    if (opts.save && mode === "talk") {
+      sys = sys.replace(/2\. A conversation note, so the next conversation[\s\S]*?3\. Only if you learned something new about a part/,
+        "2. Save the conversation: call the save_session tool once, with journal set to a conversation note in exactly this form (so the next conversation can pick up the thread):\n" +
+        "```journal\nsummary: 2-4 plain sentences - what the person brought, which parts showed up and how, anything left open or flagged for next time. Their words where they matter; no diagnosis, no trauma detail.\nparts: the slugs of any parts that came up, comma-separated (empty if none)\n```\n" +
+        "and profiles set to the profile block(s) described next, if any. Do not paste either into the chat; when it saves, say so in one sentence. If it fails, show them the blocks and ask them to paste them into Inner Table - Add a part.\n" +
+        "3. Only if you learned something new about a part");
+    }
+    if (opts.save && mode === "meeting") {
+      sys = sys.replace("say plainly that the app can record these readings, and that they thicken the threads between those parts on the map.",
+        "say plainly that you will save them to Inner Table, where they thicken the threads between those parts on the map.");
+      sys = sys.replace(/6\. Close: (.*)$/m, function (m, rest) {
+        return "6. Close: " + rest + " Then save the meeting: call the save_session tool once, with readings - every reading given in the round, as {from, toward, feeling}, using each part's exact name and one of the five words (leave passes out) - and meeting - {topic: what was on the table, in a few words; synthesis: Self's synthesis in one to three sentences; voices: [{name, line}] with one line per part on where it landed}. Do not paste these into the chat; when it saves, say so in one sentence.";
+      });
+    }
     if (opts.save) {
       sys = sys.replace(/2\. The COMPLETE updated profile for (.*?), each inside its own fenced block: .*? in that order\./, function (m, who) {
         return SAVE_STEP.replace("$1", who);
@@ -804,7 +903,7 @@
   }
 
   window.IFS.templates = {
-    intake: intake, checkin: checkin, mapping: mapping,
+    intake: intake, checkin: checkin, mapping: mapping, talk: talk,
     embody: embody, meeting: meeting, portable: portable, convertNotes: convertNotes,
     voicePacing: voicePacing,
     CLOSE_INSTRUCTION: "We're closing the session now. Please give your short closing reflection and then output the complete updated profile(s) in fenced markdown blocks, exactly as instructed."

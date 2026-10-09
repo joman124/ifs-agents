@@ -9,11 +9,12 @@
 "use strict";
 
 var fs = require("fs");
+var crypto = require("crypto");
 var path = require("path");
 var vm = require("vm");
 
 var MODULES = ["schema", "markdown", "questions", "reference", "templates"];
-var MODES = ["intake", "checkin", "mapping", "embody", "meeting"];
+var MODES = ["talk", "checkin", "embody", "meeting", "mapping", "intake"];
 var IFS = null;
 
 function load() {
@@ -85,7 +86,7 @@ function build(state, args) {
   if (mode === "meeting" && picked.length < 2) {
     return { error: "A meeting needs at least two parts. The person's parts are: " + known + "." };
   }
-  if (mode === "intake") picked = [];
+  if (mode === "intake" || mode === "talk") picked = [];
   if (mode === "meeting" && asked.length && table && table.built) {
     // parts named for this meeting take a seat at the table for it, whatever
     // the saved seating says - the person asked for them
@@ -93,8 +94,9 @@ function build(state, args) {
     picked.forEach(function (p) { table.seats[p.slug] = "table"; });
   }
 
+  var journal = (Array.isArray(state.journal) ? state.journal : []).map(S.normalizeJournal).filter(Boolean);
   var text = I.templates.portable(mode, picked, str(args.material), table,
-    { roster: roster, bridge: true, save: !!args.canSave });
+    { roster: roster, journal: journal, bridge: true, save: !!args.canSave });
   return { text: text };
 }
 
@@ -127,41 +129,131 @@ function mergeOne(S, existing, incoming, stamp) {
   return merged;
 }
 
-/* text: one or more ```markdown profile blocks, as the session prompt asks
-   for. Returns { parts: [merged part...], names } or { error }. Pure: the
-   caller writes the result. */
-function prepareSave(state, text) {
+var FEELING_WORDS = { hostile: 1, wary: 2, neutral: 3, warm: 4, close: 5 };
+function ratingOf(v) {
+  if (typeof v === "number" && v >= 1 && v <= 5) return Math.round(v);
+  return FEELING_WORDS[str(String(v || "")).toLowerCase()] || 0;
+}
+
+/* args: { profiles, journal, readings, meeting } - any of them, from a
+   session's close (see the session prompts). Returns
+   { parts, meetings, journal, said } or { error }. Pure: the caller writes. */
+function prepareSave(state, args) {
   var I = load();
   var S = I.schema, MD = I.md;
-  text = typeof text === "string" ? text : "";
-  if (!text.trim()) return { error: "profiles was empty - pass the complete updated profile(s), each in its own ```markdown block." };
-  if (text.length > MAX_TEXT) return { error: "That is too long to be a profile. Pass only the profile block(s)." };
-
-  var res = MD.analyze(text);
-  var found = res.profiles.length ? res.profiles : (res.salvage ? [res.salvage] : []);
-  if (!found.length) return { error: "No profile could be read from that. Each profile needs YAML frontmatter with at least a name, inside a ```markdown block." };
-  if (found.length > MAX_PROFILES) return { error: "At most " + MAX_PROFILES + " profiles can be saved at once." };
+  args = args || {};
+  var text = typeof args.profiles === "string" ? args.profiles : "";
+  var jtext = typeof args.journal === "string" ? args.journal : "";
+  var readings = Array.isArray(args.readings) ? args.readings : [];
+  var meeting = args.meeting && typeof args.meeting === "object" ? args.meeting : null;
+  if (!text.trim() && !jtext.trim() && !readings.length && !meeting) {
+    return { error: "nothing to save - pass profiles, a journal note, or a meeting's readings." };
+  }
+  if (text.length + jtext.length > MAX_TEXT || readings.length > 200) {
+    return { error: "That is too long to be a session. Pass only what the session prompt asks for." };
+  }
 
   var bySlug = {};
   partsOf(state).forEach(function (p) {
     var n = S.normalizePart(p);
     if (n) bySlug[n.slug] = Object.assign(n, { image: "", image_at: "" });
   });
+  var find = function (who) {
+    var w = str(String(who || "")).toLowerCase();
+    if (!w) return null;
+    return Object.keys(bySlug).map(function (k) { return bySlug[k]; })
+      .filter(function (p) { return p.slug.toLowerCase() === w || p.name.toLowerCase() === w; })[0] || null;
+  };
   var stamp = nowISO();
-  var out = [];
-  found.forEach(function (raw) {
-    var clean = S.normalizePart(raw);
-    if (!clean) return;
-    out.push(mergeOne(S, bySlug[clean.slug], clean, stamp));
+  var today = stamp.slice(0, 10);
+  var changed = {};
+  var said = [];
+
+  // profiles
+  if (text.trim()) {
+    var res = MD.analyze(text);
+    var found = res.profiles.length ? res.profiles : (res.salvage ? [res.salvage] : []);
+    if (!found.length) return { error: "No profile could be read from that. Each profile needs YAML frontmatter with at least a name, inside a ```markdown block." };
+    if (found.length > MAX_PROFILES) return { error: "At most " + MAX_PROFILES + " profiles can be saved at once." };
+    found.forEach(function (raw) {
+      var clean = S.normalizePart(raw);
+      if (!clean) return;
+      var merged = mergeOne(S, bySlug[clean.slug], clean, stamp);
+      bySlug[merged.slug] = merged;
+      changed[merged.slug] = 1;
+    });
+  }
+
+  // a meeting's round of the table: the same recording the app's round does
+  var picked = {}, unknown = [];
+  readings.forEach(function (r) {
+    if (!r || typeof r !== "object") return;
+    var from = find(r.from), to = find(r.toward || r.to), rating = ratingOf(r.feeling || r.rating);
+    if (!from || !to || !rating || from === to) { unknown.push(String((r && r.from) || "?") + " -> " + String((r && (r.toward || r.to)) || "?")); return; }
+    (picked[from.slug] = picked[from.slug] || {})[to.slug] = rating;
   });
-  if (!out.length) return { error: "No profile with a name could be read from that." };
-  return { parts: out, names: out.map(function (p) { return p.name; }) };
+  if (readings.length && !Object.keys(picked).length) {
+    return { error: "None of those readings named two of the person's parts with one of: hostile, wary, neutral, warm, close." };
+  }
+  var round = S.applyReadings(function (slug) { return bySlug[slug] || null; }, picked, today);
+  round.touched.forEach(function (slug) { bySlug[slug].updated = stamp; changed[slug] = 1; });
+  round.changes.forEach(function (c) { said.push(c.from + " toward " + c.to + ": " + S.feelingLabel(c.rating).toLowerCase()); });
+
+  // the meeting card, so the next meeting remembers this one
+  var meetings = [];
+  if (meeting) {
+    var voices = (Array.isArray(meeting.voices) ? meeting.voices : []).filter(function (v) {
+      return v && typeof v.name === "string" && typeof v.line === "string";
+    }).slice(0, 12).map(function (v) { return { name: v.name.slice(0, 80), line: v.line.slice(0, 300) }; });
+    var inRoom = voices.map(function (v) { return find(v.name); }).filter(Boolean).map(function (p) { return p.slug; });
+    Object.keys(picked).forEach(function (sl) { if (inRoom.indexOf(sl) < 0) inRoom.push(sl); });
+    meetings.push({
+      id: "m-ai-" + crypto.randomBytes(5).toString("hex"),
+      date: today,
+      topic: str(meeting.topic).slice(0, 200),
+      parts: inRoom,
+      voices: voices,
+      synthesis: str(meeting.synthesis).slice(0, 1200),
+      readings: round.changes.length,
+      via: "ai"
+    });
+  }
+
+  // the conversation note
+  var journal = [];
+  if (jtext.trim()) {
+    var note = MD.extractJournal(/```journal/.test(jtext) ? jtext : "```journal\n" + jtext + "\n```");
+    if (!note) return { error: "The journal note needs a summary: line." };
+    journal.push(S.normalizeJournal({
+      id: "j-ai-" + crypto.randomBytes(5).toString("hex"), date: today, via: "ai",
+      summary: note.summary,
+      parts: note.parts.map(function (x) { var p = find(x); return p ? p.slug : null; }).filter(Boolean)
+    }));
+  }
+
+  var parts = Object.keys(changed).map(function (k) { return bySlug[k]; });
+  return { parts: parts, meetings: meetings, journal: journal.filter(Boolean),
+    names: parts.map(function (p) { return p.name; }), said: said, unknown: unknown };
 }
 
 /* Fold saved parts into a synced state blob, keeping whatever shape (object
    or array) it already had and every field this server does not know. */
-function applyToState(state, parts) {
+function applyToState(state, parts, history) {
   var next = Object.assign({}, state);
+  history = history || {};
+  if (history.meetings && history.meetings.length) {
+    var table = Object.assign({ meetings: [] }, state.table || {});
+    var haveM = {};
+    (table.meetings || []).forEach(function (m) { haveM[m.id] = 1; });
+    table.meetings = (table.meetings || []).concat(history.meetings.filter(function (m) { return !haveM[m.id]; })).slice(-60);
+    next.table = table;
+  }
+  if (history.journal && history.journal.length) {
+    var haveJ = {};
+    var cur = Array.isArray(state.journal) ? state.journal : [];
+    cur.forEach(function (j) { haveJ[j.id] = 1; });
+    next.journal = cur.concat(history.journal.filter(function (j) { return !haveJ[j.id]; })).slice(-60);
+  }
   var asArray = Array.isArray(state.parts);
   var map = {};
   partsOf(state).forEach(function (p) { if (p && p.slug) map[p.slug] = p; });
@@ -183,11 +275,15 @@ function applyToState(state, parts) {
    picked up yet folded in, so a second session right after a first one
    already knows what the first one learned. */
 function overlay(state, pending) {
-  var parts = [];
+  var parts = [], meetings = [], journal = [];
   (pending || []).forEach(function (entry) {
-    (entry && Array.isArray(entry.parts) ? entry.parts : []).forEach(function (p) { parts.push(p); });
+    if (!entry) return;
+    (Array.isArray(entry.parts) ? entry.parts : []).forEach(function (p) { parts.push(p); });
+    (Array.isArray(entry.meetings) ? entry.meetings : []).forEach(function (m) { meetings.push(m); });
+    (Array.isArray(entry.journal) ? entry.journal : []).forEach(function (j) { journal.push(j); });
   });
-  return parts.length ? applyToState(state, parts) : state;
+  return parts.length || meetings.length || journal.length
+    ? applyToState(state, parts, { meetings: meetings, journal: journal }) : state;
 }
 
 module.exports = { build: build, MODES: MODES, partsOf: partsOf, prepareSave: prepareSave, applyToState: applyToState, overlay: overlay };

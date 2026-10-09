@@ -62,6 +62,12 @@ from markdown simply has none. Merging such a profile onto a stored part keeps
 the picture the part already had. JSON backups include it, and sync carries it
 on its own endpoint (`/api/sync-images`) rather than inside the profile blob.
 
+The meeting room on the Table tab has the same two fields on the table object
+(`table.image`, `table.image_at`), framed 16:9 instead of square, with the same
+rules: never in a prompt, in backups and the exported table file, and carried
+in the pictures blob as a field of its own (`room`) so no part's slug can
+collide with it.
+
 ### `relationships` entries
 
 ```yaml

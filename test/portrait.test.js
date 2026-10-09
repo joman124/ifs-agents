@@ -433,4 +433,143 @@ module.exports = async function (t) {
   t.ok(cl5.calls.every(function (k) { return !k.post || (k.body || "").indexOf("data:image") < 0; }),
     "and nothing it sends carries the first account's picture");
   t.ok(!cl5.images.bob, "so the second account's picture slot stays empty");
+
+  /* ================= the meeting room's photo ================= */
+  /* The room is one thing, so it has one photo, kept on the table object under
+     the same two fields a part uses and travelling in the same pictures blob -
+     as a field of its own, so no part can collide with it. */
+  var rm = H.load(["schema", "markdown", "store"]);
+  var RS = rm.IFS.schema, RST = rm.IFS.store;
+  RST.load();
+  RST.saveTable({ built: true, name: "The Round Room", room: "A circular room with one low window." });
+  t.eq([RST.state.table.image, RST.state.table.image_at], ["", ""], "a room starts with no photo");
+  t.eq(JSON.parse(RST.exportImages()).room, undefined, "and says nothing about one in the pictures blob");
+
+  t.ok(RS.setImage(RST.state.table, JPEG, T1), "the same setter takes the room's photo");
+  RST.saveTable({});
+  t.eq(JSON.parse(RST.exportAll()).table.image, JPEG, "a backup carries it");
+  var bare = JSON.parse(RST.exportAll({ images: false })).table;
+  t.ok(!("image" in bare) && !("image_at" in bare), "the blob that syncs does not");
+  t.eq(bare.name, "The Round Room", "but is otherwise the same room");
+  t.eq(RST.state.table.image, JPEG, "and leaving it out takes nothing off the room");
+  t.eq(JSON.parse(RST.exportImages()).room, { image: JPEG, at: T1 }, "the pictures blob carries it as a field of its own");
+
+  /* last writer wins, by its own clock - and removal is a write */
+  function roomBlob(entry, parts) { return JSON.stringify({ app: "inner-table", kind: "images", version: 1, images: parts || {}, room: entry }); }
+  t.eq(RST.importImages(roomBlob({ image: JPEG2, at: T2 })), 1, "a newer room photo replaces an older one");
+  t.eq([RST.state.table.image, RST.state.table.image_at], [JPEG2, T2], "with its stamp");
+  t.eq(RST.importImages(roomBlob({ image: JPEG, at: T1 })), 0, "an older one is ignored");
+  t.eq(RST.importImages(roomBlob({ image: "", at: T3 })), 1, "a later removal beats the photo");
+  t.eq(RST.state.table.image, "", "so it is gone");
+  t.eq(RST.importImages(roomBlob({ image: JPEG2, at: T2 })), 0, "and the older copy cannot bring it back");
+  t.eq(RST.importImages(roomBlob({ image: "javascript:alert(1)", at: "2026-10-05T10:00:00.000Z" })), 0,
+    "an entry that claims a photo and is not one is ignored - it is not a removal either");
+  t.eq(RST.importImages(roomBlob(null)), 0, "a blob with no room entry leaves the room alone");
+
+  var plain = H.load(["schema", "markdown", "store"]);
+  plain.IFS.store.load();
+  plain.IFS.store.saveTable({ built: true, room: "A room." });
+  t.eq(plain.IFS.store.importImages(roomBlob({ image: JPEG, at: T1 })), 1, "a room that never had a photo takes the first it is offered");
+
+  /* nothing about the room's photo disturbs a part's, whatever the part is called */
+  var both = H.load(["schema", "markdown", "store"]);
+  both.IFS.store.load();
+  both.IFS.store.saveTable({ built: true, room: "A room." });
+  var namedRoom = both.IFS.schema.blankPart("Room");
+  both.IFS.schema.setImage(namedRoom, JPEG, T1);
+  both.IFS.store.upsertPart(namedRoom);
+  both.IFS.schema.setImage(both.IFS.store.state.table, JPEG2, T2);
+  both.IFS.store.saveTable({});
+  var blobBoth = JSON.parse(both.IFS.store.exportImages());
+  t.eq([blobBoth.images.room.image, blobBoth.room.image], [JPEG, JPEG2], "a part called Room and the room each keep their own photo");
+
+  /* the fingerprint covers it, so a change is worth sending and a text edit is not */
+  var fa = H.load(["schema", "markdown", "store"]), fb = H.load(["schema", "markdown", "store"]);
+  [fa, fb].forEach(function (e) { e.IFS.store.load(); e.IFS.store.saveTable({ built: true, room: "A room." }); });
+  fa.IFS.schema.setImage(fa.IFS.store.state.table, JPEG, T1);
+  fa.IFS.store.saveTable({});
+  t.ok(fa.IFS.store.imageFingerprint() !== fb.IFS.store.imageFingerprint(), "a store with a room photo differs from one without");
+  fb.IFS.store.importImages(fa.IFS.store.exportImages());
+  t.eq(fb.IFS.store.imageFingerprint(), fa.IFS.store.imageFingerprint(), "and agrees once it has been given it");
+  t.eq(fb.IFS.store.imageFingerprint(fa.IFS.store.exportImages()), fa.IFS.store.imageFingerprint(),
+    "a blob and the store it came from have the same fingerprint");
+  fa.IFS.store.saveTable({ agreements: ["only the part holding the stick speaks"] });
+  t.eq(fa.IFS.store.imageFingerprint(), fb.IFS.store.imageFingerprint(), "editing the room's words does not change it");
+
+  /* restoring: a file that has a photo brings it back, one that has none never takes ours away */
+  var restored = H.load(["schema", "markdown", "store"]);
+  restored.IFS.store.load();
+  restored.IFS.store.importAll(RST.exportAll());
+  var withPhoto = H.load(["schema", "markdown", "store"]);
+  withPhoto.IFS.store.load();
+  withPhoto.IFS.store.saveTable({ built: true, room: "A room." });
+  withPhoto.IFS.schema.setImage(withPhoto.IFS.store.state.table, JPEG, T1);
+  withPhoto.IFS.store.saveTable({});
+  var restoreFrom = H.load(["schema", "markdown", "store"]);
+  restoreFrom.IFS.store.load();
+  restoreFrom.IFS.store.saveTable({ built: true, room: "A room." });
+  restoreFrom.IFS.schema.setImage(restoreFrom.IFS.store.state.table, JPEG2, T2);
+  restoreFrom.IFS.store.saveTable({});
+  withPhoto.IFS.store.importAll(restoreFrom.IFS.store.exportAll());
+  t.eq(withPhoto.IFS.store.state.table.image, JPEG2, "restoring a backup brings its room photo back");
+  var noPhotoFile = H.load(["schema", "markdown", "store"]);
+  noPhotoFile.IFS.store.load();
+  noPhotoFile.IFS.store.saveTable({ built: true, room: "A room." });
+  withPhoto.IFS.store.importAll(noPhotoFile.IFS.store.exportAll());
+  t.eq(withPhoto.IFS.store.state.table.image, JPEG2, "and a backup with none does not take it away");
+
+  var viaTable = H.load(["schema", "markdown", "store"]);
+  viaTable.IFS.store.load();
+  viaTable.IFS.store.importTable(restoreFrom.IFS.store.exportTable());
+  t.eq(viaTable.IFS.store.state.table.image, JPEG2, "an exported table file carries the photo too");
+
+  var hostileRoom = JSON.parse(restoreFrom.IFS.store.exportAll());
+  hostileRoom.table.image = "https://tracker.example/pixel.png";
+  var hr = H.load(["schema", "markdown", "store"]);
+  hr.IFS.store.load();
+  hr.IFS.store.importAll(JSON.stringify(hostileRoom));
+  t.eq([hr.IFS.store.state.table.image, hr.IFS.store.state.table.room], ["", "A room."],
+    "a hand-edited backup's bad room photo is dropped and the rest of the room still comes in");
+
+  /* the AI never sees it: the prompts name the room's fields, they do not dump it */
+  var pr = H.load(["schema", "markdown", "questions", "reference", "templates"]);
+  var seated = pr.IFS.schema.blankPart("The Critic");
+  seated.positive_intent = "keep us safe";
+  var tbl = { built: true, name: "The Round Room", room: "A circular room.", details: "", seats: { "the-critic": "table" },
+    tools: [], agreements: [], image: JPEG, image_at: T1 };
+  var promptText = pr.IFS.templates.meeting([seated, pr.IFS.schema.blankPart("The Dreamer")], "Should I go?", tbl) +
+    pr.IFS.templates.portable("meeting", [seated], "Should I go?", tbl);
+  t.ok(promptText.indexOf("data:image") < 0 && promptText.indexOf(JPEG.slice(30, 60)) < 0, "a meeting prompt has no photo in it");
+  t.ok(promptText.indexOf("A circular room.") >= 0, "though it still describes the room in words");
+
+  /* syncing it: the pictures endpoint, never the profile blob */
+  var cl6 = cloud();
+  var rdev = cl6.device("rae");
+  rdev.on();
+  rdev.ST.saveTable({ built: true, name: "The Round Room", room: "A circular room." });
+  rdev.S.setImage(rdev.ST.state.table, JPEG, T1);
+  rdev.ST.saveTable({});
+  await rdev.pull();
+  var rState = rdev.posts("/api/sync"), rImgs = rdev.posts("/api/sync-images");
+  t.ok(rState.length >= 1 && rState.every(function (k) { return k.body.indexOf("data:image") < 0; }),
+    "the room's photo is in none of the profile pushes");
+  t.eq(rImgs.length, 1, "it goes up once, on the pictures endpoint");
+  t.eq(JSON.parse(JSON.parse(rImgs[0].body).images).room.image, JPEG, "as the room entry");
+
+  var rdev2 = cl6.device("rae");
+  rdev2.on();
+  await rdev2.pull();
+  t.eq(rdev2.ST.state.table.image, JPEG, "another device gets the room's photo on its first pull");
+
+  rdev.on();
+  rdev.S.setImage(rdev.ST.state.table, "");
+  rdev.ST.saveTable({});
+  await rdev.settle();
+  await rdev2.pull();
+  t.eq(rdev2.ST.state.table.image, "", "taking it away reaches the other device");
+  rdev2.on();
+  rdev2.ST.saveTable({ agreements: ["anyone can call a break"] });
+  await rdev2.settle();
+  await rdev.pull();
+  t.eq(rdev.ST.state.table.image, "", "and an edit to the room's words from there does not bring it back");
 };

@@ -1345,3 +1345,40 @@ img.pic {
 }
 .crop-zoom { padding: 0; border: 0; background: none; height: 30px; accent-color: var(--accent); }
 .crop-zoom:focus { outline-offset: 2px; }
+
+/* ---------- the meeting room's photo ----------
+   A banner across the top of the room card, bleeding to its edges, that is
+   itself the way to change it. The card's own padding is 22px 20px, which is
+   what the negative margins undo. */
+.room-card.has-photo { overflow: hidden; }
+.room-photo {
+  position: relative; display: block; width: calc(100% + 40px);
+  margin: -22px -20px 18px; padding: 0; aspect-ratio: 16 / 9;
+  overflow: hidden; background: var(--surface2);
+}
+.room-photo img.pic { border-radius: 0; }
+.room-photo .portrait-cam { right: 12px; bottom: 12px; border-color: rgba(20, 17, 14, .55); }
+.room-photo:active img.pic { transform: scale(1.02); }
+.room-photo img.pic { transition: transform .25s ease; }
+.room-card .chip-btn + .chip-btn { margin-left: 8px; }
+
+/* the photo and its stand-in on the picture sheet */
+.pic-room {
+  display: block; width: min(100%, 320px); aspect-ratio: 16 / 9; overflow: hidden;
+  border-radius: 14px; border: 2px solid var(--accent); background: var(--accent-soft);
+}
+.pic-room.empty {
+  display: flex; align-items: center; justify-content: center;
+  border-style: dashed; color: var(--accent);
+}
+
+/* the same photo in the seating ceremony, before the room is named */
+.seating-photo {
+  width: min(260px, 72vw); aspect-ratio: 16 / 9; margin: 0 auto 22px;
+  border-radius: 16px; overflow: hidden; opacity: 0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+}
+.seating.go .seating-photo { animation: fadeUp .5s ease forwards; }
+
+/* framing a wide photo: the window takes the width, not a fixed square */
+.crop.wide { width: min(100%, 440px, 64dvh); }

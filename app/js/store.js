@@ -48,6 +48,8 @@
         name: "",       // what the person named the room, if they named it
         room: "",       // the room and the table, in their words
         details: "",    // what stood out on a second look
+        image: "",      // a photo of the room: a small JPEG data URL, like a part's picture
+        image_at: "",   // ...and when it was last set or removed (its own clock, see schema.js)
         tools: [],      // [{id, label, note}] - agreed tools in the room
         agreements: [], // ["only the part holding the stick speaks", ...]
         seats: {},      // slug -> "table" | "room" | "adjoining" | "away"
@@ -459,6 +461,7 @@
      thing to stop syncing would be every edit to every part. */
   function exportAll(opts) {
     var parts = state.parts;
+    var table = state.table;
     if (opts && opts.images === false) {
       parts = {};
       Object.keys(state.parts).forEach(function (k) {
@@ -467,6 +470,10 @@
         delete bare.image_at;
         parts[k] = bare;
       });
+      // the room's photo is a picture like any other: it goes with them
+      table = Object.assign({}, state.table);
+      delete table.image;
+      delete table.image_at;
     }
     return JSON.stringify({
       app: "inner-table",
@@ -475,13 +482,14 @@
       parts: parts,
       deleted: state.deleted,
       transcripts: state.transcripts,
-      table: state.table
+      table: table
     }, null, 2);
   }
 
   /* ---- pictures, as their own thing to sync ----
-     slug -> { image, at }. A removal is an entry too - an empty `image` under
-     a later `at` - because "this part has no picture any more" has to beat an
+     Each part's picture as slug -> { image, at }, and the meeting room's one
+     photo beside them as `room`. A removal is an entry too - an empty `image`
+     under a later `at` - because "this has no picture any more" has to beat an
      older copy of the picture on another device, or it simply comes back. */
   function imageEntries() {
     var out = {};
@@ -492,49 +500,73 @@
     return out;
   }
 
-  function exportImages() {
-    return JSON.stringify({ app: "inner-table", kind: "images", version: 1, images: imageEntries() });
+  /* The room keeps its photo on the table object, under the same two fields a
+     part uses. It is a field of its own in the blob rather than one more
+     slug, so no part - however its slug was typed into a backup - can
+     collide with it. */
+  function roomEntry() {
+    var t = state.table;
+    return (t.image || t.image_at) ? { image: t.image || "", at: t.image_at || "" } : null;
   }
 
-  function parseImageEntries(json) {
-    var out = {};
+  function exportImages() {
+    var out = { app: "inner-table", kind: "images", version: 1, images: imageEntries() };
+    var room = roomEntry();
+    if (room) out.room = room;
+    return JSON.stringify(out);
+  }
+
+  /* One entry from a blob, or null if it is nothing. An empty image under a
+     stamp is a removal and means exactly that. An entry that claims a picture
+     and is not one is nothing at all - not a removal either, or garbling a
+     blob would be a way to delete pictures. */
+  function cleanEntry(e) {
+    if (!e || typeof e !== "object") return null;
+    var said = e.image == null ? "" : e.image;
+    if (typeof said !== "string") return null;
+    var image = said ? S.cleanImage(said) : "";
+    if (said && !image) return null;
+    var at = S.cleanStamp(e.at);
+    return (image || at) ? { image: image, at: at } : null;
+  }
+
+  /* -> { parts: { slug: entry }, room: entry | null } */
+  function parseImages(json) {
+    var out = { parts: {}, room: null };
     var data = JSON.parse(json);
-    var raw = data && typeof data === "object" && data.images;
-    if (!raw || typeof raw !== "object") return out;
-    Object.keys(raw).forEach(function (slug) {
-      var e = raw[slug];
-      if (!e || typeof e !== "object") return;
-      var said = e.image == null ? "" : e.image;
-      if (typeof said !== "string") return;
-      /* An empty image under a stamp is a removal and means exactly that. An
-         entry that claims a picture and is not one is nothing at all - not a
-         removal either, or garbling a blob would be a way to delete pictures. */
-      var image = said ? S.cleanImage(said) : "";
-      if (said && !image) return;
-      var at = S.cleanStamp(e.at);
-      if (image || at) out[slug] = { image: image, at: at };
-    });
+    if (!data || typeof data !== "object") return out;
+    if (data.images && typeof data.images === "object") {
+      Object.keys(data.images).forEach(function (slug) {
+        var e = cleanEntry(data.images[slug]);
+        if (e) out.parts[slug] = e;
+      });
+    }
+    out.room = cleanEntry(data.room);
     return out;
   }
 
-  /* Last writer wins, per part, by the picture's own clock. A part this device
-     does not have is skipped (it was deleted, or its profile has not arrived
-     yet - the next pull brings both), and nothing here counts as an edit:
-     `updated` stays put, so travelling cannot make a part look newer than a
-     deletion. Returns how many parts changed. */
+  /* Does `entry` beat what `holder` - a part, or the table - has? Later stamp
+     wins; at a tie, a picture beats none. */
+  function takes(holder, entry) {
+    var have = holder.image_at || "";
+    var newer = entry.at > have || (entry.at === have && entry.image && !holder.image);
+    return !!newer && !(holder.image === entry.image && have === entry.at);
+  }
+  function take(holder, entry) { holder.image = entry.image; holder.image_at = entry.at; }
+
+  /* Last writer wins, per part and for the room, by the picture's own clock.
+     A part this device does not have is skipped (it was deleted, or its
+     profile has not arrived yet - the next pull brings both), and nothing here
+     counts as an edit: `updated` stays put, so travelling cannot make a part
+     look newer than a deletion. Returns how many pictures changed. */
   function importImages(json) {
-    var entries = parseImageEntries(json);
+    var got = parseImages(json);
     var changed = 0;
-    Object.keys(entries).forEach(function (slug) {
+    Object.keys(got.parts).forEach(function (slug) {
       var p = state.parts[slug];
-      if (!p) return;
-      var e = entries[slug], have = p.image_at || "";
-      var newer = e.at > have || (e.at === have && e.image && !p.image);
-      if (!newer || (p.image === e.image && have === e.at)) return;
-      p.image = e.image;
-      p.image_at = e.at;
-      changed++;
+      if (p && takes(p, got.parts[slug])) { take(p, got.parts[slug]); changed++; }
     });
+    if (got.room && takes(state.table, got.room)) { take(state.table, got.room); changed++; }
     if (changed) save();
     return changed;
   }
@@ -543,11 +575,13 @@
      pictures blob - holds. Sync compares the two to know whether anything is
      worth sending, so an edit to a profile's text never re-uploads photos. */
   function imageFingerprint(json) {
-    var entries = json ? parseImageEntries(json) : imageEntries();
-    return Object.keys(entries).sort().map(function (slug) {
-      var e = entries[slug];
+    var got = json ? parseImages(json) : { parts: imageEntries(), room: roomEntry() };
+    var lines = Object.keys(got.parts).sort().map(function (slug) {
+      var e = got.parts[slug];
       return slug + "|" + e.at + "|" + (e.image ? e.image.length : 0);
-    }).join("\n");
+    });
+    if (got.room) lines.push("~room|" + got.room.at + "|" + (got.room.image ? got.room.image.length : 0));
+    return lines.join("\n");
   }
 
   /* Export just the table - the room, its seats and tools, and the meeting
@@ -570,6 +604,11 @@
     if (!d || typeof d !== "object") return;
     var tb = {};
     ["name", "room", "details"].forEach(function (k) { if (typeof d[k] === "string") tb[k] = d[k]; });
+    /* The room's photo follows the rule a part's picture does: a file that has
+       one brings it back, a file that has none never takes ours away (taking
+       it away is an edit, and travels by its own stamp - importImages). */
+    var photo = S.cleanImage(d.image);
+    if (photo) { tb.image = photo; tb.image_at = S.cleanStamp(d.image_at); }
     if (Array.isArray(d.tools)) tb.tools = d.tools.filter(function (x) { return x && typeof x.label === "string"; });
     if (Array.isArray(d.agreements)) tb.agreements = d.agreements.filter(function (x) { return typeof x === "string"; });
     if (d.seats && typeof d.seats === "object" && !Array.isArray(d.seats)) tb.seats = d.seats;

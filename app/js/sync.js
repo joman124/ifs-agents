@@ -31,6 +31,13 @@
   var picturesKnown = false;
   var picturesAt = "";
 
+  /* Sessions the person's own AI saved through their link arrive in an inbox
+     beside the state (api/bridge.js). Each is folded in like a pasted
+     profile - merged, never replacing - and acknowledged only on the push
+     that carries it, so the server drops it once it is safely in the state. */
+  var pendingAck = [];
+  var lastFromAi = [];
+
   function authHeaders() {
     return { "Content-Type": "application/json", "Authorization": "Bearer " + AUTH.getToken() };
   }
@@ -45,8 +52,11 @@
     if (!AUTH.isLoggedIn() || !reconciled) return;
     if (AUTH.getUsername() !== reconciledFor) return;   // account changed under us
     try {
-      var r = await fetch("/api/sync", { method: "POST", headers: authHeaders(), body: JSON.stringify({ state: ST.exportAll({ images: false }) }) });
+      var ack = pendingAck.slice();
+      var r = await fetch("/api/sync", { method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ state: ST.exportAll({ images: false }), ack: ack }) });
       lastStatus = r.ok ? "synced" : "sync failed";
+      if (r.ok) pendingAck = pendingAck.filter(function (id) { return ack.indexOf(id) < 0; });
     } catch (e) { lastStatus = "offline"; return; }
     await pushPictures();
   }
@@ -111,6 +121,7 @@
       // it has not heard about must not undo ones made here
       try { ST.importAll(data.state, { sync: true }); }
       finally { suppressPush = false; }
+      applyInbox(data.inbox);
       await pullPictures();
       // importAll merges rather than replaces, so local now holds the union
       // of both devices - send that back so the server has it too
@@ -119,9 +130,30 @@
     } catch (e) { lastStatus = "offline"; return false; }
   }
 
+  /* A save is an edit made now, through the person's own AI: stamped as such
+     (mergePart without keepStamp), so it outranks an older copy anywhere. */
+  function applyInbox(inbox) {
+    lastFromAi = [];
+    (Array.isArray(inbox) ? inbox : []).forEach(function (entry) {
+      if (!entry || typeof entry.id !== "string") return;
+      (Array.isArray(entry.parts) ? entry.parts : []).forEach(function (raw) {
+        var clean = window.IFS.schema.normalizePart(raw);
+        if (!clean) return;
+        // deleted here after the AI saved it: the deletion is the later word
+        var stone = ST.state.deleted && ST.state.deleted.parts && ST.state.deleted.parts[clean.slug];
+        if (stone && (clean.updated || "") <= stone) return;
+        delete clean.image; delete clean.image_at;   // never carried; never cleared
+        ST.mergePart(clean);
+        if (lastFromAi.indexOf(clean.name) < 0) lastFromAi.push(clean.name);
+      });
+      if (pendingAck.indexOf(entry.id) < 0) pendingAck.push(entry.id);
+    });
+  }
+
   /* Signing out must also drop the permission to write. */
   function reset() {
     reconciled = false; reconciledFor = null; clearTimeout(pushTimer); lastStatus = "";
+    pendingAck = []; lastFromAi = [];
     picturesKnown = false; picturesAt = "";
   }
 
@@ -129,5 +161,7 @@
 
   ST.onChange(schedulePush);
 
-  window.IFS.sync = { push: push, pull: pull, reset: reset, status: status };
+  window.IFS.sync = { push: push, pull: pull, reset: reset, status: status,
+    // names of parts the last pull brought in from a session the person's AI saved
+    fromAi: function () { return lastFromAi.slice(); } };
 })();

@@ -8,6 +8,9 @@
 var crypto = require("crypto");
 
 function stateKey(username) { return "innertable:state:" + username; }
+// sessions the person's own AI saved through their link (api/bridge.js),
+// waiting for the app to fold them in
+function inboxKey(username) { return "innertable:inbox:" + username; }
 
 function verifySession(token, secret) {
   if (!token) return null;
@@ -22,6 +25,24 @@ function verifySession(token, secret) {
     if (!payload.u || !payload.exp || payload.exp < Date.now()) return null;
     return payload;
   } catch (e) { return null; }
+}
+
+/* Pending saves, oldest first. Best-effort: a failure here must never stop
+   the parts themselves from syncing. */
+async function readInbox(base, token, user) {
+  try {
+    var r = await fetch(base + "/hgetall/" + inboxKey(user), { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) return [];
+    var flat = (await r.json()).result;
+    var out = [];
+    for (var i = 0; Array.isArray(flat) && i + 1 < flat.length; i += 2) {
+      try {
+        var entry = JSON.parse(flat[i + 1]);
+        if (entry && Array.isArray(entry.parts)) out.push({ id: flat[i], parts: entry.parts });
+      } catch (e) {}
+    }
+    return out.sort(function (a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; });
+  } catch (e) { return []; }
 }
 
 module.exports = async function handler(req, res) {
@@ -46,7 +67,7 @@ module.exports = async function handler(req, res) {
     });
     if (!getRes.ok) { res.status(502).json({ error: "Upstash read failed" }); return; }
     var data = await getRes.json();
-    res.status(200).json({ state: data.result || null });
+    res.status(200).json({ state: data.result || null, inbox: await readInbox(base, token, session.u) });
     return;
   }
 
@@ -62,6 +83,19 @@ module.exports = async function handler(req, res) {
       body: state
     });
     if (!setRes.ok) { res.status(502).json({ error: "Upstash write failed" }); return; }
+    /* The app acknowledges inbox saves it has folded in only on a push that
+       carries them, so a save can never be dropped before it is in the state
+       that was just written. */
+    var ack = Array.isArray(req.body.ack) ? req.body.ack.filter(function (x) {
+      return typeof x === "string" && x && x.length < 100;
+    }).slice(0, 100) : [];
+    if (ack.length) {
+      try {
+        await fetch(base + "/hdel/" + inboxKey(session.u) + "/" + ack.map(encodeURIComponent).join("/"), {
+          headers: { Authorization: "Bearer " + token }
+        });
+      } catch (e) { /* left in the inbox; folding it in again is harmless */ }
+    }
     res.status(200).json({ ok: true });
     return;
   }

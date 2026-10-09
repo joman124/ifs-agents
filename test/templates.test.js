@@ -93,6 +93,16 @@ module.exports = function (t) {
   room.seats["the-little-one"] = "table";
   t.ok(/Before an exile speaks, ask the protectors/.test(T.meeting([known, ex], "x", room, [known, ex])), "an exile at the table speaks only with its protectors' leave");
 
+  /* a linked AI that can save does so, instead of printing the profile */
+  var saving = T.portable("checkin", [critic], "", null, { bridge: true, save: true });
+  t.ok(/call the save_session tool with the COMPLETE updated profile/.test(saving), "a linked AI saves the profile at the close");
+  t.ok(/Do not paste the profile into the chat/.test(saving) && !/Add a part, then paste/.test(saving), "...rather than pasting it into the chat");
+  t.ok(/If it fails, show them the profile block/.test(saving), "...with the paste as the fallback if the save fails");
+  t.ok(/Save them with save_session/.test(saving) && !/switch to the keyboard\/transcript view/.test(saving), "...in voice mode too");
+  t.ok(/Exact profile file format/.test(saving), "the saved profile is still held to the exact import format");
+  var linkedMeeting = T.portable("meeting", [critic, dreamer], "x", null, { bridge: true, save: true });
+  t.ok(/record these readings in Inner Table - Table tab, Round the table/.test(linkedMeeting), "a linked meeting says where its readings get recorded");
+
   /* the copy-paste versions */
   ["intake", "checkin", "mapping", "embody", "meeting"].forEach(function (mode) {
     var parts = mode === "intake" ? [] : mode === "checkin" || mode === "embody" ? [critic] : [critic, dreamer];

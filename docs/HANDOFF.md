@@ -61,18 +61,19 @@ gracefully (local-only mode), it never crashes.
 ```
 app/                 the webapp (this is what deploys)
   index.html         single page, 4 tabs, sheet + panel overlays
-  css/app.css        all styles (931 lines)
+  css/app.css        all styles (1384 lines)
   sw.js              service worker, cache-first shell — bump CACHE on every deploy
   manifest.webmanifest  icons + install-card screenshots (placeholders — see Next steps §1)
   screenshots/       placeholder install-card PNGs — replace with real device shots
   js/                see the table below
 api/                 serverless functions (Vercel): signup, login, sync,
+                     sync-images (pictures, on a key of their own),
                      push-subscribe, push-send, push-remind, vapid-public-key,
                      bridge (read-only AI link: MCP + markdown, no new env vars;
                      start_session / prompts serve the app's own session prompts,
                      built by api/_sessions.js from app/js - see vercel.json)
   root package.json  holds the `web-push` dependency for the functions only
-test/                node test/run.js — 545 assertions, no dependencies
+test/                node test/run.js — 741 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
@@ -90,21 +91,23 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 
 | File | Lines | What it owns |
 |---|--:|---|
-| `icons.js` | 59 | The line-icon set (`IFS.icon(name, size)`) used by the shell, menus and settings |
-| `schema.js` | 718 | Part shape, the 9 coverage categories, 5 edge types, the 5-point feeling scale, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `edgeWeight`, `setFeeling`/`pairFeeling`/`pairTone`/`feelingHistory`, `mapCounts`, `initial` |
+| `icons.js` | 53 | The line-icon set (`IFS.icon(name, size)`) used by the shell, menus and settings |
+| `schema.js` | 798 | Part shape, the 9 coverage categories, 5 edge types, the 5-point feeling scale, `mergeParts`, `mergeDuplicate`, `readiness`, `coverageScore`, `edgeWeight`, `setFeeling`/`pairFeeling`/`pairTone`/`feelingHistory`, `mapCounts`, `initial`, and the picture rules: `cleanImage`, `setImage`, `image`/`image_at` merge |
 | `questions.js` | 130 | The IFS question bank (33 questions), `nextCategory`, `applyAnswers` |
 | `reference.js` | 207 | Fraser's Table protocol (build/tools/seats/closing), the 8-page reference library, the first-run coach cues and the daily check-in prompts |
 | `markdown.js` | 489 | `parts/<slug>.md` ⇄ object. Frontmatter parser, `splitDocs`, `analyze`, `splitVoices`/`summarizeMeeting` |
-| `store.js` | 831 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart`, table-only `exportTable`/`importTable` |
+| `store.js` | 959 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart`, table-only `exportTable`/`importTable`; the pictures blob (`exportImages`/`importImages`/`imageFingerprint`) and `exportAll({images:false})` for sync |
+| `portrait.js` | 194 | A part's picture and the room's photo: drawing (`face`/`cls`, the picture or the initial inside a circle) and making (open a picked file, crop, shrink to a small JPEG in a named shape: square for a part, 16:9 for the room) |
 | `templates.js` | 425 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
 | `llm.js` | 272 | Gemini / Anthropic / OpenAI, chat + SSE streaming, retry |
 | `voice.js` | 360 | Web Speech dictation + TTS, optional ElevenLabs voice |
-| `graph.js` | 559 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat; a dragged part stays where it is dropped (per device, per account) |
+| `graph.js` | 615 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat; a part's picture fills its circle; a dragged part stays where it is dropped (per device, per account) |
 | `auth.js` | 62 | Session token storage, sign-in/up/out flows against `api/` |
-| `sync.js` | 82 | Whole-blob push/pull via `api/sync.js`; nothing pushes before a pull reconciles; a pending push is pinned to the account that queued it |
+| `sync.js` | 133 | Whole-blob push/pull via `api/sync.js`; nothing pushes before a pull reconciles; a pending push is pinned to the account that queued it. Pictures ride `api/sync-images.js` separately, and only when the set of pictures changes |
 | `push.js` | 222 | Web Push subscribe/unsubscribe, daily check-in reminder scheduling; requires sign-in |
-| `ui.js` | 3093 | The shell and every view, sheet, panel and flow except the two below. Still the big one; shares its helpers with them via `IFS.ui._share`. |
-| `ui-table.js` | 740 | The Table tab: the room, seating, meetings, the round of the table and the readings-history sheet |
+| `ui.js` | 3360 | The shell and every view, sheet, panel and flow except the two below. Still the big one; shares its helpers with them via `IFS.ui._share`. |
+| `ui-table.js` | 776 | The Table tab: the room (and its photo), seating, meetings, the round of the table and the readings-history sheet |
+| `ui-portrait.js` | 299 | Choosing and framing a picture: the sheet, the drag/pinch/zoom cropper, remove. One flow for a part and for the room |
 | `ui-learn.js` | 49 | The Learn library sheet and its pages |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
 
@@ -203,6 +206,7 @@ How it relates to other parts / What it needs / Session notes*.
 
 ```js
 { built, name, room, details,
+  image, image_at,          // the room's photo: see "Pictures" below
   tools: [{id,label,note}], agreements: [str],
   seats: { <slug>: "table"|"room"|"adjoining"|"away" },
   log: [{date, answers, note}],
@@ -228,6 +232,36 @@ flatten the other device's parts, so nothing goes up blind, and a queued push
 is pinned to the username that queued it. A pull merges through
 `store.importAll`'s existing merge logic rather than overwriting, so the
 Invariants around merges still hold across devices.
+
+### Pictures — `api/sync-images.js` ⇄ `app/js/sync.js`
+
+A part can carry a picture (`part.image`, a small square JPEG data URL, and
+`part.image_at`, its own clock) and the meeting room can carry one photo
+(`table.image` / `table.image_at`, 16:9). They are the one bulky thing in an
+account, and Upstash caps the size of a single write, so they do **not** travel
+in the state blob - `exportAll({ images: false })` leaves them out - but on
+their own endpoint and key, `innertable:images:<username>`, as
+`{ images: { <slug>: {image, at} }, room: {image, at} }`. A failure there can
+only ever stop pictures syncing, never profiles. It is a separate *path* rather
+than a flag on `/api/sync` so that a newer client talking to an older server
+gets a 404 and sends nothing.
+
+- **Last writer wins per picture, by `image_at`, and removal is a write**
+  (an empty `image` under a later stamp), so taking a picture away on one
+  device beats an older copy on another instead of coming back.
+  `store.importImages` applies it; the `updated` stamp of a part is untouched,
+  because travelling is not an edit.
+- A push only happens when `store.imageFingerprint()` no longer matches what
+  the last pull or push saw, so editing text never re-uploads photos; and, like
+  the state blob, nothing goes up before a pull has said what the server holds.
+- **Never in the markdown profile**, so never in a prompt, an exported `.md`,
+  or the AI bridge (which reads the state blob). `mergeParts` keeps the stored
+  picture when the incoming side has none, which is what makes a model's
+  rewrite or a markdown import safe to merge. They do not count toward
+  `coverageScore`/`readiness`: the model cannot see them.
+- Only base64 jpeg/png/webp under `IMAGE_MAX_CHARS` counts as a picture
+  (`schema.cleanImage`), checked on every way in (backups, the blob, imports)
+  and again where one is drawn. A backup keeps them; the sync blob does not.
 
 ## Invariants — do not break these
 
@@ -402,7 +436,7 @@ as an off-device backup. Signed-out users still rely on browser storage
 
 ### 3. Commit the test harness — **done**
 
-`test/` now holds 545 assertions over the pure logic, run with
+`test/` now holds 741 assertions over the pure logic, run with
 `node test/run.js`. `.github/workflows/test.yml` runs the suite on push and
 PR to `main`, so regressions get caught before they merge. See *Running and
 verifying locally* above for what is and isn't covered. What's left here is
@@ -457,7 +491,7 @@ refused. `extractProfiles` now drops a leading comment before giving up.
   The library still has no search.
 - ~~`ui.js` is 3629 lines. Splitting the Table and Learn sections out would help,
   but only worth doing alongside the test harness.~~ Done: the Table tab lives
-  in `ui-table.js` and the Learn library in `ui-learn.js`; `ui.js` is 3093 lines.
+  in `ui-table.js` and the Learn library in `ui-learn.js`; `ui.js` is 3360 lines.
 
 ---
 

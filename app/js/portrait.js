@@ -1,4 +1,4 @@
-/* Inner Table - a part's picture.
+/* Inner Table - a part's picture, and the meeting room's photo.
 
    Two jobs, both free of any screen of their own:
 
@@ -8,10 +8,11 @@
      a part with a picture and a part without sit side by side.
 
    - making it. Whatever the person picks - a phone photo can be ten
-     megapixels - is shrunk to a small square JPEG before anything is stored.
-     Pictures live inside the profile, in the backup, and on the server, so
-     small is not an optimisation, it is what lets them live there at all.
-     The picker UI that sits on top of this is ui-portrait.js. */
+     megapixels - is cropped and shrunk to a small JPEG before anything is
+     stored: a square for a part, a wide banner for the room. Pictures live
+     inside the profile, in the backup, and on the server, so small is not an
+     optimisation, it is what lets them live there at all. The picker UI that
+     sits on top of this is ui-portrait.js. */
 (function () {
   "use strict";
   var S = window.IFS.schema;
@@ -64,15 +65,26 @@
 
   /* ================= making ================= */
 
-  var OUT = 320;                  // px: the stored square is no bigger than this
-  var TARGET_CHARS = 34000;       // ...and aims to be no longer than this as a data URL
   var SOURCE_MAX = 1280;          // long side of the working copy the cropper shows
   var INPUT_MAX_BYTES = 30 * 1024 * 1024;
 
-  /* Biggest and best first; each step down trades a little of one for
-     staying under the target. A flat drawing lands on the first. A busy photo
-     usually does too. */
-  var STEPS = [[320, 0.88], [320, 0.78], [320, 0.68], [288, 0.68], [256, 0.66], [224, 0.62], [192, 0.6], [160, 0.55]];
+  /* What a picture is framed to. A part is a square (it is mostly seen in a
+     circle); the meeting room is a wide banner. `steps` run biggest and best
+     first, each as [width in px, JPEG quality]; every step down trades a
+     little of one for staying under `target`, in characters of data URL. A flat
+     drawing lands on the first step and a busy photo usually does too. The
+     room is allowed more than a part because there is only ever one of it, and
+     both targets sit well under the ceiling the store applies (schema.js). */
+  var SHAPES = {
+    part: {
+      aspect: 1, ring: true, target: 34000,
+      steps: [[320, 0.88], [320, 0.78], [320, 0.68], [288, 0.68], [256, 0.66], [224, 0.62], [192, 0.6], [160, 0.55]]
+    },
+    room: {
+      aspect: 16 / 9, ring: false, target: 56000,
+      steps: [[640, 0.84], [640, 0.74], [640, 0.64], [560, 0.64], [480, 0.62], [400, 0.6], [320, 0.58]]
+    }
+  };
 
   /* Decode a picked file through an <img>: every browser applies the photo's
      EXIF rotation to those, so a portrait shot on a phone comes out upright
@@ -96,7 +108,7 @@
   }
 
   /* The working copy the cropper moves around: capped, so a twelve-megapixel
-     photo is not held in memory at full size just to choose a square from it,
+     photo is not held in memory at full size just to choose a frame from it,
      and filled white first so a transparent PNG becomes white and not the
      black a JPEG would turn it into. */
   function workingCopy(img) {
@@ -118,31 +130,35 @@
     return decode(file).then(workingCopy);
   }
 
-  function renderSquare(src, sx, sy, side, size, quality) {
+  function renderRegion(src, sx, sy, sw, sh, w, h, quality) {
     var c = document.createElement("canvas");
-    c.width = c.height = size;
+    c.width = w;
+    c.height = h;
     var ctx = c.getContext("2d");
     ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, size, size);
+    ctx.fillRect(0, 0, w, h);
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(src, sx, sy, side, side, 0, 0, size, size);
+    ctx.drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
     return c.toDataURL("image/jpeg", quality);
   }
 
-  /* Cut the chosen square - (sx, sy, side), in the working copy's pixels -
-     out of it and encode it as small as it will go without looking worse for
-     it. Returns "" if even the smallest step is over the store's ceiling,
-     which only a pathological picture manages. */
-  function encode(src, sx, sy, side) {
+  /* Cut the chosen frame - `rect` ({x, y, w, h}, in the working copy's own
+     pixels) - out of it and encode it as small as it will go without looking
+     worse for it, to the proportions of `shape` ("part" or "room"). Returns ""
+     if even the smallest step is over the store's ceiling, which only a
+     pathological picture manages. */
+  function encode(src, rect, shape) {
+    var spec = SHAPES[shape || "part"];
     // never ask for more than the working copy has: the edge of the picture
-    // is where the square can end up, and a hair past it reads as a blank row
-    sx = Math.max(0, sx);
-    sy = Math.max(0, sy);
-    side = Math.max(1, Math.min(side, src.width - sx, src.height - sy));
+    // is where the frame can end up, and a hair past it reads as a blank row
+    var sx = Math.max(0, rect.x), sy = Math.max(0, rect.y);
+    var sw = Math.max(1, Math.min(rect.w, src.width - sx));
+    var sh = Math.max(1, Math.min(rect.h, src.height - sy));
     var url = "";
-    for (var i = 0; i < STEPS.length; i++) {
-      url = renderSquare(src, sx, sy, side, STEPS[i][0], STEPS[i][1]);
-      if (url.length <= TARGET_CHARS) break;
+    for (var i = 0; i < spec.steps.length; i++) {
+      var w = spec.steps[i][0];
+      url = renderRegion(src, sx, sy, sw, sh, w, Math.round(w / spec.aspect), spec.steps[i][1]);
+      if (url.length <= spec.target) break;
     }
     return S.cleanImage(url);
   }
@@ -171,7 +187,7 @@
 
   window.IFS = window.IFS || {};
   window.IFS.portrait = {
-    OUT: OUT, TARGET_CHARS: TARGET_CHARS,
+    SHAPES: SHAPES,
     has: has, face: face, cls: cls, avatar: avatar, partNamed: partNamed,
     pick: pick, open: open, encode: encode
   };

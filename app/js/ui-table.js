@@ -311,13 +311,23 @@ which ui.js attaches before this script runs. */
 
     var seated = parts.filter(function (p) { return t.seats[p.slug] === "table"; });
 
+    /* The room can have a photo, the way a part has a picture: a banner across
+       the top of its card that is itself the way to change it, or - while there
+       is none - a chip beside "edit the room" that says so. */
+    var hasPhoto = P.has(t);
     $("#tablePane").innerHTML =
-      '<div class="room-card">' +
+      '<div class="room-card' + (hasPhoto ? " has-photo" : "") + '">' +
+      (hasPhoto
+        ? '<button class="room-photo" id="tbPhoto" aria-label="Change the photo of the room">' +
+          P.face(t, "Photo of " + (t.name || "the room")) +
+          '<span class="portrait-cam" aria-hidden="true">' + window.IFS.icon("camera", 15) + "</span></button>"
+        : "") +
       '<span class="kicker">' + window.IFS.icon("table", 15) + " Your meeting room</span>" +
       '<h2 class="serif room-name">' + esc(t.name || "The room") + "</h2>" +
       '<div class="prose">' + esc(t.room) + "</div>" +
       (t.details ? '<div class="prose dim" style="margin-top:10px">' + esc(t.details) + "</div>" : "") +
       '<button class="chip chip-btn" id="tbEditRoom">&#9998; edit the room</button>' +
+      (hasPhoto ? "" : '<button class="chip chip-btn" id="tbAddPhoto">' + window.IFS.icon("camera", 13) + " add a photo</button>") +
       "</div>" +
 
       '<div class="card"><h3>Who is here' +
@@ -375,6 +385,9 @@ which ui.js attaches before this script runs. */
       el.addEventListener("click", function () { openClosingLog(+el.dataset.log); });
     });
     bind("#tbEditRoom", function () { buildTable(true); });
+    ["#tbPhoto", "#tbAddPhoto"].forEach(function (sel) {
+      bind(sel, function () { window.IFS.ui.roomPictureSheet(); });
+    });
     bind("#tbInvite", invitePartsSheet);
     bind("#tbTools", toolsSheet);
     bind("#tbAgree", agreementsSheet);

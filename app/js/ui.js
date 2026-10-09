@@ -1614,6 +1614,10 @@
       done();
     }
 
+    // the room arrives first - its photo, if it has one, then its name
+    var photo = $("#seatingPhoto");
+    photo.innerHTML = P.has(t) ? P.face(t) : "";
+    photo.classList.toggle("hidden", !P.has(t));
     $("#seatingRoom").textContent = t.name || "The room";
     $("#seatingLine").textContent = "";
     $("#seatingChairs").innerHTML = parts.map(function (p, i) {
@@ -2295,7 +2299,8 @@
       buzz(8);
     }
 
-    openPanel("Table meeting", "no-AI &middot; you speak for each part",
+    // openPanel escapes its subtitle, so the dot is the character itself, not an entity
+    openPanel("Table meeting", "no-AI \u00b7 you speak for each part",
       '<div class="chat">' +
       '<div class="prose dim" style="margin:0 2px 8px">' + esc(material) + "</div>" +
       '<div class="chat-scroll" id="smScroll" style="padding-top:8px"></div>' +

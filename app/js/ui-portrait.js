@@ -1,10 +1,15 @@
-/* Inner Table - UI: choosing and framing a part's picture.
+/* Inner Table - UI: choosing and framing a picture.
 
    One sheet to see what is there and change it, a second to frame a new one:
-   drag to move, pinch or slide to zoom, with the circle it will usually be
-   seen in drawn over the top. portrait.js does the work of opening the file
-   and shrinking the chosen square; this is only the screen. Shared shell
-   helpers arrive through window.IFS.ui._share, like ui-table.js. */
+   drag to move, pinch or slide to zoom, with - for a part - the circle it will
+   usually be seen in drawn over the top. portrait.js does the work of opening
+   the file and shrinking the chosen frame; this is only the screen. Shared
+   shell helpers arrive through window.IFS.ui._share, like ui-table.js.
+
+   There are two things a picture can be of: a part, and the meeting room on
+   the Table tab. Everything below is the same for both; a "subject" says which
+   object carries the picture, how it is written back, what to call things on
+   screen, and what shape it is framed to. */
 (function () {
   "use strict";
   var UI = window.IFS.ui._share;
@@ -33,20 +38,68 @@
     toast(message);
   }
 
-  /* ---- step one: what is there now, and the ways to change it ---- */
-  function pictureSheet(slug, onDone) {
+  /* ---- what the picture is of ---- */
+
+  function partSubject(slug) {
     var p = ST.getPart(slug);
-    if (!p) return;
-    var has = P.has(p);
+    if (!p) return null;
+    return {
+      shape: "part", noun: "picture",
+      title: "A picture of " + p.name,
+      lede: "A photo, a drawing, a screenshot &mdash; anything that helps you see " + esc(p.name) +
+        ". It is kept small, follows your account to your other devices, and stays out of AI sessions and exported .md profiles.",
+      frameTitle: "Frame " + p.name,
+      frameHint: "Drag to move it, pinch or use the slider to zoom. The circle is how it will usually be seen.",
+      removeLede: esc(p.name) + " goes back to showing its initial. The picture itself is not kept anywhere &mdash; " +
+        "to have it again you would choose it again.",
+      gone: "That part is no longer here",
+      target: function () { return ST.getPart(slug); },
+      commit: function (cur) { ST.upsertPart(cur); },
+      saved: function (cur) { return "Picture saved to " + cur.name; },
+      preview: function (cur) {
+        return '<span class="pic-big avatar' + P.cls(cur) + '">' + P.face(cur, "Picture of " + cur.name) + "</span>";
+      }
+    };
+  }
+
+  /* The room's photo is kept on the table object itself, beside its name and
+     its description. */
+  function roomSubject() {
+    var name = ST.state.table.name || "the room";
+    return {
+      shape: "room", noun: "photo",
+      title: "A photo of " + name,
+      lede: "A photo, a drawing, a picture of a place &mdash; anything that helps you see where your parts meet. " +
+        "It is kept small, follows your account to your other devices, and stays out of AI sessions.",
+      frameTitle: "Frame the room",
+      frameHint: "Drag to move it, pinch or use the slider to zoom.",
+      removeLede: "The room goes back to having no photo. The photo itself is not kept anywhere &mdash; " +
+        "to have it again you would choose it again.",
+      gone: "The room is no longer here",
+      target: function () { return ST.state.table.built ? ST.state.table : null; },
+      commit: function (cur) { ST.saveTable({ image: cur.image, image_at: cur.image_at }); },
+      saved: function () { return "Photo saved to the room"; },
+      preview: function (cur) {
+        return '<span class="pic-room' + (P.has(cur) ? "" : " empty") + '">' +
+          (P.has(cur) ? P.face(cur, "Photo of " + name) : icon("table", 34)) + "</span>";
+      }
+    };
+  }
+
+  /* ---- step one: what is there now, and the ways to change it ---- */
+  function show(subject, onDone) {
+    var cur = subject.target();
+    if (!cur) return;
+    var has = P.has(cur);
+    var chooseLabel = function () {
+      return icon("camera", 18) + (has ? "Choose a different " : "Choose a ") + subject.noun;
+    };
     openSheet(
-      '<h2 class="sheet-title serif">A picture of ' + esc(p.name) + "</h2>" +
-      '<div class="pic-now"><span class="pic-big avatar' + P.cls(p) + '">' +
-      P.face(p, "Picture of " + p.name) + "</span></div>" +
-      '<p class="dim">A photo, a drawing, a screenshot &mdash; anything that helps you see ' + esc(p.name) +
-      ". It is kept small, follows your account to your other devices, and stays out of AI sessions and exported .md profiles.</p>" +
-      '<button class="btn btn-primary btn-big" id="picChoose">' + icon("camera", 18) +
-      (has ? "Choose a different picture" : "Choose a picture") + "</button>" +
-      (has ? '<button class="btn btn-ghost btn-big" id="picRemove">Remove the picture</button>' : "") +
+      '<h2 class="sheet-title serif">' + esc(subject.title) + "</h2>" +
+      '<div class="pic-now">' + subject.preview(cur) + "</div>" +
+      '<p class="dim">' + subject.lede + "</p>" +
+      '<button class="btn btn-primary btn-big" id="picChoose">' + chooseLabel() + "</button>" +
+      (has ? '<button class="btn btn-ghost btn-big" id="picRemove">Remove the ' + subject.noun + "</button>" : "") +
       '<div id="picMsg"></div>'
     );
 
@@ -58,70 +111,70 @@
         btn.textContent = "Opening…";
         P.open(file).then(function (work) {
           if (!$("#picChoose")) return;      // ...or while it was being read
-          cropSheet(slug, work, onDone);
+          frame(subject, work, onDone);
         }, function (err) {
           var b = $("#picChoose");
-          if (b) { b.disabled = false; b.innerHTML = icon("camera", 18) + (has ? "Choose a different picture" : "Choose a picture"); }
+          if (b) { b.disabled = false; b.innerHTML = chooseLabel(); }
           var msg = $("#picMsg");
           if (msg) msg.innerHTML = '<div class="readiness no" style="margin-top:12px">' + esc(err.message) + "</div>";
         });
       });
     });
 
-    bind("#picRemove", function () { removeSheet(slug, onDone); });
+    bind("#picRemove", function () { confirmRemove(subject, onDone); });
   }
 
-  function removeSheet(slug, onDone) {
-    var p = ST.getPart(slug);
-    if (!p) return;
+  function confirmRemove(subject, onDone) {
+    if (!subject.target()) return;
     openSheet(
-      '<h2 class="sheet-title serif">Remove the picture?</h2>' +
-      '<p class="dim">' + esc(p.name) + " goes back to showing its initial. The picture itself is not kept anywhere &mdash; " +
-      "to have it again you would choose it again.</p>" +
+      '<h2 class="sheet-title serif">Remove the ' + subject.noun + "?</h2>" +
+      '<p class="dim">' + subject.removeLede + "</p>" +
       '<button class="btn btn-danger btn-big" id="picRemoveYes">Remove it</button>' +
       '<button class="btn btn-ghost btn-big" id="picRemoveNo">Keep it</button>'
     );
-    bind("#picRemoveNo", function () { pictureSheet(slug, onDone); });
+    bind("#picRemoveNo", function () { show(subject, onDone); });
     bind("#picRemoveYes", function () {
-      var cur = ST.getPart(slug);
+      var cur = subject.target();
       if (cur) {
         S.setImage(cur, "");
-        ST.upsertPart(cur);
+        subject.commit(cur);
       }
-      finish(onDone, "Picture removed");
+      finish(onDone, subject.noun.charAt(0).toUpperCase() + subject.noun.slice(1) + " removed");
     });
   }
 
   /* ---- step two: frame it ----
      The working copy is a canvas the size of the (capped) original, moved
-     and scaled with a CSS transform inside a square window. Nothing is
-     redrawn while it is dragged; the crop is only cut when "Use this
-     picture" is pressed. All the geometry is in the window's own pixels:
-     `ox`/`oy` is where the picture's top-left sits in the window, and the
-     picture is never allowed to leave a gap at any edge of it. */
-  function cropSheet(slug, work, onDone) {
-    var p = ST.getPart(slug);
-    if (!p) return;
+     and scaled with a CSS transform inside a window of the shape the picture
+     will have. Nothing is redrawn while it is dragged; the crop is only cut
+     when "Use this ..." is pressed. All the geometry is in the window's own
+     pixels: `ox`/`oy` is where the picture's top-left sits in the window, and
+     the picture is never allowed to leave a gap at any edge of it. */
+  function frame(subject, work, onDone) {
+    if (!subject.target()) return;
+    var shape = P.SHAPES[subject.shape];
     openSheet(
-      '<h2 class="sheet-title serif">Frame ' + esc(p.name) + "</h2>" +
-      '<p class="dim">Drag to move it, pinch or use the slider to zoom. The circle is how it will usually be seen.</p>' +
-      '<div class="crop" id="cropBox" tabindex="0" role="group" aria-label="Picture framing. Arrow keys move it, plus and minus zoom.">' +
-      '<div class="crop-ring" aria-hidden="true"></div></div>' +
+      '<h2 class="sheet-title serif">' + esc(subject.frameTitle) + "</h2>" +
+      '<p class="dim">' + subject.frameHint + "</p>" +
+      '<div class="crop' + (shape.aspect === 1 ? "" : " wide") + '" id="cropBox" style="aspect-ratio:' + shape.aspect +
+      '" tabindex="0" role="group" aria-label="Framing. Arrow keys move it, plus and minus zoom.">' +
+      (shape.ring ? '<div class="crop-ring" aria-hidden="true"></div>' : "") + "</div>" +
       '<label class="fieldlabel" for="cropZoom">Zoom</label>' +
       '<input id="cropZoom" class="crop-zoom" type="range" min="1" max="' + ZOOM_MAX + '" step="0.01" value="1">' +
       '<div style="height:14px"></div>' +
-      '<button class="btn btn-primary btn-big" id="cropSave">Use this picture</button>' +
+      '<button class="btn btn-primary btn-big" id="cropSave">Use this ' + subject.noun + "</button>" +
       '<button class="btn btn-ghost btn-big" id="cropBack">Choose another</button>' +
       '<div id="cropMsg"></div>'
     );
 
     var box = $("#cropBox");
     var slider = $("#cropZoom");
-    var vs = Math.min(box.clientWidth, box.clientHeight) || 280;      // the window's side
+    var vw = box.clientWidth || 280;                                  // the window
+    var vh = box.clientHeight || Math.round(vw / shape.aspect);
     var iw = work.width, ih = work.height;
-    var base = Math.max(vs / iw, vs / ih);                            // just covers the window
+    var base = Math.max(vw / iw, vh / ih);                            // just covers the window
     var zoom = 1;
-    var ox = (vs - iw * base) / 2, oy = (vs - ih * base) / 2;
+    var ox = (vw - iw * base) / 2, oy = (vh - ih * base) / 2;
 
     work.className = "crop-img";
     work.style.width = iw + "px";
@@ -130,8 +183,8 @@
 
     function scale() { return base * zoom; }
     function clamp() {
-      ox = Math.min(0, Math.max(vs - iw * scale(), ox));
-      oy = Math.min(0, Math.max(vs - ih * scale(), oy));
+      ox = Math.min(0, Math.max(vw - iw * scale(), ox));
+      oy = Math.min(0, Math.max(vh - ih * scale(), oy));
     }
     function paint() {
       work.style.transform = "translate(" + ox + "px," + oy + "px) scale(" + scale() + ")";
@@ -211,32 +264,36 @@
       else if (e.key === "ArrowRight") ox -= step;
       else if (e.key === "ArrowUp") oy += step;
       else if (e.key === "ArrowDown") oy -= step;
-      else if (e.key === "+" || e.key === "=") zoomTo(zoom * 1.1, vs / 2, vs / 2);
-      else if (e.key === "-" || e.key === "_") zoomTo(zoom / 1.1, vs / 2, vs / 2);
+      else if (e.key === "+" || e.key === "=") zoomTo(zoom * 1.1, vw / 2, vh / 2);
+      else if (e.key === "-" || e.key === "_") zoomTo(zoom / 1.1, vw / 2, vh / 2);
       else moved = false;
       if (!moved) return;
       e.preventDefault();
       clamp(); paint();
     });
 
-    slider.addEventListener("input", function () { zoomTo(parseFloat(slider.value) || 1, vs / 2, vs / 2); });
+    slider.addEventListener("input", function () { zoomTo(parseFloat(slider.value) || 1, vw / 2, vh / 2); });
 
-    bind("#cropBack", function () { pictureSheet(slug, onDone); });
+    bind("#cropBack", function () { show(subject, onDone); });
     bind("#cropSave", function () {
-      var cur = ST.getPart(slug);
-      if (!cur) { closeSheet(); toast("That part is no longer here"); return; }
+      var cur = subject.target();
+      if (!cur) { closeSheet(); toast(subject.gone); return; }
       // the window, in the working copy's own pixels
       var k = scale();
-      var url = P.encode(work, -ox / k, -oy / k, vs / k);
+      var url = P.encode(work, { x: -ox / k, y: -oy / k, w: vw / k, h: vh / k }, subject.shape);
       if (!url || !S.setImage(cur, url)) {
         $("#cropMsg").innerHTML = '<div class="readiness no" style="margin-top:12px">' +
-          "That picture could not be made small enough to keep. Try zooming in, or a simpler picture.</div>";
+          "That " + subject.noun + " could not be made small enough to keep. Try zooming in, or a simpler one.</div>";
         return;
       }
-      ST.upsertPart(cur);
-      finish(onDone, "Picture saved to " + cur.name);
+      subject.commit(cur);
+      finish(onDone, subject.saved(cur));
     });
   }
 
-  window.IFS.ui.pictureSheet = pictureSheet;
+  window.IFS.ui.pictureSheet = function (slug, onDone) {
+    var subject = partSubject(slug);
+    if (subject) show(subject, onDone);
+  };
+  window.IFS.ui.roomPictureSheet = function (onDone) { show(roomSubject(), onDone); };
 })();

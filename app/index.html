@@ -84,6 +84,7 @@
         <div id="ritual"></div>
         <div id="partsBanner"></div>
         <div id="partsSection"></div>
+        <div id="partsLookback"></div>
         <div id="partsList" class="parts-grid"></div>
         <div id="partsEmpty" class="empty hidden">
           <div class="empty-art"><svg class="icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z"/></svg></div>
@@ -199,8 +200,10 @@
   <div class="ground-inner">
     <div class="breath"><div class="breath-ring"></div><span id="breathLabel">breathe in</span></div>
     <h2 class="serif">Take a moment</h2>
-    <p>The session is paused. Feel your feet on the floor. Name five things you can see. There is no finish line here.</p>
-    <p class="dim">Feeling <i>moved</i> is normal. Feeling <i>overwhelmed</i> is the signal to close the session. If you are in crisis, call or text <b>988</b> (US) or see <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p>
+    <p class="session-only">The session is paused. Feel your feet on the floor. Name five things you can see. There is no finish line here.</p>
+    <p class="alone-only">Feel your feet on the floor. Let the breath out slowly. Name five things you can see. Whatever is loud right now can wait a minute.</p>
+    <p class="dim session-only">Feeling <i>moved</i> is normal. Feeling <i>overwhelmed</i> is the signal to close the session. If you are in crisis, call or text <b>988</b> (US) or see <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p>
+    <p class="dim alone-only">If you are in crisis, call or text <b>988</b> (US) or see <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p>
     <button class="btn btn-primary btn-big" id="groundResume">Return to session</button>
     <button class="btn btn-ghost" id="groundEnd">End the session gently</button>
   </div>
@@ -242,6 +245,7 @@
 <script src="js/ui-learn.js"></script>
 <script src="js/ui-bridge.js"></script>
 <script src="js/ui-connect.js"></script>
+<script src="js/ui-practice.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

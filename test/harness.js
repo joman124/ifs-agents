@@ -106,4 +106,23 @@ function readExample(rel) {
   return fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
 }
 
-module.exports = { load: load, fakeRecognition: fakeRecognition, readExample: readExample };
+/* Fill a part just enough to speak for itself (schema.readiness) - for
+   tests about meetings and reactions, where only ready parts take part.
+   Leaves anything the test already set. */
+function makeReady(p) {
+  var set = function (k, v) { if (!p[k] || p[k] === "unknown") p[k] = v; };
+  set("positive_intent", "keep things safe"); set("age", "about 12"); set("location", "chest");
+  set("appearance", "a small figure"); set("type", "manager"); set("origin", "school"); set("trust_in_self", "low");
+  var n = p.narrative;
+  ["origin_story", "in_its_own_words", "what_it_needs", "what_activates_it", "relates_to_others"].forEach(function (k) {
+    if (!n[k]) n[k] = "noted: " + k;
+  });
+  p.emotions = (p.emotions || []).concat(["worry", "dread", "hope"]);
+  p.fears = (p.fears || []).concat(["failing", "being seen"]);
+  p.hopes_goals = (p.hopes_goals || []).concat(["rest", "safety"]);
+  p.wants_needs = (p.wants_needs || []).concat(["thanks", "time", "quiet"]);
+  p.behaviors = (p.behaviors || []).concat(["checks", "plans"]);
+  return p;
+}
+
+module.exports = { load: load, fakeRecognition: fakeRecognition, readExample: readExample, makeReady: makeReady };

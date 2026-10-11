@@ -1,5 +1,5 @@
-/* The check-in reminders: a device is due at 8am, 2pm and 8pm on its own
-   clock (DST included), never without a timezone, and the endpoint refuses
+/* The daily reminder: a device is due at the hours chosen for it - 8pm by
+   default - on its own clock (DST included), never without a timezone, and the endpoint refuses
    anyone who doesn't hold CRON_SECRET - otherwise it is a button that buzzes
    every subscriber's phone. */
 "use strict";
@@ -11,17 +11,29 @@ module.exports = async function (t) {
   var ny = { tz: "America/New_York" };
   var at = function (iso) { return new Date(iso); };
 
-  t.ok(isDue(ny, at("2026-01-15T13:30:00Z")), "8:30am New York in winter (UTC-5) is due");
-  t.ok(isDue(ny, at("2026-07-15T12:30:00Z")), "8:30am New York in summer (UTC-4) is due");
-  t.ok(isDue(ny, at("2026-01-15T19:05:00Z")), "2pm New York is due");
-  t.ok(isDue(ny, at("2026-01-16T01:05:00Z")), "8pm New York is due");
-  t.ok(!isDue(ny, at("2026-01-15T12:30:00Z")), "7:30am is not due");
-  t.ok(!isDue(ny, at("2026-01-15T14:30:00Z")), "9:30am is not due");
+  // by default: once a day, at 8pm on the device's own clock
+  t.ok(isDue(ny, at("2026-01-16T01:05:00Z")), "8pm New York in winter (UTC-5) is due by default");
+  t.ok(isDue(ny, at("2026-07-16T00:05:00Z")), "8pm New York in summer (UTC-4) is due by default");
+  t.ok(!isDue(ny, at("2026-01-15T13:30:00Z")), "8:30am is not due by default - one nudge a day, not three");
+  t.ok(!isDue(ny, at("2026-01-15T19:05:00Z")), "2pm is not due by default");
   t.ok(!isDue(ny, at("2026-01-16T02:05:00Z")), "9pm is not due");
-  t.ok(!isDue(ny, at("2026-01-15T05:00:00Z")), "midnight is not due");
-  t.ok(isDue({ tz: "Asia/Kolkata" }, at("2026-01-15T08:45:00Z")), "a half-hour offset zone at 2:15pm is due");
-  t.ok(!isDue({}, at("2026-01-15T08:00:00Z")), "no timezone is never due, even at 8am UTC");
-  t.ok(!isDue({ tz: "Not/AZone" }, at("2026-01-15T13:30:00Z")), "a bogus timezone is never due");
+
+  // a time the person chose
+  var morning = { tz: "America/New_York", hours: [8] };
+  t.ok(isDue(morning, at("2026-01-15T13:30:00Z")), "a device set to 8am is due at 8:30am");
+  t.ok(!isDue(morning, at("2026-01-16T01:05:00Z")), "...and not at 8pm");
+  var twice = { tz: "America/New_York", hours: [8, 20] };
+  t.ok(isDue(twice, at("2026-01-15T13:30:00Z")) && isDue(twice, at("2026-01-16T01:05:00Z")), "morning and evening, when asked for");
+  t.ok(isDue({ tz: "America/New_York", hours: ["8", 99] }, at("2026-01-16T01:05:00Z")), "nonsense hours fall back to the default");
+
+  t.ok(isDue({ tz: "Asia/Kolkata", hours: [14] }, at("2026-01-15T08:45:00Z")), "a half-hour offset zone at 2:15pm is due when 2pm was chosen");
+  t.ok(!isDue({}, at("2026-01-16T01:05:00Z")), "no timezone is never due");
+  t.ok(!isDue({ tz: "Not/AZone" }, at("2026-01-16T01:05:00Z")), "a bogus timezone is never due");
+
+  var validHours = require("../api/push-subscribe.js").validHours;
+  t.eq(validHours([20, 8, 8]), [8, 20], "chosen hours are kept whole, unique and in order");
+  t.eq(validHours([1, 2, 3, 4]), undefined, "more than three a day is not kept");
+  t.eq(validHours(["8", 25, -1, 7.5]), undefined, "nothing that is not an hour is kept");
 
   process.env.UPSTASH_REDIS_REST_URL = "https://fake.upstash.io";
   process.env.UPSTASH_REDIS_REST_TOKEN = "fake-redis-token";

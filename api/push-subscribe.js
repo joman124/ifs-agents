@@ -31,6 +31,18 @@ function validTimeZone(tz) {
   try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } catch (e) { return ""; }
 }
 
+/* The local hours this device wants its reminder at: up to three whole
+   hours, 0-23. Anything else is dropped, and the reminder falls back to
+   its default (see push-remind.js). */
+function validHours(h) {
+  if (!Array.isArray(h)) return undefined;
+  var out = [];
+  h.forEach(function (x) {
+    if (typeof x === "number" && x >= 0 && x <= 23 && Math.floor(x) === x && out.indexOf(x) < 0) out.push(x);
+  });
+  return out.length && out.length <= 3 ? out.sort(function (a, b) { return a - b; }) : undefined;
+}
+
 function validSubscription(s) {
   return !!(s && typeof s.endpoint === "string" && s.endpoint &&
     s.keys && typeof s.keys.p256dh === "string" && typeof s.keys.auth === "string");
@@ -64,7 +76,7 @@ module.exports = async function handler(req, res) {
     if (!validSubscription(sub)) { res.status(400).json({ error: "Missing or malformed subscription" }); return; }
     list = list.filter(function (s) { return s.endpoint !== sub.endpoint; });
     list.push({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-                tz: validTimeZone(req.body.tz) || undefined, savedAt: Date.now() });
+                tz: validTimeZone(req.body.tz) || undefined, hours: validHours(req.body.hours), savedAt: Date.now() });
     if (list.length > MAX_DEVICES) list = list.slice(list.length - MAX_DEVICES);
   } else if (req.method === "DELETE") {
     var endpoint = req.body && req.body.endpoint;
@@ -83,3 +95,4 @@ module.exports = async function handler(req, res) {
   if (!setRes.ok) { res.status(502).json({ error: "Upstash write failed" }); return; }
   res.status(200).json({ ok: true, devices: list.length });
 };
+module.exports.validHours = validHours;

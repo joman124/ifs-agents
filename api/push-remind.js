@@ -1,6 +1,8 @@
-/* Inner Table - the check-in reminder. Every device with notifications on
-   is nudged every six hours from eight to eight: 8am, 2pm and 8pm on that
-   device's own clock. The timezone comes up with the subscription (see
+/* Inner Table - the daily reminder. Each device with notifications on is
+   nudged at the hours the person chose for it - once a day by default, at
+   8pm on that device's own clock. A reflective practice nagged three times a
+   day turns into one more "should"; one quiet nudge, at a time they picked,
+   does not. The timezone comes up with the subscription (see
    push-subscribe.js), so a phone is reminded on its time, not the server's;
    one saved before timezones were sent is skipped until the app next opens
    and re-sends it.
@@ -13,7 +15,16 @@
 
 var crypto = require("crypto");
 
-var REMIND_HOURS = [8, 14, 20];
+var DEFAULT_HOURS = [20];
+
+/* The hours a device asked for (push-subscribe.js keeps them clean), or the
+   default for one saved before there was a choice. */
+function hoursOf(sub) {
+  var h = sub && Array.isArray(sub.hours) ? sub.hours.filter(function (x) {
+    return typeof x === "number" && x >= 0 && x <= 23 && Math.floor(x) === x;
+  }) : [];
+  return h.length ? h : DEFAULT_HOURS;
+}
 var PREFIX = "innertable:push:";
 // a reminder that sat undelivered past this is noise, not a nudge
 var TTL_SECONDS = 2 * 60 * 60;
@@ -25,7 +36,7 @@ function localHour(tz, now) {
 }
 
 function isDue(sub, now) {
-  return !!(sub && sub.tz) && REMIND_HOURS.indexOf(localHour(sub.tz, now)) >= 0;
+  return !!(sub && sub.tz) && hoursOf(sub).indexOf(localHour(sub.tz, now)) >= 0;
 }
 
 function authorized(req, secret) {
@@ -66,8 +77,9 @@ module.exports = async function handler(req, res) {
   var now = new Date();
   var payload = JSON.stringify({
     title: "Inner Table",
-    body: "A moment to check in - is a part asking for you right now?",
-    url: "./"
+    body: "A moment to notice - which part is around right now?",
+    // opens straight onto the ten-second notice
+    url: "./?notice=1"
   });
 
   try {

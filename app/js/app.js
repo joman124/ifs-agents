@@ -30,6 +30,23 @@
     // disconnected on another device, this one follows
     window.IFS.sync.syncAi().then(function (changed) { if (changed) window.IFS.ui.renderSettings(); });
   }
+  /* A reminder opens straight onto the ten-second notice: as ?notice=1 when
+     it launches the app, or as a message from the service worker when the
+     app was already open. */
+  function openNotice() {
+    if (!window.IFS.auth.isLoggedIn()) return;
+    setTimeout(function () { window.IFS.ui.practice.notice(); }, 600);
+  }
+  if (/[?&]notice=1/.test(location.search)) {
+    history.replaceState(null, "", location.pathname + location.hash);
+    openNotice();
+  }
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", function (e) {
+      if (e.data && e.data.type === "open" && /[?&]notice=1/.test(String(e.data.url || ""))) openNotice();
+    });
+  }
+
   // back from OpenRouter's sign-in, the connection is already on the account
   if (/[?&](connected|connect_error)=/.test(location.search)) {
     lastPull = Date.now();

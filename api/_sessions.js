@@ -76,15 +76,18 @@ function build(state, args) {
   if (mode === "meeting" && !picked.length) {
     // nobody named: the meeting sits whoever the person seated at their table
     var seats = (table && table.built && table.seats) || null;
-    picked = seats
-      ? roster.filter(function (p) { return seats[p.slug] === "table"; })
-      : roster.filter(function (p) { return S.readiness(p).ready; });
+    picked = roster.filter(function (p) { return S.readiness(p).ready && (!seats || seats[p.slug] === "table"); });
     if (picked.length < 2) {
       return { error: "A meeting needs at least two parts at the table. Name them in parts, or seat them on the Table tab in Inner Table. The person's parts are: " + known + "." };
     }
   }
   if (mode === "meeting" && picked.length < 2) {
     return { error: "A meeting needs at least two parts. The person's parts are: " + known + "." };
+  }
+  if (mode === "meeting" && picked.filter(function (p) { return S.readiness(p).ready; }).length < 2) {
+    var ready = roster.filter(function (p) { return S.readiness(p).ready; }).map(function (p) { return p.name; });
+    return { error: "A meeting needs at least two parts that can speak for themselves - parts known well enough. " +
+      (ready.length ? "Ready now: " + ready.join(", ") + "." : "None is yet; a check-in or two with a part gets it there.") };
   }
   if (mode === "intake" || mode === "talk") picked = [];
   if (mode === "meeting" && asked.length && table && table.built) {

@@ -52,7 +52,7 @@ gracefully (local-only mode), it never crashes.
 | `SESSION_SECRET` | signing login tokens (HMAC-SHA256) | any long random string |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | `node scripts/gen-vapid-keys.js` |
 | `VAPID_SUBJECT` | Web Push contact | `mailto:` address |
-| `CRON_SECRET` | check-in reminders (`api/push-remind.js`) | any long random string — also set as a GitHub Actions secret of the same name; `.github/workflows/reminders.yml` sends it hourly, and the endpoint notifies each device at 8am, 2pm and 8pm on its own clock |
+| `CRON_SECRET` | check-in reminders (`api/push-remind.js`) | any long random string — also set as a GitHub Actions secret of the same name; `.github/workflows/reminders.yml` sends it hourly, and the endpoint notifies each device once a day at the hour chosen for it in Settings (8pm by default), on its own clock; tapping the notification opens *Notice a part* |
 
 `scripts/add-user.js` provisions accounts from the command line when needed.
 
@@ -118,6 +118,7 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `ui-learn.js` | 49 | The Learn library sheet and its pages |
 | `ui-bridge.js` | 124 | Settings → Live sessions → *Your AI app*: makes, shows and revokes the private link |
 | `ui-connect.js` | 249 | *Talk here in Inner Table*: Connect with OpenRouter, paste-any-key (detected, test-called, kept with the account), manage/disconnect, the one-time "where would you like to talk?" choice, and picking a session back up after OpenRouter's sign-in |
+| `ui-practice.js` | 139 | The daily practice: *Notice a part* (ten seconds, no AI — a `notice` entry with an optional `feel` word in the part's own session log, which the next check-in reads as memory), and *Looking back* (`schema.lookBack`: who you sat with, how your feeling toward each part moved, threads that warmed, over 30 days) |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
 
 ## The three tabs, and the profile menu
@@ -266,6 +267,25 @@ Where a session runs (`ui.js` `startSession`): here if `settings.ai` is
 connected; else in the linked AI app (`settings.provider`, the hand-off page);
 else copy-prompt once the person chose it (`settings.copyPrompt`); else they
 are asked once (`connect.chooseWhere`).
+
+### Engagement — how a person comes in
+
+- **+ menu**: *Just talk* first (the guide can turn it into a check-in or a
+  part speaking for itself), then *Notice a part*. The specific sessions follow
+  in IFS order — one part, two parts, the table — and each pair that once came
+  twice (AI and no-AI) is one item that uses AI when one is connected or
+  linked (`ui.js hasAI`); the other way sits under *More ways*.
+- **One rule for speaking**: a part reacts to material or speaks at a meeting
+  once `schema.readiness` says it is ready. Seating on the Table tab decides who
+  is invited; readiness decides who talks (`templates.meeting`, and the
+  bridge's meeting default). A part that is not ready says what is next
+  (`schema.unlockHint`), never a percentage.
+- **Progress** is counted as IFS counts it: the last `feel` word toward a part
+  and how often the person sat with it (`schema.towardPart`) lead the part card;
+  profile % is small print.
+- **Home screen**: *Notice a part* and *Ground me* (the session's grounding
+  overlay, `.standalone`), the daily card (check in, or just notice), and the
+  30-day look-back card.
 
 ### Pictures — `api/sync-images.js` ⇄ `app/js/sync.js`
 

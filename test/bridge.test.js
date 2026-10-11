@@ -48,14 +48,24 @@ module.exports = async function (t) {
     return bridge({ method: method, query: opts.query || {}, body: opts.body,
       headers: opts.headers || {} }, res).then(function () { return res; });
   }
+  function readyRaw(raw) {
+    var H = require("./harness.js");
+    var narrative = raw.narrative || {};
+    raw.narrative = { origin_story: narrative.origin_story || "", in_its_own_words: narrative.in_its_own_words || "",
+      what_it_needs: "", what_activates_it: "", relates_to_others: "" };
+    H.makeReady(raw);
+    raw.narrative.in_its_own_words = narrative.in_its_own_words || raw.narrative.in_its_own_words;
+    return raw;
+  }
   var asApp = function (user) { return { headers: { authorization: "Bearer " + session(user) } }; };
 
   db["innertable:state:ann"] = JSON.stringify({
-    parts: [{ slug: "the-critic", name: "The Critic", type: "manager", positive_intent: "keep me from failing",
+    // both are known well enough to speak for themselves at a meeting
+    parts: [readyRaw({ slug: "the-critic", name: "The Critic", type: "manager", positive_intent: "keep me from failing",
       emotions: ["dread"], relationships: [{ part: "the-dreamer", type: "polarized-with", notes: "always at odds" }],
       feelings: [{ part: "the-dreamer", rating: 2, date: "2026-09-01" }],
-      narrative: { in_its_own_words: "I am only trying to help.", origin_story: "" } },
-      { slug: "the-dreamer", name: "The Dreamer", type: "firefighter", positive_intent: "keep hope alive" }],
+      narrative: { in_its_own_words: "I am only trying to help.", origin_story: "" } }),
+      readyRaw({ slug: "the-dreamer", name: "The Dreamer", type: "firefighter", positive_intent: "keep hope alive" })],
     transcripts: [{ id: "x", text: "SECRET TRANSCRIPT TEXT" }],
     table: { built: true, name: "Kitchen", room: "A round table.", seats: { "the-critic": "table" }, meetings: [] }
   });

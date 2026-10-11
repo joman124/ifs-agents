@@ -73,6 +73,7 @@
         L.push("    mode: " + s.mode);
         L.push("    categories: [" + (s.categories || []).join(", ") + "]");
         L.push("    note: " + yStr(s.note || ""));
+        if (s.feel) L.push("    feel: " + s.feel);
       });
     } else {
       L.push("sessions: []");
@@ -293,7 +294,8 @@
             date: s.date,
             mode: s.mode || "checkin",
             categories: Array.isArray(s.categories) ? s.categories : [],
-            note: s.note || ""
+            note: s.note || "",
+            feel: S.FEEL_TOWARD.some(function (f) { return f.key === s.feel; }) ? s.feel : undefined
           };
         });
     }

@@ -389,7 +389,8 @@
       '<span class="rt-sub">' + esc(quietLabel(p)) + "</span></span></div>" +
       '<div class="ritual-cta">' +
       '<button class="btn btn-primary" id="rtGo">Check in ' + icon("arrow", 18) + "</button>" +
-      '<button class="btn btn-soft" id="rtOther">Someone else</button>' +
+      '<button class="btn btn-soft" id="rtNotice">Just notice it</button>' +
+      '<button class="btn btn-ghost" id="rtOther">Someone else</button>' +
       "</div></div>" +
       '<div class="orbit-art" aria-hidden="true"><i class="orbit o1"></i><i class="orbit o2"></i><i class="orb b1"></i><i class="orb b2"></i><i class="orb b3"></i></div>' +
       '<button class="coach-x" id="rtSkip" aria-label="Not today">&#10005;</button>' +
@@ -399,6 +400,10 @@
     bind("#rtGo", function () {
       dismissRitual(); renderParts(); buzz(12);
       startSession("checkin", [p.slug]);
+    });
+    bind("#rtNotice", function () {
+      dismissRitual(); renderParts(); buzz();
+      window.IFS.ui.practice.notice(p.slug);
     });
     bind("#rtOther", function () {
       dismissRitual(); renderParts(); buzz();
@@ -457,7 +462,20 @@
     var date = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
     return '<p class="eyebrow">' + esc(date) + "</p>" +
       '<h1 class="serif">' + esc(part) + (who ? ", " + esc(who) : "") + ".</h1>" +
-      '<p class="subtitle">Take a moment to notice what is present today.</p>';
+      '<p class="subtitle">Take a moment to notice what is present today.</p>' +
+      '<div class="quick-row">' +
+      '<button class="btn btn-soft quick" id="qNotice">' + icon("leaf", 16) + " Notice a part</button>" +
+      '<button class="btn btn-ghost quick" id="qGround">&#9875; Ground me</button></div>';
+  }
+
+  /* What IFS counts about a part: how the person last felt toward it, and
+     how often they have sat with it. */
+  function towardHTML(p) {
+    var t = S.towardPart(p);
+    var tone = t.feel ? S.feelTone(t.feel) : null;
+    return '<span class="pc-feel ' + (tone === 1 ? "tone-self" : tone === -1 ? "tone-reactive" : "tone-mid") + '">' +
+      (t.feel ? "you: " + esc(t.feel) : "how you feel toward it: not noted yet") + "</span>" +
+      (t.times ? '<span class="pc-times">sat with ' + t.times + "&times;</span>" : "");
   }
 
   function partCardHTML(p, today) {
@@ -473,14 +491,13 @@
       '<div class="pc-top">' +
       '<span class="pc-avatar' + P.cls(p) + '">' + P.face(p) + "</span>" +
       '<span class="badge ' + esc(p.type) + '">' + esc(p.type) + "</span>" +
-      (rd.ready ? '<span class="pc-ready" title="ready for table meetings">' + icon("check", 13) + "ready</span>" : "") +
+      (rd.ready ? '<span class="pc-ready" title="can speak for itself - at the table, or reacting to material">' + icon("check", 13) + "can speak</span>" : "") +
       "</div>" +
       '<h3 class="serif">' + esc(p.name) + "</h3>" +
       '<p class="pc-note">' + esc(note) + "</p>" +
-      '<div class="pc-progress"><div class="pc-plabel"><span>Profile depth</span><b>' + pct + "%</b></div>" +
-      '<span class="pc-track"><i style="width:' + pct + '%"></i></span></div>' +
+      '<div class="pc-rel">' + towardHTML(p) + "</div>" +
       '<div class="pc-foot"><span class="readydot' + (rd.ready ? " ready" : "") + '"></span>' +
-      '<span class="pc-when">' + (rd.ready ? "" : "needs more check-ins &middot; ") + esc(quietLabel(p)) + "</span>" +
+      '<span class="pc-when">' + esc(quietLabel(p)) + ' &middot; <span class="pc-depth">profile ' + pct + "%</span></span>" +
       icon("chevron", 16) + "</div>" +
       "</article>";
   }
@@ -501,6 +518,13 @@
         '<button class="text-btn" id="psStart">Start something ' + icon("arrow", 16) + "</button></div>"
       : "";
     bind("#psStart", newSessionSheet);
+    bind("#qNotice", function () { window.IFS.ui.practice.notice(); });
+    bind("#qGround", groundAlone);
+    var lb = $("#partsLookback");
+    if (lb) {
+      lb.innerHTML = n ? window.IFS.ui.practice.lookBackCard() : "";
+      bind("#lbOpen", window.IFS.ui.practice.openLookBack);
+    }
     list.innerHTML = n
       ? parts.map(function (p) { return partCardHTML(p, today); }).join("") +
         '<button class="add-part-card" id="addPartCard"><span class="apc-i">' + icon("plus") + "</span>" +
@@ -606,7 +630,8 @@
 
     var sessHTML = p.sessions.length
       ? p.sessions.slice().reverse().map(function (s) {
-          return '<div class="sessionrow"><span class="sr-date">' + esc(s.date) + '</span><span class="sr-mode">' + esc(s.mode) + "</span><span>" + esc(s.note || "") + "</span></div>";
+          return '<div class="sessionrow"><span class="sr-date">' + esc(s.date) + '</span><span class="sr-mode">' + esc(s.mode === "notice" ? "noticed" : s.mode) + "</span><span>" +
+            esc(s.note || "") + (s.feel ? ' <span class="dim">&middot; you felt ' + esc(s.feel) + "</span>" : "") + "</span></div>";
         }).join("")
       : '<div class="prose none">no sessions logged</div>';
 
@@ -631,10 +656,12 @@
       '<button class="chip chip-btn" id="pfAbout">&#9998; edit details</button>' +
       (P.has(p) ? "" : '<button class="chip chip-btn" id="pfAddPic">' + icon("camera", 13) + " add a picture</button>") +
       "</div></div>" +
-      '<div class="readiness ' + (rd.ready ? "ok" : "no") + '">' +
-      (rd.ready ? "&#10003; Developed enough to speak at table meetings"
-                : "Needs " + esc(rd.missing.join(", ")) + " before it can speak for itself") +
-      "</div>" +
+      '<div class="card toward-card"><h3>You and ' + esc(p.name) + "</h3>" +
+      '<div class="pc-rel">' + towardHTML(p) + "</div>" +
+      '<p class="dim" style="margin:8px 0 10px">' + (rd.ready
+        ? "&#10003; It can speak for itself &mdash; at the table, or reacting to material."
+        : esc(S.unlockHint(p).text)) + "</p>" +
+      '<button class="btn btn-soft" id="pfNotice">' + icon("leaf", 15) + " Notice it now</button></div>" +
       editCard("Positive intent", prose(p.positive_intent), "positive_intent") +
       '<div class="card"><h3>Coverage <span class="covhint">tap one to ask its questions</span></h3><div class="covgrid">' + covHTML + "</div></div>" +
       editCard("Fears", tagList(p.fears), "fears") +
@@ -649,16 +676,17 @@
       '<div class="card"><h3>Session log</h3>' + sessHTML + "</div>" +
       '<div class="profile-cta">' +
       nextCTA +
-      '<button class="btn btn-soft btn-big" id="pfCheckin">Check in with ' + esc(p.name) + " (AI session)</button>" +
+      '<button class="btn btn-soft btn-big" id="pfCheckin">Check in with ' + esc(p.name) + "</button>" +
       (others.length ? '<button class="btn btn-soft btn-big" id="pfConnect">Connect to another part</button>' : "") +
       (others.length ? '<button class="btn btn-soft btn-big" id="pfMerge">Merge with a duplicate</button>' : "") +
-      '<button class="btn btn-soft btn-big" id="pfEmbody"' + (rd.ready ? "" : " disabled") + ">React to material (embody)</button>" +
+      '<button class="btn btn-soft btn-big" id="pfEmbody">' + esc(p.name) + " reacts to something</button>" +
       '<button class="btn btn-soft btn-big" id="pfExport">Export profile (.md)</button>' +
       '<button class="btn btn-soft btn-big" id="pfEdit">Edit raw markdown</button>' +
       '<button class="btn btn-danger btn-big" id="pfDelete">Delete this part</button>' +
       "</div></div>";
 
-    openPanel(p.name, p.type + " · " + Math.round(S.coverageScore(p) * 100) + "% developed", body, "", null,
+    var tw = S.towardPart(p);
+    openPanel(p.name, p.type + (tw.times ? " · sat with " + tw.times + "×" : ""), body, "", null,
       '<span class="pt-face' + P.cls(p) + '">' + P.face(p) + "</span>");
 
     // pencil on each card -> simple edit sheet; edits save straight into the
@@ -695,8 +723,11 @@
     bind("#pfConnect", function () { connectPart(p.slug); });
     bind("#pfMerge", function () { mergePartSheet(p.slug); });
     $("#pfCheckin").addEventListener("click", function () { startSession("checkin", [p.slug]); });
-    var em = $("#pfEmbody");
-    if (em) em.addEventListener("click", function () { askMaterial("embody", [p.slug]); });
+    bind("#pfEmbody", function () {
+      if (S.readiness(p).ready) askMaterial("embody", [p.slug]);
+      else notReadySheet([p.slug]);
+    });
+    bind("#pfNotice", function () { window.IFS.ui.practice.notice(p.slug); });
     $("#pfExport").addEventListener("click", function () { exportPartMd(p); });
     $("#pfEdit").addEventListener("click", function () { editRaw(p.slug); });
     $("#pfDelete").addEventListener("click", function () {
@@ -917,76 +948,135 @@
   }
 
   /* ================= new session flows ================= */
+  /* An AI is at hand: connected here, or linked in the person's AI app. */
+  function hasAI() {
+    var s = ST.state.settings;
+    return LLM.configured(s.ai) || s.provider !== "manual";
+  }
+
+  /* One door first - just talk, where the guide can turn the conversation
+     into a check-in or a part speaking for itself - and the ten-second
+     notice beside it. The specific sessions follow in IFS order: one part,
+     then two, then the table. Each pair that once came twice (with and
+     without AI) is one item that uses AI when there is one; the other way
+     sits under More. */
   function newSessionSheet() {
     var parts = ST.listParts();
-    var ready = parts.filter(function (p) { return S.readiness(p).ready; });
-    var tb = ST.state.table;
-    var seatedN = tb.built ? parts.filter(function (p) { return tb.seats[p.slug] === "table"; }).length : 0;
-    var meetOn = tb.built ? parts.length >= 2 : ready.length >= 2;
-    var meetSub = tb.built
-      ? (seatedN >= 2 ? seatedN + " seated at your table" : "seat two parts at your table first")
-      : (ready.length >= 2 ? "all developed parts respond; Self synthesizes" : "needs two developed parts");
+    var ai = hasAI();
+    var n = parts.length;
     openSheet(
       '<h2 class="sheet-title serif">Start something</h2>' +
-      menuItem("", "Just talk", "an open conversation · remembers your parts and your last talks", "mi-talk") +
-      '<div class="mi-head">Add a part</div>' +
-      menuItem("", "Upload or paste", "one .md file, a whole parts folder, or raw notes", "mi-import") +
-      menuItem("", "Meet a new part", "guided intake interview · 10-20 min", "mi-intake") +
-      menuItem("", "Create by hand", "just a name is enough to start", "mi-create") +
-      '<div class="mi-head">Get to know one</div>' +
-      menuItem("", "Answer the IFS questions", parts.length ? "work through a category yourself · no AI needed" : "you need a part first", "mi-ask", !parts.length) +
-      menuItem("", "Check in with a part", parts.length ? "AI session · deepens the profile" : "you need a part first", "mi-checkin", !parts.length) +
-      '<div class="mi-head">Connect them</div>' +
-      menuItem("", "Connect two parts", parts.length >= 2 ? "record how they relate · no AI needed" : "you need two parts first", "mi-link", parts.length < 2) +
-      menuItem("", "Map two parts", parts.length >= 2 ? "AI session · who protects, who conflicts" : "you need two parts first", "mi-map", parts.length < 2) +
-      '<div class="mi-head">Put them to work</div>' +
-      menuItem("", "A part reacts to material", ready.length ? "embody one part over a document or decision" : "no part is developed enough yet", "mi-embody", !ready.length) +
-      // once a room exists, seating - not the readiness bar - governs meetings
-      menuItem("", "Table meeting", meetSub, "mi-meeting", !meetOn)
+      menuItem("", "Just talk", "an open conversation · it remembers your parts, and can turn into a check-in", "mi-talk") +
+      menuItem("", "Notice a part", "ten seconds · who showed up, and how you felt toward it", "mi-notice") +
+      '<div class="mi-head">With your parts</div>' +
+      menuItem("", "Get to know a part", !n ? "you need a part first" : ai ? "a check-in · picks up where you left off" : "answer its questions yourself · no AI needed", "mi-know", !n) +
+      menuItem("", "How two parts relate", n < 2 ? "you need two parts first" : ai ? "a session with both · who protects, who clashes" : "record it yourself · no AI needed", "mi-relate", n < 2) +
+      menuItem("", "A part reacts to something", !n ? "you need a part first" : "a decision, a draft, a situation · in its own voice", "mi-embody", !n) +
+      menuItem("", "Table meeting", n < 2 ? "you need two parts first" : "several parts talk it through · Self sums up", "mi-meeting", n < 2) +
+      '<div class="mi-head">Your system</div>' +
+      menuItem("", "Add a part", "an interview, by hand, or upload", "mi-add") +
+      '<details class="mi-more"><summary>More ways</summary>' +
+      (ai
+        ? menuItem("", "Answer a part's questions yourself", !n ? "you need a part first" : "work through a category · no AI", "mi-ask", !n) +
+          menuItem("", "Record how two parts relate", n < 2 ? "you need two parts first" : "name the relationship yourself · no AI", "mi-link", n < 2)
+        : menuItem("", "Check in with a part (AI)", !n ? "you need a part first" : "an AI session · connect an AI or copy a prompt", "mi-checkin", !n) +
+          menuItem("", "Map two parts (AI)", n < 2 ? "you need two parts first" : "an AI session with both parts", "mi-map", n < 2)) +
+      "</details>"
     );
-    bind("#mi-intake", function () { closeSheet(); startSession("intake", []); });
-    bind("#mi-talk", function () { closeSheet(); startSession("talk", []); });
-    bind("#mi-create", function () { createPartSheet(""); });
-    bind("#mi-ask", function () {
-      pickPart("Which part are you asking?", function (slug) {
+    var askOne = function () {
+      pickPart("Which part?", function (slug) {
         var p = ST.getPart(slug);
         var next = Q.nextCategory(p);
         if (!next) { openProfile(slug); toast("Every category is covered or declined - tap one to revisit"); return; }
         askCategory(slug, next);
       });
+    };
+    var checkOne = function () { pickPart("Who do you want to check in with?", function (slug) { startSession("checkin", [slug]); }); };
+    var linkTwo = function () { pickParts("Which two parts relate?", 2, 2, false, function (slugs) { relationshipSheet(slugs[0], slugs[1]); }); };
+    var mapTwo = function () { pickParts("Which two parts?", 2, 2, false, function (slugs) { startSession("mapping", slugs); }); };
+    bind("#mi-talk", function () { closeSheet(); startSession("talk", []); });
+    bind("#mi-notice", function () { closeSheet(); setTimeout(function () { window.IFS.ui.practice.notice(); }, 230); });
+    bind("#mi-know", ai ? checkOne : askOne);
+    bind("#mi-relate", ai ? mapTwo : linkTwo);
+    bind("#mi-ask", askOne);
+    bind("#mi-link", linkTwo);
+    bind("#mi-checkin", checkOne);
+    bind("#mi-map", mapTwo);
+    bind("#mi-embody", function () {
+      pickPart("Which part should react?", function (slug) { askMaterial("embody", [slug]); }, true);
     });
-    bind("#mi-checkin", function () { pickPart("Who do you want to check in with?", function (slug) { startSession("checkin", [slug]); }); });
-    bind("#mi-link", function () {
-      pickParts("Which two parts relate?", 2, 2, false, function (slugs) {
-        relationshipSheet(slugs[0], slugs[1]);
+    bind("#mi-meeting", startMeeting);
+    bind("#mi-add", function () { closeSheet(); setTimeout(addPartSheet, 230); });
+  }
+
+  /* ---------- who can speak for itself ----------
+     One rule everywhere - reacting to material, or speaking at a table
+     meeting: a part speaks once it is ready (schema.readiness). Seating on
+     the Table tab decides who is invited; readiness decides who talks. A
+     part that is not ready yet says what would get it there, as a next
+     step, never as a percentage. */
+  function notReadySheet(slugs, why) {
+    var parts = slugs.map(ST.getPart).filter(Boolean);
+    closeSheet();
+    setTimeout(function () {
+      openSheet(
+        '<h2 class="sheet-title serif">Not quite yet</h2>' +
+        (why ? '<p class="dim">' + why + "</p>" : "") +
+        parts.map(function (p) {
+          return '<button class="menu-item" data-slug="' + esc(p.slug) + '"><span class="mi-icon' + P.cls(p) + '">' + P.face(p) +
+            '</span><span class="mi-main">' + esc(p.name) + '<span class="mi-sub">' + esc(S.unlockHint(p).text) + "</span></span>" +
+            icon("chevron", 16) + "</button>";
+        }).join("") +
+        '<p class="dim" style="margin-top:12px">Tap a part to ' + (hasAI() ? "check in with it about that." : "answer the next questions about it yourself.") + "</p>" +
+        '<button class="btn btn-ghost btn-big" id="nrClose">Not now</button>'
+      );
+      document.querySelectorAll("#sheetBody .menu-item").forEach(function (el) {
+        el.addEventListener("click", function () {
+          var p = ST.getPart(el.dataset.slug);
+          var h = S.unlockHint(p);
+          if (hasAI()) startSession("checkin", [p.slug]);
+          else askCategory(p.slug, h.category || Q.nextCategory(p));
+        });
       });
-    });
-    bind("#mi-map", function () {
-      pickParts("Which two parts should we map?", 2, 2, false, function (slugs) { startSession("mapping", slugs); });
-    });
-    bind("#mi-embody", function () { pickPart("Which part should react?", function (slug) { askMaterial("embody", [slug]); }, true); });
-    bind("#mi-meeting", function () {
-      // with a room built, seating is the single source of truth for who
-      // attends - otherwise the prompt seats nobody and the meeting is empty
-      var tb = ST.state.table;
-      if (tb.built) {
-        var atTable = ST.listParts().filter(function (p) { return tb.seats[p.slug] === "table"; });
-        closeSheet();
-        if (atTable.length < 2) {
-          showView("table");
-          toast("Seat at least two parts at the table first");
-          return;
-        }
-        askMaterial("meeting", atTable.map(function (p) { return p.slug; }));
+      bind("#nrClose", closeSheet);
+    }, 230);
+  }
+
+  function startMeeting() {
+    var tb = ST.state.table;
+    var all = ST.listParts();
+    var ready = all.filter(function (p) { return S.readiness(p).ready; });
+    if (tb.built) {
+      var seated = all.filter(function (p) { return tb.seats[p.slug] === "table"; });
+      var speaking = seated.filter(function (p) { return S.readiness(p).ready; });
+      if (seated.length < 2) {
+        closeSheet(); showView("table");
+        toast("Seat at least two parts at your table first");
         return;
       }
-      pickParts("Who takes a seat at the table?", 2, 99, true, function (slugs) { askMaterial("meeting", slugs); });
-    });
-    bind("#mi-import", importSheet);
+      if (speaking.length < 2) {
+        notReadySheet(seated.filter(function (p) { return !S.readiness(p).ready; }).map(function (p) { return p.slug; }),
+          "A meeting needs two seated parts that can speak for themselves. These are at your table but not ready yet:");
+        return;
+      }
+      askMaterial("meeting", seated.map(function (p) { return p.slug; }));
+      return;
+    }
+    if (ready.length < 2) {
+      notReadySheet(all.filter(function (p) { return !S.readiness(p).ready; })
+        .sort(function (a, b) { return S.coverageScore(b) - S.coverageScore(a); }).slice(0, 4).map(function (p) { return p.slug; }),
+        "A meeting needs two parts that can speak for themselves. Closest:");
+      return;
+    }
+    pickParts("Who takes a seat at the table?", 2, 99, true, function (slugs) { askMaterial("meeting", slugs); });
   }
 
   var MENU_ICONS = {
     "mi-talk": icon("mic"),
+    "mi-notice": icon("leaf"),
+    "mi-know": icon("chat"),
+    "mi-relate": icon("map"),
+    "mi-add": icon("plus"),
     "mi-intake": icon("spark"),
     "mi-checkin": icon("chat"),
     "mi-map": icon("map"),
@@ -1017,17 +1107,19 @@
      Only sends the chosen parts' profiles to the AI - no more than needed. */
   function pickParts(title, min, max, mustBeReady, cb) {
     var parts = ST.listParts().filter(function (p) { return !mustBeReady || S.readiness(p).ready; });
+    var waiting = mustBeReady ? ST.listParts().filter(function (p) { return !S.readiness(p).ready; }) : [];
     openSheet(
       '<h2 class="sheet-title serif">' + esc(title) + "</h2>" +
-      (mustBeReady ? '<p class="dim">Only parts developed enough to speak for themselves are listed.</p>' : "") +
       parts.map(function (p) {
         return '<button class="menu-item pk" data-slug="' + esc(p.slug) + '"><span class="mi-icon' + P.cls(p) + '">' +
           P.face(p) + '</span><span class="mi-main">' + esc(p.name) +
           '<span class="mi-sub">' + esc(p.type) + '</span></span><span class="pk-check">&#10003;</span></button>';
       }).join("") +
+      (waiting.length ? '<button class="linkbtn pk-why" id="pkWhy">' + waiting.length + (waiting.length === 1 ? " part isn&rsquo;t" : " parts aren&rsquo;t") + " ready to speak yet &mdash; why?</button>" : "") +
       '<div style="height:12px"></div>' +
       '<button class="btn btn-primary btn-big" id="pkGo" disabled>Choose ' + (min === max ? min : "at least " + min) + "</button>"
     );
+    bind("#pkWhy", function () { notReadySheet(waiting.map(function (p) { return p.slug; })); });
     var chosen = [];
     var go = $("#pkGo");
     function refresh() {
@@ -1049,18 +1141,25 @@
     go.addEventListener("click", function () { closeSheet(); cb(chosen.slice()); });
   }
 
+  /* mustBeReady: every part is listed, but one that cannot speak for itself
+     yet says so, and choosing it explains what would get it there. */
   function pickPart(title, cb, mustBeReady, excludeSlug) {
-    var parts = ST.listParts().filter(function (p) {
-      return (!mustBeReady || S.readiness(p).ready) && p.slug !== excludeSlug;
-    });
+    var parts = ST.listParts().filter(function (p) { return p.slug !== excludeSlug; });
+    var locked = function (p) { return mustBeReady && !S.readiness(p).ready; };
     openSheet(
       '<h2 class="sheet-title serif">' + esc(title) + "</h2>" +
       parts.map(function (p) {
-        return '<button class="menu-item" data-slug="' + esc(p.slug) + '"><span class="mi-icon' + P.cls(p) + '">' +
+        return '<button class="menu-item' + (locked(p) ? " is-locked" : "") + '" data-slug="' + esc(p.slug) + '"><span class="mi-icon' + P.cls(p) + '">' +
           P.face(p) + '</span><span class="mi-main">' + esc(p.name) +
-          '<span class="mi-sub">' + esc(p.type) + "</span></span></button>";
+          '<span class="mi-sub">' + (locked(p) ? "not ready to speak yet &mdash; tap to see why" : esc(p.type)) + "</span></span></button>";
       }).join("")
     );
+    var original = cb;
+    cb = function (slug) {
+      var p = ST.getPart(slug);
+      if (p && locked(p)) { notReadySheet([slug]); return; }
+      original(slug);
+    };
     document.querySelectorAll("#sheetBody .menu-item").forEach(function (el) {
       el.addEventListener("click", function () { closeSheet(); cb(el.dataset.slug); });
     });
@@ -2306,7 +2405,9 @@
       ].filter(Boolean);
       page(
         '<div class="card"><h3>This session runs in ' + esc(who) + '</h3><ol class="cp-steps">' +
-        steps.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol></div>" +
+        steps.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol>" +
+        '<p class="dim cp-note">Different there: no &ldquo;ground me&rdquo; button, no voice from Inner Table, and no draft to pick up later. ' + esc(who) +
+        " follows the same session and safety guidance, but only as instructions it reads. For anything tender, talking here in Inner Table is the safer place.</p></div>" +
         (h.url ? '<a class="btn btn-primary btn-big" id="lsOpen" href="' + esc(h.url) + '" target="_blank" rel="noopener">Open ' + esc(who) + "</a><div style=\"height:10px\"></div>" : "") +
         '<button class="btn ' + (h.url ? "btn-soft" : "btn-primary") + ' btn-big" id="lsCopy">Copy the message</button><div style="height:10px"></div>' +
         (h.pasteNext ? '<button class="btn btn-soft btn-big" id="lsCopyMat">Copy what&rsquo;s on the table</button><div style="height:10px"></div>' : "") +
@@ -2484,8 +2585,18 @@
     }, 4000);
   }
   function hideGrounding() {
-    $("#ground").classList.add("hidden");
+    var g = $("#ground");
+    g.classList.add("hidden");
+    g.classList.remove("standalone");
+    $("#groundResume").textContent = "Return to session";
     clearInterval(breathTimer);
+  }
+  /* The same pause, from the home screen: no session to return to, one way
+     back to the day. */
+  function groundAlone() {
+    showGrounding();
+    $("#ground").classList.add("standalone");
+    $("#groundResume").textContent = "I'm back";
   }
 
   /* ================= map ================= */
@@ -3021,7 +3132,7 @@
   /* One line on where a session started now would happen. */
   function sessionsStartLine(s, here, linked) {
     if (here) return "Sessions you start run here, with " + esc(LLM.label(s.ai)) + ".";
-    if (linked) return "Sessions you start open in " + esc(PROVIDER_NAMES[s.provider]) + ". Connect an AI here to have them run in Inner Table instead.";
+    if (linked) return "Sessions you start open in " + esc(PROVIDER_NAMES[s.provider]) + ". Connect an AI here to have them run in Inner Table instead &mdash; voice, &ldquo;ground me&rdquo; and saved drafts only work here.";
     if (s.copyPrompt) return 'Sessions you start give you a prompt to copy into any AI chat. <button class="linkbtn" id="askWhere">Ask me each time instead</button>';
     return "When you start a session, you&rsquo;ll be asked where you&rsquo;d like to talk.";
   }

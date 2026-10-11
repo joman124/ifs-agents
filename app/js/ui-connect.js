@@ -195,7 +195,7 @@
     UI.openSheet(
       '<h2 class="sheet-title serif">Where would you like to talk?</h2>' +
       '<p class="dim">Pick once &mdash; you can change it any time in Settings &rarr; Live sessions.</p>' +
-      item("cwHere", "chat", "Here in Inner Table", "connect your own AI account &middot; a few cents a session") +
+      item("cwHere", "chat", "Here in Inner Table &middot; recommended", "voice, &ldquo;ground me&rdquo; and saved drafts work only here &middot; your own AI account, a few cents a session") +
       item("cwApp", "sync", "In my Claude or ChatGPT app", "link it once &middot; sessions open there and save back here") +
       item("cwCopy", "file", "Copy a prompt", "paste it into any AI chat, then paste the result back")
     );

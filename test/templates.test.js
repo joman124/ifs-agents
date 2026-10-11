@@ -83,6 +83,8 @@ module.exports = function (t) {
   var room = { built: true, room: "A round table.", seats: { "the-watcher": "table", "the-dreamer": "table" }, tools: [], agreements: [],
     meetings: [{ date: "2026-09-20", topic: "Apply for the job?", parts: ["the-watcher", "the-dreamer"],
       voices: [{ name: "The Watcher", line: "Not until it is perfect." }], synthesis: "Both want it to go well." }] };
+  // only parts that can speak for themselves take part in a meeting
+  H.makeReady(known); H.makeReady(dreamer2);
   var mt = T.meeting([known, dreamer2], "Take the promotion?", room, [known, dreamer2]);
   t.ok(/Earlier meetings these parts sat in/.test(mt) && /Not until it is perfect/.test(mt), "a meeting remembers earlier meetings");
   t.ok(/Self's synthesis: Both want it to go well/.test(mt), "...and what Self made of them");
@@ -90,8 +92,13 @@ module.exports = function (t) {
   t.ok(/how do they feel toward the parts gathered here\?/.test(mt), "the person's own Self is checked before anyone speaks");
   t.ok(/stop the meeting at once/.test(mt) && /Do not resume the meeting/.test(mt), "a crisis stops the meeting");
   ex.slug = "the-little-one";
+  H.makeReady(ex); ex.type = "exile";
   room.seats["the-little-one"] = "table";
   t.ok(/Before an exile speaks, ask the protectors/.test(T.meeting([known, ex], "x", room, [known, ex])), "an exile at the table speaks only with its protectors' leave");
+  var unready = S.blankPart("The Hurrier"); unready.slug = "the-hurrier";
+  room.seats["the-hurrier"] = "table";
+  var mt2 = T.meeting([known, dreamer2, unready], "x", room, [known, dreamer2, unready]);
+  t.ok(/Not speaking today[\s\S]*The Hurrier/.test(mt2), "a seated part that is not ready yet sits in, but does not speak");
 
   /* a linked AI that can save does so, instead of printing the profile */
   var saving = T.portable("checkin", [critic], "", null, { bridge: true, save: true });

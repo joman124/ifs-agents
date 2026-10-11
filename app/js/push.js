@@ -79,15 +79,26 @@
     return sub;
   }
 
-  /* The timezone rides along so the server's reminders land at 8am, 2pm and
-     8pm on this device's clock, not the server's. */
+  /* The timezone and the chosen hours ride along, so the reminder lands at
+     the person's time on this device's clock, not the server's. */
+  var REMIND_CHOICES = [
+    { key: "8", hours: [8], label: "8am" },
+    { key: "13", hours: [13], label: "1pm" },
+    { key: "20", hours: [20], label: "8pm" },
+    { key: "8,20", hours: [8, 20], label: "8am &amp; 8pm" }
+  ];
+  function chosenHours() {
+    var h = window.IFS.store && window.IFS.store.state && window.IFS.store.state.settings.remindHours;
+    return Array.isArray(h) && h.length ? h : [20];
+  }
   async function save(sub) {
     var r = await fetch("/api/push-subscribe", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
         subscription: sub.toJSON(),
-        tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        hours: chosenHours()
       })
     });
     if (!r.ok) throw new Error("Could not save your subscription - try again.");
@@ -152,7 +163,12 @@
     } else if (!supported()) {
       html += '<div class="set-row">' + bell() + '<span class="sr-main">Not supported here<span class="sr-sub">try this on your phone, from the home-screen app</span></span></div>';
     } else if (cachedSubscribed) {
-      html += '<div class="set-row">' + bell() + '<span class="sr-main">Notifications on<span class="sr-sub">a check-in reminder at 8am, 2pm and 8pm</span></span><button class="btn btn-soft" id="pushTestBtn">Send test</button></div>' +
+      var cur = chosenHours().join(",");
+      html += '<div class="set-row">' + bell() + '<span class="sr-main">Notifications on<span class="sr-sub">one quiet nudge to notice a part &mdash; tap it and the notice opens</span></span><button class="btn btn-soft" id="pushTestBtn">Send test</button></div>' +
+        '<div class="set-pad"><div class="sr-copy"><b>When</b><span class="sr-sub">on this device&rsquo;s clock</span></div>' +
+        '<div class="seg" id="remindSeg" style="margin-top:8px">' + REMIND_CHOICES.map(function (c) {
+          return '<button data-hours="' + c.key + '"' + (c.key === cur ? ' class="on"' : "") + ">" + c.label + "</button>";
+        }).join("") + "</div></div>" +
         '<div class="set-row">' + bell() + '<span class="sr-main">Turn off<span class="sr-sub">stop notifications on this device</span></span><button class="btn btn-soft" id="pushOffBtn">Turn off</button></div>';
     } else {
       html += '<div class="set-row">' + bell() + '<span class="sr-main">Get notified on this device<span class="sr-sub">asks for permission, once</span></span><button class="btn btn-soft" id="pushOnBtn">Enable</button></div>';
@@ -173,6 +189,19 @@
       cachedSubscribed = false;
       paint();
       toast("Notifications are off for this device");
+    });
+    var seg = group.querySelector("#remindSeg");
+    if (seg) seg.addEventListener("click", async function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      var hours = b.dataset.hours.split(",").map(Number);
+      window.IFS.store.state.settings.remindHours = hours;
+      window.IFS.store.save();
+      paint();
+      try {
+        var sub = await getSubscription();
+        if (sub) await save(sub);
+        toast("Reminder set for " + b.textContent.replace("&amp;", "&"));
+      } catch (err) { toast(err.message || "Could not update the reminder"); }
     });
     var testBtn = group.querySelector("#pushTestBtn");
     if (testBtn) testBtn.addEventListener("click", async function () {

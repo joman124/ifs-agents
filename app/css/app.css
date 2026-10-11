@@ -1392,3 +1392,38 @@ img.pic {
 .cx-or::before, .cx-or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 #cxKey, #cxModel { width: 100%; box-sizing: border-box; }
 .linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* ---- the daily practice (ui-practice.js) ---- */
+.quick-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.quick-row .quick { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: .88rem; }
+.nt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px; }
+.chip.chip-btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.chip.tone-self.on { border-color: var(--good); }
+.chip.tone-reactive.on { border-color: var(--warn); }
+#ntNew, #ntText { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+.nt-hint { margin: 0 2px 14px; font-size: .84rem; min-height: 1.2em; }
+.pc-rel { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: .8rem; }
+.pc-feel { padding: 3px 10px; border-radius: 999px; background: var(--surface2); color: var(--ink-dim); border: 1px solid var(--line); }
+.pc-feel.tone-self { color: var(--ink); border-color: var(--good); }
+.pc-feel.tone-reactive { color: var(--ink); border-color: var(--warn); }
+.pc-times { color: var(--ink-dim); }
+.pc-depth { opacity: .75; }
+.toward-card .pc-rel { margin-top: 4px; }
+.lookback { display: flex; align-items: center; gap: 12px; width: 100%; margin: 0 0 16px; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+.lookback .lb-i { color: var(--accent); display: inline-flex; }
+.lookback .lb-main { flex: 1; display: flex; flex-direction: column; }
+.lookback .lb-sub { color: var(--ink-dim); font-size: .82rem; }
+.lb-list { margin: 6px 0 8px; padding-left: 18px; line-height: 1.7; }
+.lb-dir { font-size: .78rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-dim); }
+.lb-dir.warmer { border-color: var(--good); color: var(--ink); }
+.lb-dir.cooler { border-color: var(--warn); color: var(--ink); }
+details.mi-more { margin-top: 6px; }
+details.mi-more summary { cursor: pointer; padding: 12px 4px; color: var(--ink-dim); font-size: .86rem; font-weight: 600; }
+.menu-item.is-locked { opacity: .65; }
+.pk-why { display: block; margin: 12px 2px 0; font-size: .86rem; }
+.ground.standalone #groundEnd { display: none; }
+.ground .alone-only { display: none; }
+.ground.standalone .alone-only { display: block; }
+.ground.standalone .session-only { display: none; }
+.ritual-cta .btn-ghost { color: inherit; opacity: .85; }

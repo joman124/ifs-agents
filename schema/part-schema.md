@@ -160,10 +160,16 @@ Append-only. Never rewrite history.
 ```yaml
 sessions:
   - date: 2026-07-03
-    mode: intake          # intake | checkin | mapping | meeting
+    mode: intake          # intake | checkin | mapping | meeting | notice
     categories: [introduction, positive_intent]
     note: <one line summary>
+    feel: curious         # optional: how the person felt toward the part -
+                          # curious | warm | calm | neutral | impatient | annoyed | afraid | overwhelmed
 ```
+
+A `notice` entry is a moment noticed in daily life, between sessions ("loud
+before the meeting"), logged in seconds from the app with no AI. It has no
+categories; the next check-in reads it as memory.
 
 ## Narrative body sections
 

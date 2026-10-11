@@ -121,6 +121,7 @@
     "- If the session ended up being with a different part than planned, write the profile for the part actually met.",
     "- Set coverage honestly: complete only for richly-answered categories, partial for touched ones, declined for refused ones, untouched otherwise. Never downgrade partial/complete; declined stays declined unless the part reopened it.",
     "- Append one sessions entry with today's date (" + S.todayISO() + "), the mode, categories touched, and a one-line note. Never delete prior entries.",
+    "- If the person said how they felt toward the part at the feel-toward check, add `feel:` to that sessions entry with the nearest of these words: " + S.FEEL_TOWARD.map(function (f) { return f.key; }).join(", ") + ". Leave it out if they did not say.",
     "- Append a dated entry to the TOP of Session notes: how the person felt toward the part today, any other parts that showed up (described in a few words, so they can be met another time), what was declined, and anything flagged for next time. Never rewrite old notes."
   ].join("\n");
 
@@ -220,9 +221,14 @@
     });
     var declined = S.CATEGORIES.filter(function (c) { return part.coverage[c] === "declined"; });
     var label = function (c) { return S.CATEGORY_LABELS[c]; };
-    var sessions = (part.sessions || []).slice(-3).reverse().map(function (s) {
-      return "- " + s.date + " (" + s.mode + ")" + (s.note ? ": " + s.note : "");
+    var sessions = (part.sessions || []).filter(function (s) { return s.mode !== "notice"; }).slice(-3).reverse().map(function (s) {
+      return "- " + s.date + " (" + s.mode + ")" + (s.feel ? " - the person felt " + s.feel + " toward it" : "") + (s.note ? ": " + s.note : "");
     });
+    // moments the person noticed it in daily life, between sessions
+    var noticed = (part.sessions || []).filter(function (s) { return s.mode === "notice"; }).slice(-4).reverse().map(function (s) {
+      return "- " + s.date + (s.note ? ": " + s.note : "") + (s.feel ? " (they felt " + s.feel + " toward it)" : "");
+    });
+    var toward = S.towardPart(part);
     var note = lastNote(part);
 
     return [
@@ -235,6 +241,8 @@
       "",
       sessions.length ? "Recent sessions:\n" + sessions.join("\n") + "\n" : "",
       note ? "The last session note: \"" + note + "\"\n" : "",
+      noticed.length ? "Noticed between sessions, in their own words - a good place to begin ('You noticed it before the meeting on Tuesday - can we start there?'):\n" + noticed.join("\n") + "\n" : "",
+      toward.feel ? "Last recorded, the person felt **" + toward.feel + "** toward it (" + toward.date + "). Notice whether that has shifted.\n" : "",
       "Well covered already: " + (strong.length ? strong.map(label).join(", ") : "nothing yet") + ".",
       "Thin - where today's time is best spent: " + (thin.length ? thin.map(label).join(", ") : "nothing; every open category is well covered") + ".",
       declined.length ? "Closed - the part declined these; never raise them unless it does: " + declined.map(label).join(", ") + "." : "",
@@ -551,8 +559,9 @@
     var atTable = table && table.built && table.seats;
     var seated = [], benched = [];
     parts.forEach(function (p) {
-      // once a room exists, seating decides who speaks - not the readiness bar
-      var ok = atTable ? table.seats[p.slug] === "table" : S.readiness(p).ready;
+      // one rule everywhere: a part speaks for itself once it is ready; a
+      // room, when there is one, decides who is invited to the table
+      var ok = S.readiness(p).ready && (!atTable || table.seats[p.slug] === "table");
       (ok ? seated : benched).push(p);
     });
     var between = betweenLines(seated);
@@ -584,7 +593,7 @@
       between.length ? "Between them, so far:\n" + between.join("\n") + "\n" : "",
       history.length ? "Earlier meetings these parts sat in:\n" + history.join("\n") + "\n\nLet the parts pick up threads from these where it fits - a part that wanted something last time may ask whether it happened.\n" : "",
       benched.length ? "## Not speaking today\n" + (atTable
-        ? "These parts were not seated at the table. Some are present in the room; see who is in the room above. Do not put words in their mouths: "
+        ? "These parts are not speaking today - not seated at the table, or not yet known well enough to speak for themselves. Some are present in the room; see who is in the room above. Do not put words in their mouths: "
         : "These parts' profiles have not cleared the readiness bar and sit out today (say so kindly in the convening): ") +
         benched.map(function (p) { return p.name; }).join(", ") +
         (atTable ? "." : ". They need a check-in session or two first.") + "\n" : "",

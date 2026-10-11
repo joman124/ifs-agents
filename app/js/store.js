@@ -92,6 +92,7 @@
         elevenModel: "eleven_flash_v2_5",
         speechRate: 0.9,         // 0.7-1.2; spoken replies are slower than chat
         haptics: true,
+        remindHours: [20],       // local hours for this device's daily reminder (push.js)
         lastBackup: "",          // ISO date of last full export
         backupSnooze: "",        // ISO date the backup reminder was dismissed
         installSnooze: "",       // ISO date the add-to-home-screen nudge was dismissed
@@ -364,6 +365,18 @@
     }
     state.parts[part.slug] = part;
     save();
+  }
+
+  /* A quick notice - a line about the moment and how the person felt toward
+     the part - written into that part's session log (schema.addNotice). */
+  function notice(slug, text, feel) {
+    var p = state.parts[slug];
+    if (!p) return null;
+    var copy = JSON.parse(JSON.stringify(p));
+    var entry = S.addNotice(copy, text, feel);
+    if (!entry) return null;
+    upsertPart(copy);
+    return entry;
   }
 
   /* Same as upsertPart, but for profiles that came back from a model or an
@@ -1024,6 +1037,7 @@
     listParts: listParts,
     getPart: getPart,
     upsertPart: upsertPart,
+    notice: notice,
     mergePart: mergePart,
     absorbPart: absorbPart,
     deletePart: deletePart,

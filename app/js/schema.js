@@ -508,9 +508,11 @@
     if (Array.isArray(raw.sessions)) {
       p.sessions = raw.sessions.filter(function (s) { return s && typeof s === "object" && s.date; })
         .map(function (s) {
-          return { date: String(s.date), mode: s.mode || "checkin",
+          var out = { date: String(s.date), mode: s.mode || "checkin",
                    categories: Array.isArray(s.categories) ? s.categories : [],
                    note: typeof s.note === "string" ? s.note : "" };
+          if (FEEL_KEYS.indexOf(s.feel) >= 0) out.feel = s.feel;
+          return out;
         });
     }
     if (raw.narrative && typeof raw.narrative === "object") {
@@ -735,6 +737,107 @@
   /* Which part has gone quietest - the one the daily ritual offers first.
      Coldest wins; where two are equally cold the less developed one is the
      more useful invitation, because it has more left to say. */
+  /* ---- How the person feels toward a part ----
+     The measure IFS cares about is not how much of a part is written down but
+     how the person meets it: curious and warm (Self-energy) or braced against
+     it (another part has stepped in). A quick notice records one of these
+     words; over weeks they show a relationship changing. */
+  var FEEL_TOWARD = [
+    { key: "curious", tone: 1 }, { key: "warm", tone: 1 }, { key: "calm", tone: 1 },
+    { key: "neutral", tone: 0 },
+    { key: "impatient", tone: -1 }, { key: "annoyed", tone: -1 }, { key: "afraid", tone: -1 },
+    { key: "overwhelmed", tone: -1 }
+  ];
+  var FEEL_KEYS = FEEL_TOWARD.map(function (f) { return f.key; });
+  function feelTone(word) {
+    var f = FEEL_TOWARD.filter(function (x) { return x.key === word; })[0];
+    return f ? f.tone : null;
+  }
+
+  /* A notice - "The Critic was loud before the meeting" - is a moment of
+     contact, so it goes in the part's own session log: it syncs and merges
+     like any session, warms the part on the map, and the next check-in reads
+     it as memory. Returns the entry, or null if there is nothing to record. */
+  function addNotice(part, text, feel, dateISO) {
+    var note = String(text || "").replace(/\s+/g, " ").trim().slice(0, 400);
+    var f = FEEL_KEYS.indexOf(feel) >= 0 ? feel : "";
+    if (!part || (!note && !f)) return null;
+    var entry = { date: dateISO || todayISO(), mode: "notice", categories: [], note: note };
+    if (f) entry.feel = f;
+    part.sessions = (part.sessions || []).concat([entry]);
+    return entry;
+  }
+
+  /* The latest word for how the person felt toward a part, and how often
+     they have sat with it (any session or notice). */
+  function towardPart(part) {
+    var ss = (part && part.sessions) || [];
+    var last = null;
+    ss.forEach(function (s) {
+      if (s && s.feel && (!last || String(s.date) >= String(last.date))) last = s;
+    });
+    return { feel: last ? last.feel : "", date: last ? String(last.date) : "", times: ss.length };
+  }
+
+  function shiftDate(iso, days) {
+    var t = Date.parse(String(iso) + "T00:00:00Z");
+    if (isNaN(t)) return iso;
+    return new Date(t + days * 86400000).toISOString().slice(0, 10);
+  }
+
+  /* The last `days` days, in what IFS counts: which parts the person sat
+     with, how their feeling toward each moved, and which threads between
+     parts grew warmer or cooler. Pure - the look-back panel draws it. */
+  function lookBack(parts, today, days) {
+    days = days || 30;
+    today = today || todayISO();
+    var since = shiftDate(today, -days);
+    var sat = [], shifts = [], threads = [], notices = 0, sessions = 0;
+    (parts || []).forEach(function (p) {
+      var inWin = (p.sessions || []).filter(function (s) { return s && String(s.date) > since && String(s.date) <= today; })
+        .sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+      if (inWin.length) sat.push({ slug: p.slug, name: p.name, count: inWin.length });
+      inWin.forEach(function (s) { if (s.mode === "notice") notices++; else sessions++; });
+      var felt = inWin.filter(function (s) { return s.feel; });
+      if (felt.length >= 2) {
+        var a = felt[0].feel, b = felt[felt.length - 1].feel;
+        var d = (feelTone(b) || 0) - (feelTone(a) || 0);
+        if (a !== b) shifts.push({ slug: p.slug, name: p.name, from: a, to: b, dir: d > 0 ? "warmer" : d < 0 ? "cooler" : "different" });
+      }
+    });
+    var bySlug = {};
+    (parts || []).forEach(function (p) { bySlug[p.slug] = p; });
+    (parts || []).forEach(function (p) {
+      (p.feelings || []).forEach(function (f) {
+        var other = bySlug[f.part];
+        if (!other || !f.prev || f.prev === f.rating || String(f.date || "") <= since) return;
+        threads.push({ from: p.name, to: other.name, was: f.prev, now: f.rating, dir: f.rating > f.prev ? "warmer" : "cooler" });
+      });
+    });
+    sat.sort(function (x, y) { return y.count - x.count || x.name.localeCompare(y.name); });
+    return { days: days, since: since, sat: sat, sessions: sessions, notices: notices, shifts: shifts, threads: threads };
+  }
+
+  /* One rule for when a part can speak for itself - in a reaction to
+     material or at a table meeting: once it is ready (schema readiness).
+     What is missing is said as the next thing to do, never as a percentage. */
+  function unlockHint(part) {
+    var r = readiness(part);
+    if (r.ready) return { ready: true, text: "", category: "" };
+    var cat = "";
+    if (!part.positive_intent) cat = "positive_intent";
+    else {
+      var open = CATEGORIES.filter(function (c) { return part.coverage[c] !== "declined" && part.coverage[c] !== "complete"; });
+      cat = open[0] || "";
+    }
+    return {
+      ready: false,
+      category: cat,
+      text: part.name + " can speak for itself once a little more is known about it" +
+        (cat ? " - next, " + (cat === "positive_intent" ? "what it is trying to do for you" : CATEGORY_LABELS[cat].toLowerCase()) : "") + "."
+    };
+  }
+
   function quietestPart(parts, today) {
     var best = null, bestHeat = 2, bestScore = 2;
     (parts || []).forEach(function (p) {
@@ -880,6 +983,13 @@
     quietestPart: quietestPart,
     applyReadings: applyReadings,
     JOURNAL_CAP: JOURNAL_CAP,
+    FEEL_TOWARD: FEEL_TOWARD,
+    feelTone: feelTone,
+    addNotice: addNotice,
+    towardPart: towardPart,
+    lookBack: lookBack,
+    shiftDate: shiftDate,
+    unlockHint: unlockHint,
     normalizeJournal: normalizeJournal
   };
 })();

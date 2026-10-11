@@ -1,7 +1,7 @@
 /* Inner Table - service worker: cache-first app shell for offline use,
    plus the push/notificationclick handlers that let it show notifications
    even when the app isn't open. */
-var CACHE = "inner-table-v48";
+var CACHE = "inner-table-v49";
 var SHELL = [
   "./",
   "index.html",
@@ -29,6 +29,7 @@ var SHELL = [
   "js/ui-learn.js",
   "js/ui-bridge.js",
   "js/ui-connect.js",
+  "js/ui-practice.js",
   "js/app.js",
   "manifest.webmanifest",
   "icons/icon.svg",
@@ -100,7 +101,12 @@ self.addEventListener("notificationclick", function (e) {
   e.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
       for (var i = 0; i < list.length; i++) {
-        if ("focus" in list[i]) return list[i].focus();
+        if ("focus" in list[i]) {
+          // an open app is told where the notification points (the notice),
+          // rather than reloaded in the middle of whatever it was doing
+          list[i].postMessage({ type: "open", url: url });
+          return list[i].focus();
+        }
       }
       if (clients.openWindow) return clients.openWindow(url);
     })

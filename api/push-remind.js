@@ -7,15 +7,20 @@
    one saved before timezones were sent is skipped until the app next opens
    and re-sends it.
 
-   Hit once an hour by .github/workflows/reminders.yml - Vercel's Hobby plan
-   only runs its own crons once a day, and "the device's 8am" lands on a
-   different UTC hour for every timezone. CRON_SECRET guards it: without that
-   check anyone could buzz every subscriber's phone. */
+   Hit once an hour by 24 daily Vercel crons (vercel.json: Hobby allows 100
+   jobs, each once a day, firing anywhere inside its hour), with
+   .github/workflows/reminders.yml as a backup - GitHub's "hourly" schedule
+   ran about four times a day in practice. Runs land late, skip an hour or
+   double up, so a reminder still goes out up to LATE_HOURS after the chosen
+   hour, and each device remembers the last one it got (sub.last) so it is
+   never sent twice. CRON_SECRET guards it (Vercel sends it as the bearer):
+   without that check anyone could buzz every subscriber's phone. */
 "use strict";
 
 var crypto = require("crypto");
 
 var DEFAULT_HOURS = [20];
+var LATE_HOURS = 3;
 
 /* The hours a device asked for (push-subscribe.js keeps them clean), or the
    default for one saved before there was a choice. */
@@ -29,14 +34,26 @@ var PREFIX = "innertable:push:";
 // a reminder that sat undelivered past this is noise, not a nudge
 var TTL_SECONDS = 2 * 60 * 60;
 
-function localHour(tz, now) {
+/* The device's own date and hour, or null for a timezone Intl won't take. */
+function localTime(tz, now) {
   try {
-    return Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(now));
-  } catch (e) { return -1; }
+    var p = {};
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "numeric", hourCycle: "h23" }).formatToParts(now).forEach(function (x) { p[x.type] = x.value; });
+    return { date: p.year + "-" + p.month + "-" + p.day, hour: Number(p.hour) };
+  } catch (e) { return null; }
 }
 
+/* The reminder a device is owed right now, as "YYYY-MM-DD@HH" on its own
+   clock - the latest chosen hour that has come within the last LATE_HOURS
+   and not been sent yet - or "" when nothing is owed. */
 function isDue(sub, now) {
-  return !!(sub && sub.tz) && hoursOf(sub).indexOf(localHour(sub.tz, now)) >= 0;
+  var t = sub && sub.tz ? localTime(sub.tz, now) : null;
+  if (!t) return "";
+  var owed = hoursOf(sub).filter(function (h) { return h <= t.hour && t.hour < h + LATE_HOURS; });
+  if (!owed.length) return "";
+  var slot = t.date + "@" + String(Math.max.apply(null, owed)).padStart(2, "0");
+  return (typeof sub.last === "string" ? sub.last : "") >= slot ? "" : slot;
 }
 
 function authorized(req, secret) {
@@ -96,8 +113,10 @@ module.exports = async function handler(req, res) {
       var list = [];
       try { list = JSON.parse((await redis(["GET", key])) || "[]"); } catch (e) { list = []; }
       if (!Array.isArray(list)) return;
-      var gone = [];
-      await Promise.all(list.filter(function (s) { return isDue(s, now); }).map(async function (sub) {
+      var gone = [], sentTo = {};
+      await Promise.all(list.map(async function (sub) {
+        var slot = isDue(sub, now);
+        if (!slot) return;
         try {
           await webpush.sendNotification(
             { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
@@ -105,14 +124,22 @@ module.exports = async function handler(req, res) {
             { TTL: TTL_SECONDS }
           );
           sent++;
+          sentTo[sub.endpoint] = slot;
         } catch (e) {
           // 404/410 = the push service says this subscription is gone
           if (e && (e.statusCode === 404 || e.statusCode === 410)) gone.push(sub.endpoint);
         }
       }));
-      if (gone.length) {
-        await redis(["SET", key, JSON.stringify(list.filter(function (s) {
+      if (gone.length || Object.keys(sentTo).length) {
+        // re-read so a device that subscribed during the sends is kept
+        // ponytail: still a read-then-write; Redis WATCH/MULTI if it ever bites
+        var fresh = [];
+        try { fresh = JSON.parse((await redis(["GET", key])) || "[]"); } catch (e) { fresh = list; }
+        if (!Array.isArray(fresh)) fresh = list;
+        await redis(["SET", key, JSON.stringify(fresh.filter(function (s) {
           return gone.indexOf(s.endpoint) < 0;
+        }).map(function (s) {
+          return sentTo[s.endpoint] ? Object.assign({}, s, { last: sentTo[s.endpoint] }) : s;
         }))]);
       }
     }));

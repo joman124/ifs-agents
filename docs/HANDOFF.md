@@ -52,7 +52,7 @@ gracefully (local-only mode), it never crashes.
 | `SESSION_SECRET` | signing login tokens (HMAC-SHA256) | any long random string |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | `node scripts/gen-vapid-keys.js` |
 | `VAPID_SUBJECT` | Web Push contact | `mailto:` address |
-| `CRON_SECRET` | check-in reminders (`api/push-remind.js`) | any long random string — also set as a GitHub Actions secret of the same name; `.github/workflows/reminders.yml` sends it hourly, and the endpoint notifies each device once a day at the hour chosen for it in Settings (8pm by default), on its own clock; tapping the notification opens *Notice a part* |
+| `CRON_SECRET` | check-in reminders (`api/push-remind.js`) | any long random string — Vercel sends it to the 24 daily crons in `vercel.json` (one per UTC hour: the Hobby-plan way to get an hourly clock); also set as a GitHub Actions secret of the same name for the backup tick in `.github/workflows/reminders.yml`. The endpoint notifies each device once a day at the hour chosen for it in Settings (8pm by default), on its own clock, up to 3 hours late if a run was missed, and never twice (`last` on the subscription); tapping the notification opens *Notice a part* |
 
 `scripts/add-user.js` provisions accounts from the command line when needed.
 

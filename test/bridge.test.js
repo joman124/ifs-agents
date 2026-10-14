@@ -99,8 +99,10 @@ module.exports = async function (t) {
     "2025-06-18", "an unknown protocol version falls back to the newest");
   t.eq((await rpc({ jsonrpc: "2.0", method: "notifications/initialized" })).code, 202, "a notification is acknowledged with no body");
   var tools = (await rpc({ jsonrpc: "2.0", id: 3, method: "tools/list" })).body.result.tools;
-  t.eq(tools.map(function (x) { return x.name; }), ["list_parts", "get_part", "get_table", "start_session", "save_session"], "read tools, the session starter, and one save");
-  t.ok(tools.filter(function (x) { return x.name !== "save_session"; }).every(function (x) { return x.annotations.readOnlyHint; }), "every tool but the save is marked read-only");
+  t.eq(tools.map(function (x) { return x.name; }), ["list_parts", "get_part", "get_table", "start_session", "save_session", "notice_part"], "read tools, the session starter, a save and a notice");
+  t.ok(tools.filter(function (x) { return !/save_session|notice_part/.test(x.name); }).every(function (x) { return x.annotations.readOnlyHint; }), "every tool but the two writes is marked read-only");
+  var noticeTool = tools.filter(function (x) { return x.name === "notice_part"; })[0];
+  t.ok(noticeTool.inputSchema.properties.feel.enum.indexOf("curious") >= 0 && !noticeTool.annotations.readOnlyHint, "the notice offers the app's feel words, and is marked as a write");
   var saveTool = tools.filter(function (x) { return x.name === "save_session"; })[0];
   t.ok(!saveTool.annotations.readOnlyHint && saveTool.annotations.destructiveHint === false, "the save says it writes, and that it destroys nothing");
   var got = (await rpc({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "get_part", arguments: { slug: "the-critic" } } })).body;
@@ -193,7 +195,7 @@ module.exports = async function (t) {
       { from: "Nobody", toward: "The Critic", feeling: "close" }],
     meeting: { topic: "Take the job?", synthesis: "Both want it to go well.", voices: [{ name: "The Critic", line: "Not yet." }] } });
   t.ok(/2 readings/.test(saved) && /the meeting itself/.test(saved), "readings and the meeting save");
-  t.ok(/Skipped readings .*Nobody/.test(saved), "...and a reading naming no real part is skipped, and said so");
+  t.ok(/Skipped .*Nobody/.test(saved), "...and a reading naming no real part is skipped, and said so");
   var st3 = JSON.parse(db["innertable:state:ann"]);
   var c3 = st3.parts.filter(function (p) { return p.slug === "the-critic"; })[0];
   var f3 = c3.feelings.filter(function (f) { return f.part === "the-dreamer"; })[0];
@@ -212,6 +214,25 @@ module.exports = async function (t) {
   await call("GET", { query: { t: made, session: "save_session", profiles: profile } });
   t.eq(JSON.stringify(db["innertable:inbox:ann"]), beforeInbox, "a GET never saves");
   t.ok(/start_session/.test(page.sent), "the profile page tells a page-reading AI that sessions exist");
+
+  // -- a quick notice from the linked AI, no session needed
+  var notice = function (a) {
+    return rpc({ jsonrpc: "2.0", id: 13, method: "tools/call", params: { name: "notice_part", arguments: a } })
+      .then(function (r) { return r.body.result.content[0].text; });
+  };
+  var inboxBefore = Object.keys(db["innertable:inbox:ann"]).length;
+  t.ok(/^Saved to Inner Table: a notice for The Critic/.test(await notice({ part: "The Critic", note: "Loud before the standup.", feel: "Curious" })),
+    "a notice saves, by name, and says so");
+  var cN = JSON.parse(db["innertable:state:ann"]).parts.filter(function (p) { return p.slug === "the-critic"; })[0];
+  var lastN = cN.sessions[cN.sessions.length - 1];
+  t.ok(lastN.mode === "notice" && lastN.note === "Loud before the standup." && lastN.feel === "curious", "...as the same notice entry the app writes");
+  t.ok(/I'm early, not cruel/.test(cN.narrative.in_its_own_words) && cN.relationships.length === 1, "...touching nothing else in the profile");
+  t.eq(Object.keys(db["innertable:inbox:ann"]).length, inboxBefore + 1, "...and waits in the inbox for the app");
+  t.ok(/Loud before the standup/.test(await start({ mode: "checkin", parts: ["the-critic"] })), "the next check-in already knows it");
+  t.ok(/^Saved/.test(await notice({ part: "the-dreamer", feel: "warm" })), "a feel word alone is enough");
+  t.ok(/^Not saved: That notice did not land/.test(await notice({ part: "Nobody", note: "x" })), "a part that does not exist is refused in words");
+  t.ok(/^Not saved: That notice did not land/.test(await notice({ part: "the-critic", feel: "furious" })), "...and so is a notice with no line and no known feel word");
+  t.eq(Object.keys(db["innertable:inbox:ann"]).length, inboxBefore + 2, "...and neither refusal writes anything");
 
   // -- tokens: malformed never touches storage; revoked reads nothing
   var before = hits;

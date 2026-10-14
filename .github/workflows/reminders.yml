@@ -1,8 +1,9 @@
 name: reminders
 
-# The hourly tick behind the 8am / 2pm / 8pm check-in reminders
-# (api/push-remind.js picks out whichever devices are at one of those hours).
-# Vercel's Hobby plan only runs its own crons once a day, so the clock lives here.
+# A backup tick for the daily reminders. The main clock is the 24 daily
+# Vercel crons in vercel.json: GitHub's hourly schedule ran only about four
+# times a day. api/push-remind.js never sends a device the same reminder
+# twice, so this running as well is harmless.
 on:
   schedule:
     - cron: "7 * * * *" # off the top of the hour, when GitHub's queue is busiest

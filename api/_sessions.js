@@ -138,9 +138,10 @@ function ratingOf(v) {
   return FEELING_WORDS[str(String(v || "")).toLowerCase()] || 0;
 }
 
-/* args: { profiles, journal, readings, meeting } - any of them, from a
-   session's close (see the session prompts). Returns
-   { parts, meetings, journal, said } or { error }. Pure: the caller writes. */
+/* args: { profiles, journal, readings, meeting, notices } - any of them, from
+   a session's close (see the session prompts) or a quick notice
+   ({ part, note, feel }, the app's "Notice a part"). Returns
+   { parts, meetings, journal, said, noticed } or { error }. Pure: the caller writes. */
 function prepareSave(state, args) {
   var I = load();
   var S = I.schema, MD = I.md;
@@ -149,7 +150,8 @@ function prepareSave(state, args) {
   var jtext = typeof args.journal === "string" ? args.journal : "";
   var readings = Array.isArray(args.readings) ? args.readings : [];
   var meeting = args.meeting && typeof args.meeting === "object" ? args.meeting : null;
-  if (!text.trim() && !jtext.trim() && !readings.length && !meeting) {
+  var notices = Array.isArray(args.notices) ? args.notices.slice(0, 20) : [];
+  if (!text.trim() && !jtext.trim() && !readings.length && !meeting && !notices.length) {
     return { error: "nothing to save - pass profiles, a journal note, or a meeting's readings." };
   }
   if (text.length + jtext.length > MAX_TEXT || readings.length > 200) {
@@ -170,7 +172,7 @@ function prepareSave(state, args) {
   var stamp = nowISO();
   var today = stamp.slice(0, 10);
   var changed = {};
-  var said = [];
+  var said = [], unknown = [];
 
   // profiles
   if (text.trim()) {
@@ -187,8 +189,22 @@ function prepareSave(state, args) {
     });
   }
 
+  // quick notices: the same entry the app's "Notice a part" writes
+  var noticed = [];
+  notices.forEach(function (n) {
+    var p = n && typeof n === "object" ? find(n.part) : null;
+    if (!p) { unknown.push(String((n && n.part) || "?")); return; }
+    if (!S.addNotice(p, str(n.note), str(n.feel).toLowerCase(), today)) return;
+    p.updated = stamp;
+    changed[p.slug] = 1;
+    noticed.push(p.name);
+  });
+  if (notices.length && !noticed.length) {
+    return { error: "That notice did not land: it needs one of the person's parts (call list_parts for the real ones), and a line about the moment or a feel word." };
+  }
+
   // a meeting's round of the table: the same recording the app's round does
-  var picked = {}, unknown = [];
+  var picked = {};
   readings.forEach(function (r) {
     if (!r || typeof r !== "object") return;
     var from = find(r.from), to = find(r.toward || r.to), rating = ratingOf(r.feeling || r.rating);
@@ -236,7 +252,7 @@ function prepareSave(state, args) {
 
   var parts = Object.keys(changed).map(function (k) { return bySlug[k]; });
   return { parts: parts, meetings: meetings, journal: journal.filter(Boolean),
-    names: parts.map(function (p) { return p.name; }), said: said, unknown: unknown };
+    names: parts.map(function (p) { return p.name; }), said: said, unknown: unknown, noticed: noticed };
 }
 
 /* Fold saved parts into a synced state blob, keeping whatever shape (object
@@ -289,4 +305,6 @@ function overlay(state, pending) {
     ? applyToState(state, parts, { meetings: meetings, journal: journal }) : state;
 }
 
-module.exports = { build: build, MODES: MODES, partsOf: partsOf, prepareSave: prepareSave, applyToState: applyToState, overlay: overlay };
+function feelWords() { return load().schema.FEEL_TOWARD.map(function (f) { return f.key; }); }
+
+module.exports = { feelWords: feelWords, build: build, MODES: MODES, partsOf: partsOf, prepareSave: prepareSave, applyToState: applyToState, overlay: overlay };

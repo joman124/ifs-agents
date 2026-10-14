@@ -74,9 +74,13 @@ module.exports = async function handler(req, res) {
   if (req.method === "POST") {
     var sub = req.body && req.body.subscription;
     if (!validSubscription(sub)) { res.status(400).json({ error: "Missing or malformed subscription" }); return; }
+    // the app re-sends its subscription on open; the reminder it already got
+    // today must survive that, or it would be sent again
+    var prev = list.filter(function (s) { return s.endpoint === sub.endpoint; })[0];
     list = list.filter(function (s) { return s.endpoint !== sub.endpoint; });
     list.push({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-                tz: validTimeZone(req.body.tz) || undefined, hours: validHours(req.body.hours), savedAt: Date.now() });
+                tz: validTimeZone(req.body.tz) || undefined, hours: validHours(req.body.hours), savedAt: Date.now(),
+                last: prev && typeof prev.last === "string" ? prev.last : undefined });
     if (list.length > MAX_DEVICES) list = list.slice(list.length - MAX_DEVICES);
   } else if (req.method === "DELETE") {
     var endpoint = req.body && req.body.endpoint;

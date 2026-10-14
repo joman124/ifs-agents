@@ -170,12 +170,13 @@ async function saveSession(user, args) {
     JSON.stringify({ at: id.slice(0, 24), parts: prep.parts, meetings: prep.meetings, journal: prep.journal }));
   await redis("set/" + stateKey(user), JSON.stringify(sessions.applyToState(state, prep.parts, history)));
   var what = [];
-  if (prep.names.length) what.push("profiles for " + prep.names.join(", ") + " (merged in - nothing was erased)");
+  if (prep.noticed.length) what.push("a notice for " + prep.noticed.join(", ") + ", in that part's log");
+  else if (prep.names.length) what.push("profiles for " + prep.names.join(", ") + " (merged in - nothing was erased)");
   if (prep.said.length) what.push(prep.said.length + " reading" + (prep.said.length === 1 ? "" : "s") + " from the round of the table");
   if (prep.meetings.length) what.push("the meeting itself, so the next meeting remembers it");
   if (prep.journal.length) what.push("a note of this conversation, so the next one can pick up the thread");
   return "Saved to Inner Table: " + (what.join("; ") || "nothing new") + ". The app picks it up the next time it is opened." +
-    (prep.unknown.length ? " Skipped readings that did not name two of the person's parts: " + prep.unknown.join(", ") + "." : "");
+    (prep.unknown.length ? " Skipped what did not name the person's parts: " + prep.unknown.join(", ") + "." : "");
 }
 
 /* ---------- the plain page (GET) ---------- */
@@ -227,6 +228,14 @@ var TOOLS = [
           voices: { type: "array", items: { type: "object", properties: { name: { type: "string" }, line: { type: "string" } } } }
         } }
     } },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true } },
+  { name: "notice_part",
+    description: "Log a quick notice, no session needed: the person noticed one of their parts show up in their day ('the Critic was loud before the meeting'). Writes the moment, and how they felt toward the part, into that part's log, the same as the app's Notice a part. The next check-in picks it up. Use it when they mention a part showing up and say yes to noting it; ask how they felt toward it if they have not said.",
+    inputSchema: { type: "object", properties: {
+      part: { type: "string", description: "The part's slug or name from list_parts" },
+      note: { type: "string", description: "One line about the moment, in the person's words" },
+      feel: { type: "string", enum: sessions.feelWords(), description: "How the person felt toward the part" }
+    }, required: ["part"] },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true } }
 ]);
 
@@ -258,6 +267,7 @@ function promptArgs(name, a) {
 async function callTool(user, name, args) {
   if (name === "start_session") return sessionText(user, Object.assign({}, args, { canSave: true }));
   if (name === "save_session") return saveSession(user, args);
+  if (name === "notice_part") return saveSession(user, { notices: [args || {}] });
   var st = await loadState(user);
   if (!st) return EMPTY;
   if (name === "list_parts") return listMarkdown(st.parts);
@@ -282,7 +292,7 @@ async function handleRpc(user, msg) {
       protocolVersion: PROTOCOLS.indexOf(asked) >= 0 ? asked : PROTOCOLS[0],
       capabilities: { tools: {}, prompts: {} },
       serverInfo: { name: "inner-table", version: "1.0.0" },
-      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Whenever the person wants to talk - about how they are, something on their mind, or their parts - call start_session first (mode talk if they just want to talk; checkin, embody, mapping, meeting or intake for something specific) and follow the instructions it returns for the rest of the conversation. They carry the person's parts and earlier conversations, so greet them as someone already known. When the conversation closes, save what it learned with save_session, exactly as those instructions say. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
+      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Whenever the person wants to talk - about how they are, something on their mind, or their parts - call start_session first (mode talk if they just want to talk; checkin, embody, mapping, meeting or intake for something specific) and follow the instructions it returns for the rest of the conversation. They carry the person's parts and earlier conversations, so greet them as someone already known. When the conversation closes, save what it learned with save_session, exactly as those instructions say. If they mention a part showing up in their day, offer to note it with notice_part. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
     });
   }
   if (msg.method === "ping") return ok({});

@@ -72,7 +72,7 @@ From the frontmatter, note:
 
 Ask permission to explore today's candidate categories. Use the question bank
 from the intake protocol (`interview-intake.md`) for the chosen categories — ask
-3–5 questions total, one at a time, reflecting back. Quality over coverage.
+3–5 questions total, one at a time. Quality over coverage.
 
 Two useful deepening questions for any returning part:
 - "Last time you said «quote». Is that still true? Anything you'd add?"

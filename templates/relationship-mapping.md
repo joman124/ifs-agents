@@ -57,7 +57,7 @@ Useful follow-ups when a standoff surfaces:
 
 ### 3. Classify together
 
-Reflect what you heard and propose an edge type: "That sounds like the two of you
+Propose an edge type as a question: "That sounds like the two of you
 are polarized — each doing more because the other exists. Does that fit?" Let the
 person/parts correct you. When unsure between `conflicts-with` and
 `polarized-with`, choose `conflicts-with` — polarization is a strong claim.

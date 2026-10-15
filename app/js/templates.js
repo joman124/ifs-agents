@@ -909,12 +909,13 @@
   }
 
   /* ---------- handing a session to the person's linked AI ----------
-     The app can only run a session itself with an API key. Linked to Claude
-     or ChatGPT through the person's private link, the session runs there
-     instead - same prompts, same memory, saved back here - and all the app
-     has to do is open a new chat with the request already written.
+     The app can only run a session itself with an API key. Linked to Claude,
+     ChatGPT or Gemini through the person's private link, the session runs
+     there instead - same prompts, same memory, saved back here. Only Claude
+     takes a pre-filled chat link: ChatGPT's would open a chat with the
+     connector still switched off, so the person pastes the message instead.
      parts: [{slug, name}]. sessionUrl: the plain-link route to the session,
-     for an AI that reads pages but has no connector (Gemini). */
+     carried as a fallback for a Gemini that could not add the connector. */
   var HANDOFF_ASK = {
     talk: "I'd like to just talk",
     checkin: "Let's do a check-in with {parts}",
@@ -924,8 +925,7 @@
     intake: "I'd like to meet a new part"
   };
   var HANDOFF_URL = {
-    anthropic: "https://claude.ai/new?q=",
-    openai: "https://chatgpt.com/?q="
+    anthropic: "https://claude.ai/new?q="
   };
   var HANDOFF_MAX_MATERIAL = 1500;
 
@@ -941,14 +941,12 @@
     var lines = [ask + (mode === "embody" || mode === "meeting"
       ? (mat && !long ? ". What's on the table:\n\n" + mat : mat ? ". It's long, so I'll paste what's on the table next." : ".")
       : ".")];
-    var how;
+    var how = "(Inner Table: call start_session with mode " + mode +
+      (parts.length ? " and parts " + parts.map(function (p) { return p.slug; }).join(", ") : "") +
+      (mat && !long && (mode === "embody" || mode === "meeting") ? " and the material above" : "") +
+      ", follow what it returns, and save with save_session when we close.)";
     if (sessionUrl) {
-      how = "Please open this Inner Table link and follow the session instructions it gives for the rest of our conversation: " + sessionUrl;
-    } else {
-      how = "(Inner Table: call start_session with mode " + mode +
-        (parts.length ? " and parts " + parts.map(function (p) { return p.slug; }).join(", ") : "") +
-        (mat && !long && (mode === "embody" || mode === "meeting") ? " and the material above" : "") +
-        ", follow what it returns, and save with save_session when we close.)";
+      how += "\n\nIf you can't reach the Inner Table app here, open this Inner Table link instead and follow the session instructions it gives for the rest of our conversation: " + sessionUrl;
     }
     var message = lines.join("") + "\n\n" + how;
     var base = HANDOFF_URL[provider];

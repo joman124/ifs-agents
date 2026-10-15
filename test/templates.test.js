@@ -144,13 +144,15 @@ module.exports = function (t) {
   var hc = T.handoff("checkin", [{ slug: "titus", name: "Titus" }], "", "anthropic");
   t.ok(hc.url.indexOf("https://claude.ai/new?q=") === 0, "a Claude hand-off opens a new Claude chat");
   t.ok(/check-in with Titus/.test(hc.message) && /start_session with mode checkin and parts titus/.test(hc.message), "...asking for the session in words and for the tool");
-  t.ok(T.handoff("talk", [], "", "openai").url.indexOf("https://chatgpt.com/?q=") === 0, "a ChatGPT hand-off opens ChatGPT");
+  var ho = T.handoff("talk", [], "", "openai");
+  t.ok(!ho.url && /start_session with mode talk/.test(ho.message), "a ChatGPT hand-off is pasted into a chat with the connector on, not pre-filled");
   var hm = T.handoff("meeting", [{ slug: "a", name: "A" }, { slug: "b", name: "B" }], "Take the job?", "anthropic");
   t.ok(/table meeting with A and B/.test(hm.message) && /Take the job\?/.test(hm.message), "a meeting hand-off carries who and what");
   var hl = T.handoff("embody", [{ slug: "a", name: "A" }], new Array(400).join("long "), "anthropic");
   t.ok(hl.pasteNext.length > 1500 && hl.url.length < 1200, "long material is pasted after, not crammed into the link");
   var hg = T.handoff("talk", [], "", "gemini", "https://x/api/bridge?t=T&session=talk");
-  t.ok(!hg.url && /https:\/\/x\/api\/bridge\?t=T&session=talk/.test(hg.message), "Gemini, with no connector, gets the session link to open");
+  t.ok(!hg.url && /start_session with mode talk/.test(hg.message) && /https:\/\/x\/api\/bridge\?t=T&session=talk/.test(hg.message),
+    "Gemini gets the connector's tool call, and the session link for when it has no connector");
 
   /* the copy-paste versions */
   ["intake", "checkin", "mapping", "embody", "meeting"].forEach(function (mode) {

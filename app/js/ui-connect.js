@@ -196,7 +196,7 @@
       '<h2 class="sheet-title serif">Where would you like to talk?</h2>' +
       '<p class="dim">Pick once &mdash; you can change it any time in Settings &rarr; Live sessions.</p>' +
       item("cwHere", "chat", "Here in Inner Table &middot; recommended", "voice, &ldquo;ground me&rdquo; and saved drafts work only here &middot; your own AI account, a few cents a session") +
-      item("cwApp", "sync", "In my Claude or ChatGPT app", "link it once &middot; sessions open there and save back here") +
+      item("cwApp", "sync", "In my Claude, ChatGPT or Gemini app", "link it once &middot; sessions open there and save back here") +
       item("cwCopy", "file", "Copy a prompt", "paste it into any AI chat, then paste the result back")
     );
     bind("#cwHere", function () { openConnect({ resume: resume }); });

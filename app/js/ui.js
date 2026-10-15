@@ -2363,7 +2363,7 @@
   }
 
   /* ---------- a session handed to the person's linked AI ----------
-     The app has no way to call Claude or ChatGPT on the person's own account -
+     The app has no way to call Claude, ChatGPT or Gemini on the person's own account -
      only an API key would do that. What it has is their private link, which
      those apps run sessions through (start_session / save_session in
      api/bridge.js). So the session opens there, already asked for, and what
@@ -2394,26 +2394,34 @@
       }
       var url = s.provider === "gemini" ? window.IFS.ui.linkAi.sessionUrl(token, mode, slugs, material) : "";
       var h = T.handoff(mode, parts.map(function (p) { return { slug: p.slug, name: p.name }; }), material, s.provider, url);
+      var how = window.IFS.ui.linkAi.how(s.provider);
       var steps = [
         h.url ? "<b>Open " + esc(who) + ".</b> A new chat opens with the session already asked for &mdash; just send it."
-              : "<b>Copy the message</b> and paste it into a new " + esc(who) + " chat.",
+              : "<b>Copy the message and open " + esc(who) + ".</b>",
+        how.start || "",
         h.pasteNext ? "<b>Then paste what&rsquo;s on the table</b> &mdash; it was too long to send in the link. Copy it with the button below." : "",
         "<b>" + esc(who) + " runs the session</b> from your parts&rsquo; history" + (mode === "talk" ? " and your last conversations" : "") + ", the way this app would.",
         "<b>When you&rsquo;re done, say &ldquo;let&rsquo;s close.&rdquo;</b> It saves " +
           (meeting ? "the meeting and the round of the table" : mode === "embody" ? "nothing it doesn&rsquo;t need to &mdash; a reaction leaves the profile as it is" : mode === "talk" ? "a note of the conversation and anything new about your parts" : "the updated profile") +
-          " to Inner Table, and you&rsquo;ll see &ldquo;Saved from your AI&rdquo; when you come back."
+          " to Inner Table" + (how.save ? " &mdash; " + how.save : "") + ", and you&rsquo;ll see &ldquo;Saved from your AI&rdquo; when you come back."
       ].filter(Boolean);
       page(
         '<div class="card"><h3>This session runs in ' + esc(who) + '</h3><ol class="cp-steps">' +
         steps.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol>" +
         '<p class="dim cp-note">Different there: no &ldquo;ground me&rdquo; button, no voice from Inner Table, and no draft to pick up later. ' + esc(who) +
         " follows the same session and safety guidance, but only as instructions it reads. For anything tender, talking here in Inner Table is the safer place.</p></div>" +
-        (h.url ? '<a class="btn btn-primary btn-big" id="lsOpen" href="' + esc(h.url) + '" target="_blank" rel="noopener">Open ' + esc(who) + "</a><div style=\"height:10px\"></div>" : "") +
-        '<button class="btn ' + (h.url ? "btn-soft" : "btn-primary") + ' btn-big" id="lsCopy">Copy the message</button><div style="height:10px"></div>' +
+        (h.url ? '<a class="btn btn-primary btn-big" id="lsOpen" href="' + esc(h.url) + '" target="_blank" rel="noopener">Open ' + esc(who) + "</a><div style=\"height:10px\"></div>"
+          : how.home ? '<a class="btn btn-primary btn-big" id="lsCopyOpen" href="' + esc(how.home) + '" target="_blank" rel="noopener">Copy the message and open ' + esc(who) + "</a><div style=\"height:10px\"></div>" : "") +
+        '<button class="btn ' + (h.url || how.home ? "btn-soft" : "btn-primary") + ' btn-big" id="lsCopy">Copy the message' + (how.home ? " again" : "") + '</button><div style="height:10px"></div>' +
         (h.pasteNext ? '<button class="btn btn-soft btn-big" id="lsCopyMat">Copy what&rsquo;s on the table</button><div style="height:10px"></div>' : "") +
-        (s.provider === "gemini" ? '<p class="dim cp-note">The Gemini app has no connectors, so the message carries your private session link. Gemini can read your parts through it but cannot save; paste its closing reply into Inner Table &mdash; Add a part.</p>' : "") +
+        (s.provider === "gemini" ? '<p class="dim cp-note">If you couldn&rsquo;t add Inner Table to Gemini, the message also carries your private session link. Gemini can read your parts through it but can&rsquo;t save; paste its closing reply into Inner Table &mdash; Add a part.</p>' : "") +
         otherWays());
       bind("#lsOpen", function () { buzz(12); });
+      // the link opens the chat; copying in the same tap keeps the clipboard allowed
+      bind("#lsCopyOpen", function () {
+        navigator.clipboard.writeText(h.message).then(function () { toast("Copied - paste it into the new " + who + " chat"); buzz(); },
+          function () { toast("Copy failed - use Copy the message again"); });
+      });
       bind("#lsCopy", function () {
         navigator.clipboard.writeText(h.message).then(function () { toast("Copied - paste it into a new " + who + " chat"); buzz(); },
           function () { toast("Copy failed"); });

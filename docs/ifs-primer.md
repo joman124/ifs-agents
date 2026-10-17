@@ -61,10 +61,21 @@ No bad parts.
 
 ## Fraser's Table
 
-A group format this repo's table meetings are modeled on: imagine a safe,
-neutral meeting room with a table; invite parts to it — no part is forced;
-use tools like a talking stick, flexible lighting, side rooms for parts that
-want to observe without sitting; close with reflection and gratitude. The
+The *Dissociative Table Technique*, described by psychiatrist George A. Fraser
+(*Dissociation* 4(4), 1991; revised as "Fraser's 'Dissociative Table Technique'
+Revisited, Revised", *Journal of Trauma & Dissociation* 4(4), 2003). It comes
+from ego-state therapy and the treatment of dissociative disorders, not from
+IFS, and Fraser framed it as an adjunct a trained clinician uses within their
+own approach rather than a therapy in itself; its key safeguard is that parts
+are found by following the person's cues, never suggested to them.
+
+This repo's table meetings follow a practitioner's IFS adaptation of it
+(`docs/source/IFS Questions.docx`, "best applied in order"): develop a safe,
+neutral meeting room with a table; invite parts to it — to the table, the side
+of the room or an adjoining room, none forced; develop tools such as a talking
+stick, flexible lighting, a container, a break signal; close with reflection
+and gratitude, then leave the room; between meetings, a notebook and gentle
+check-ins. The deeper clinical uses of the technique are out of scope here. The
 `templates/table-meeting.md` protocol adapts this for part-agents responding to
 a dataset.
 

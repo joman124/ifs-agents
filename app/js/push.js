@@ -154,8 +154,14 @@
     return '<span class="sr-icon">' + (window.IFS.icon ? window.IFS.icon("bell", 18) : "") + "</span>";
   }
 
+  /* Folded like every other section, and kept open across a repaint. */
+  var groupOpen = false;
   function groupHTML() {
-    var html = '<div class="set-group" id="' + GROUP_ID + '"><h3>Notifications</h3>';
+    var ic = window.IFS.icon || function () { return ""; };
+    var state = !AUTH.isLoggedIn() ? "sign in first" : cachedSubscribed ? "on for this device" : "off";
+    var html = '<details class="set-group" id="' + GROUP_ID + '"' + (groupOpen ? " open" : "") + ">" +
+      '<summary><span class="sr-icon">' + ic("bell", 18) + '</span><span class="sg-main">Notifications<span class="sg-sub">' + state +
+      '</span></span><span class="sg-chev">' + ic("chevron", 16) + "</span></summary>";
     if (!AUTH.isLoggedIn()) {
       html += '<div class="set-row">' + bell() + '<span class="sr-main">Sign in required<span class="sr-sub">notifications are tied to your account, like sync</span></span></div>';
     } else if (F.isIOS() && !isStandalone()) {
@@ -173,11 +179,12 @@
     } else {
       html += '<div class="set-row">' + bell() + '<span class="sr-main">Get notified on this device<span class="sr-sub">asks for permission, once</span></span><button class="btn btn-soft" id="pushOnBtn">Enable</button></div>';
     }
-    html += '<p class="set-note">Only this device is notified once enabled &mdash; turn it on separately on each phone or computer you use Inner Table on.</p></div>';
+    html += '<p class="set-note">Only this device is notified once enabled &mdash; turn it on separately on each phone or computer you use Inner Table on.</p></details>';
     return html;
   }
 
   function wire(group) {
+    group.addEventListener("toggle", function () { groupOpen = group.open; });
     var onBtn = group.querySelector("#pushOnBtn");
     if (onBtn) onBtn.addEventListener("click", async function () {
       try { await subscribe(); cachedSubscribed = true; paint(); toast("Notifications are on for this device"); }

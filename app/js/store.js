@@ -32,6 +32,31 @@
      sync exists. */
   function onChange(fn) { listeners.push(fn); }
 
+  var PLAN_KEYS = ["signs", "skills", "places", "people", "pros", "safe", "reasons"];
+  function emptyPlan() {
+    var p = { updated: "" };
+    PLAN_KEYS.forEach(function (k) { p[k] = []; });
+    return p;
+  }
+  /* Anything that arrives - sync, a backup, a hand-edited file - is read
+     back as lists of short trimmed lines, or not at all. */
+  function cleanPlan(raw) {
+    var p = emptyPlan();
+    if (!raw || typeof raw !== "object") return p;
+    PLAN_KEYS.forEach(function (k) {
+      if (!Array.isArray(raw[k])) return;
+      p[k] = raw[k].map(function (x) { return typeof x === "string" ? x.trim().slice(0, 300) : ""; })
+        .filter(Boolean).slice(0, 30);
+    });
+    p.updated = typeof raw.updated === "string" ? raw.updated : "";
+    return p;
+  }
+  function setPlan(plan) {
+    state.plan = cleanPlan(plan);
+    state.plan.updated = nowISO();
+    save();
+  }
+
   function defaults() {
     return {
       parts: {},        // slug -> part object
@@ -49,6 +74,13 @@
          memory, the transcript is the record. */
       journal: [],      // {id, date, via: "app"|"ai", summary, parts:[slugs]}
       draft: null,      // in-progress session checkpoint {mode, slugs, material, messages, updated}
+      /* The person's own grounding plan, shaped like a safety plan: what
+         tells them they need it, what grounds them, who and where helps, who
+         to call. It is theirs, so it syncs - the device they reach for in a
+         bad moment has to have it - and sessions read it, so a guide offers
+         their own skills before generic ones. Lists of plain lines; the
+         whole plan is one thing, so the later `updated` wins. */
+      plan: emptyPlan(),
       table: {          // Fraser's Table: the room, built once and edited after
         built: false,
         name: "",       // what the person named the room, if they named it
@@ -91,6 +123,7 @@
         elevenVoiceId: "",
         elevenModel: "eleven_flash_v2_5",
         speechRate: 0.9,         // 0.7-1.2; spoken replies are slower than chat
+        browserVoice: "",        // a device voice's voiceURI; "" = the best one installed
         haptics: true,
         remindHours: [20],       // local hours for this device's daily reminder (push.js)
         lastBackup: "",          // ISO date of last full export
@@ -120,6 +153,7 @@
     if (parsed.transcripts) state.transcripts = parsed.transcripts;
     if (Array.isArray(parsed.journal)) state.journal = parsed.journal.map(S.normalizeJournal).filter(Boolean);
     if (parsed.draft) state.draft = parsed.draft;
+    if (parsed.plan) state.plan = cleanPlan(parsed.plan);
     if (parsed.table) Object.assign(state.table, parsed.table);
     if (parsed.settings) Object.assign(state.settings, parsed.settings);
     carryOldKey(state.settings);
@@ -578,6 +612,7 @@
       deleted: state.deleted,
       transcripts: state.transcripts,
       journal: state.journal,
+      plan: state.plan,
       table: table
     }, null, 2);
   }
@@ -821,6 +856,10 @@
       state.transcripts.sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
     }
     if (Array.isArray(data.journal)) mergeJournal(data.journal, viaSync);
+    if (data.plan && typeof data.plan === "object") {
+      var plan = cleanPlan(data.plan);
+      if (laterOf(plan.updated, "") > laterOf(state.plan.updated, "")) state.plan = plan;
+    }
     pruneTombstones();
     save();
     return count;
@@ -1048,6 +1087,8 @@
     addJournal: addJournal,
     deleteJournal: deleteJournal,
     mergeHistory: mergeHistory,
+    setPlan: setPlan,
+    PLAN_KEYS: PLAN_KEYS,
     exportAll: exportAll,
     exportImages: exportImages,
     importImages: importImages,

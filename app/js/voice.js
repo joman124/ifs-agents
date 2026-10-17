@@ -232,8 +232,69 @@
     else done();
   }
 
+  /* The browser's default voice is often its oldest and most robotic one,
+     while the same device usually carries far better ones: the neural
+     "Natural" voices in Edge, Apple's Enhanced and Premium voices, Google's
+     voices in Chrome. Pick the best of what is installed, in the person's
+     language, unless they chose one in Settings. No API, nothing leaves the
+     device beyond what the browser itself does.
+     ponytail: a name list, because no browser says which voices are good. */
+  var NOVELTY = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|deranged|hysterical|pipe organ|fred|junior|ralph|kathy|grandma|grandpa|eddy|flo|reed|rocko|sandy|shelley)\b/i;
+  var GOOD_NAMES = /\b(ava|zoe|allison|samantha|susan|evan|nathan|noelle|tom|joelle|serena|karen|daniel|moira|tessa|aria|jenny|guy|sonia|libby|ryan|natasha|william|emma|brian|andrew|michelle)\b/i;
+
+  function voiceScore(v, lang) {
+    var n = String(v.name || "");
+    var vl = String(v.lang || "").toLowerCase().replace("_", "-");
+    var want = String(lang || "en-US").toLowerCase();
+    var score = 0;
+    if (vl === want) score += 40;
+    else if (vl.split("-")[0] === want.split("-")[0]) score += 25;
+    else return -1000;                     // never a voice in another language
+    if (NOVELTY.test(n)) return -500;
+    if (/natural|neural/i.test(n)) score += 60;
+    if (/premium/i.test(n)) score += 55;
+    if (/enhanced/i.test(n)) score += 45;
+    if (/siri/i.test(n)) score += 40;
+    if (/^google\b/i.test(n)) score += 30;
+    if (/online/i.test(n)) score += 10;
+    if (GOOD_NAMES.test(n)) score += 15;
+    if (/compact|espeak|robot/i.test(n)) score -= 30;
+    return score;
+  }
+
+  function voices() {
+    try { return canSpeak() ? speechSynthesis.getVoices() || [] : []; } catch (e) { return []; }
+  }
+
+  /* The person's own pick (settings.browserVoice, a voiceURI) if it is still
+     installed, otherwise the best-scoring voice, otherwise the default. */
+  function pickVoice() {
+    var all = voices();
+    if (!all.length) return null;
+    var chosen = "";
+    try { chosen = window.IFS.store.state.settings.browserVoice || ""; } catch (e) {}
+    if (chosen) {
+      var mine = all.filter(function (v) { return v.voiceURI === chosen; })[0];
+      if (mine) return mine;
+    }
+    return rankedVoices()[0] || null;
+  }
+
+  function rankedVoices() {
+    var lang = (typeof navigator !== "undefined" && navigator.language) || "en-US";
+    return voices().map(function (v) { return { v: v, s: voiceScore(v, lang) }; })
+      .filter(function (x) { return x.s > 0; })
+      .sort(function (a, b) { return b.s - a.s; })
+      .map(function (x) { return x.v; });
+  }
+
+  // getVoices() is empty until the browser has loaded them; ask early
+  if (canSpeak()) { try { speechSynthesis.getVoices(); } catch (e) {} }
+
   function browserSpeak(clean, myGen, done) {
     var u = new SpeechSynthesisUtterance(clean);
+    var voice = pickVoice();
+    if (voice) { u.voice = voice; u.lang = voice.lang; }
     u.rate = speechRate();
     var fired = false;
     var finish = function () { if (!fired) { fired = true; done(); } };
@@ -355,6 +416,9 @@
     stopListening: stopListening,
     isListening: isListening,
     speak: speak,
-    stopSpeaking: stopSpeaking
+    stopSpeaking: stopSpeaking,
+    voiceScore: voiceScore,
+    rankedVoices: rankedVoices,
+    pickVoice: pickVoice
   };
 })();

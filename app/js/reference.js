@@ -2,7 +2,9 @@
 
    The table script is quoted from the "Fraser's Table" section of
    docs/source/IFS Questions.docx, in the order the document gives ("best
-   applied in order"). The learn pages condense docs/ifs-primer.md so the app
+   applied in order"). That document adapts George A. Fraser's Dissociative
+   Table Technique (Dissociation 4(4), 1991; revised in Journal of Trauma &
+   Dissociation 4(4), 2003) - the learn page says so. The learn pages condense docs/ifs-primer.md so the app
    carries its own explanations instead of linking out.
 
    Nothing here writes to a part. The table is its own object in the store. */
@@ -67,17 +69,28 @@
 
   /* ---- The reference library ---- */
   var LEARN = [
-    { id: "table", title: "Fraser's Table", blurb: "The format this tab is built on",
+    { id: "table", title: "Fraser's Table", blurb: "Where it comes from, and how this tab uses it",
       body: [
-        ["p", "A group format for meeting several parts at once. You build a safe, neutral room with a table in it, invite parts to come — never forcing any of them — and use agreed tools so that everyone in the room feels respected."],
+        ["p", "Fraser's Table is the <i>Dissociative Table Technique</i>, described by the psychiatrist George A. Fraser in 1991 (in the journal <i>Dissociation</i>) and revised by him in 2003 (<i>Journal of Trauma &amp; Dissociation</i>). You imagine a safe meeting room with a table, and parts of you are invited to come and sit at it, so they can be met and heard together."],
+        ["h", "It isn't from IFS"],
+        ["p", "It comes from ego-state therapy and the treatment of dissociative disorders. Fraser presented it as an adjunct &mdash; a set of strategies a trained clinician uses inside their own approach &mdash; not as a therapy in itself. Its central safeguard is that the parts are found by following the person's own cues: nobody suggests which parts should be there."],
+        ["p", "It sits easily alongside IFS &mdash; Self as the host of the meeting, every part welcome, no part forced &mdash; and this tab follows a practitioner's IFS-flavoured adaptation of it."],
+        ["h", "The steps, in order"],
+        ["l", ["<b>Develop the table.</b> A pleasant room where no harm can come to you, and a table that feels safe or neutral. Look again for details that add to the safety. Name the room if you like.",
+               "<b>Invite parts.</b> They can come to the table, stay at the side of the room, or watch from an adjoining room. None is forced; each is thanked for coming, and others can join any time.",
+               "<b>Develop tools.</b> A talking stick, lighting that lets a shy part stay in shadow, a container for what a part isn't ready to share, a break signal &mdash; and any tool or agreement you invent.",
+               "<b>Close.</b> Who came and how they felt, whether anything shifted, who wants to be thanked, any hesitation about coming back (it is valid), who might speak first next time, what to carry forward. Then leave the room and come back to your body.",
+               "<b>Between meetings.</b> The room may change, and new parts may appear &mdash; that's fine. A notebook in the room lets parts leave messages; a phrase like &ldquo;Who's here right now?&rdquo; is a gentle way to check in."]],
         ["h", "The ground rules"],
-        ["l", ["It only works if you can visualise and hold imagery.",
+        ["l", ["It relies on imagery. If picturing the room doesn't come easily, an ordinary check-in works just as well.",
                "Start from a safe place, then move to a neutral meeting place.",
-               "The table should be new and neutral — not one loaded with history.",
+               "The table should be new and neutral &mdash; not one loaded with history.",
                "Explore your own inner landscape. Don't borrow anyone else's parts as examples.",
                "More parts arrive as things stabilise. An empty-feeling room early on is normal."]],
         ["h", "Why nobody is made to sit"],
-        ["p", "A part that stays at the side of the room, or watches from an adjoining room, is participating. Being invited and declining is a real answer, and this tab records it as one rather than treating it as a gap."]
+        ["p", "A part that stays at the side of the room, or watches from an adjoining room, is participating. Being invited and declining is a real answer, and this tab records it as one rather than treating it as a gap."],
+        ["h", "What this tab leaves out"],
+        ["p", "In clinical use the table can be a way into deeper work with dissociated parts. Here it is only for meeting and listening &mdash; no memory work, no unburdening. If parts feel very separate from you (losing time, finding things you don't remember doing), explore that with a clinician trained in dissociation rather than here."]
       ] },
     { id: "self", title: "Self and the 8 Cs", blurb: "How to tell Self is present",
       body: [
@@ -138,7 +151,7 @@
     { id: "credits", title: "Where this comes from", blurb: "Credits",
       body: [
         ["p", "Internal Family Systems was developed by Richard C. Schwartz. For the real thing see the <a href=\"https://ifs-institute.com/\" target=\"_blank\" rel=\"noopener\">IFS Institute</a> or <i>No Bad Parts</i> (Schwartz, 2021)."],
-        ["p", "The table format is modelled on Fraser's Table. The question set and the table protocol in this app are quoted from the practitioner notes this system was built from."],
+        ["p", "The table is modelled on George A. Fraser's Dissociative Table Technique (Fraser, 1991; revised 2003). The question set and the table protocol in this app are quoted from the practitioner notes this system was built from, which adapt it for IFS-style work."],
         ["p", "Inner Table is the webapp of the open-source <a href=\"https://github.com/joman124/ifs-agents\" target=\"_blank\" rel=\"noopener\">ifs-agents</a> project. It is not affiliated with or endorsed by the IFS Institute."]
       ] }
   ];

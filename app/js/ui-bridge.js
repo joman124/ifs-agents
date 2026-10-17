@@ -1,5 +1,5 @@
 /* Inner Table - UI: linking your own AI.
-   The Settings > Live sessions "Link my AI" panel: makes, shows and revokes the
+   The Settings > AI sessions "Link my AI" panel: makes, shows and revokes the
    private link served by api/bridge.js (reads parts, runs sessions, saves them), and says how to hand it to
    Claude, ChatGPT or Gemini. An IIFE off window.IFS like every other module;
    shared shell helpers arrive through window.IFS.ui._share. */

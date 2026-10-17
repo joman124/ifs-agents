@@ -100,6 +100,8 @@ function build(state, args) {
   var journal = (Array.isArray(state.journal) ? state.journal : []).map(S.normalizeJournal).filter(Boolean);
   var text = I.templates.portable(mode, picked, str(args.material), table,
     { roster: roster, journal: journal, bridge: true, save: !!args.canSave });
+  var plan = I.templates.groundingBlock(state.plan);
+  if (plan) text += "\n\n" + plan;
   return { text: text };
 }
 

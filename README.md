@@ -290,7 +290,8 @@ provider's data policies. Details in [docs/safety.md](docs/safety.md).
 
 IFS concepts originate with Richard C. Schwartz and the
 [IFS Institute](https://ifs-institute.com/); the table-meeting format is modeled
-on Fraser's Table. This repo is an independent self-exploration tool and is not
-affiliated with or endorsed by the IFS Institute.
+on George A. Fraser's Dissociative Table Technique (1991, revised 2003). This
+repo is an independent self-exploration tool and is not affiliated with or
+endorsed by the IFS Institute.
 
 MIT License — see [LICENSE](LICENSE).

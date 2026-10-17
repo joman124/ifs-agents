@@ -155,6 +155,7 @@
       '<span class="pm-who"><b>' + esc(who || "Not signed in") + "</b>" +
       "<small>" + (who ? "Your parts follow you to every device" : "Sign in to reach your parts") + "</small></span></div>" +
       '<button class="pm-item" role="menuitem" data-menu="settings">' + icon("settings") + "<span>Settings</span>" + icon("chevron", 16) + "</button>" +
+      '<button class="pm-item" role="menuitem" data-menu="sessions">' + icon("chat") + "<span>Past sessions</span>" + icon("chevron", 16) + "</button>" +
       '<button class="pm-item" role="menuitem" data-menu="learn">' + icon("info") + "<span>How this works</span>" + icon("chevron", 16) + "</button>" +
       '<div class="pm-label">Theme</div>' +
       '<div class="pm-theme" role="group" aria-label="Theme">' +
@@ -198,6 +199,7 @@
     closeProfileMenu();
     if (what === "settings") showView("settings");
     if (what === "learn") window.IFS.ui.learnSheet();
+    if (what === "sessions") openPastSessions();
     if (what === "signin") showLogin();
     if (what === "signout") signOut();
   }
@@ -465,7 +467,7 @@
       '<p class="subtitle">Take a moment to notice what is present today.</p>' +
       '<div class="quick-row">' +
       '<button class="btn btn-soft quick" id="qNotice">' + icon("leaf", 16) + " Notice a part</button>" +
-      '<button class="btn btn-ghost quick" id="qGround">&#9875; Ground me</button></div>';
+      '<button class="btn btn-soft quick" id="qGround">' + icon("anchor", 16) + " Ground me</button></div>";
   }
 
   /* What IFS counts about a part: how the person last felt toward it, and
@@ -1365,7 +1367,7 @@
       return;
     }
     rawFallbackOptions(text,
-      "Sorting freeform notes automatically needs an AI connected (Settings &rarr; Live sessions &rarr; Talk here). Without one:");
+      "Sorting freeform notes automatically needs an AI connected (Settings &rarr; AI sessions &rarr; API key). Without one:");
   }
 
   /* Manual mode / AI failure: real choices for raw text, never a dead end. */
@@ -1699,6 +1701,8 @@
       mode === "embody" ? T.embody(parts[0], material, ST.listParts()) :
       mode === "talk" ? T.talk(ST.listParts(), ST.state.table, ST.state.journal) :
       T.meeting(parts, material, ST.state.table, ST.listParts());
+    var plan = T.groundingBlock(ST.state.plan);
+    if (plan) sys += "\n\n" + plan;
     /* Copy-prompt sessions always carried pacing rules; live ones never did,
        so voice mode got the written cadence read aloud fast. */
     return ST.state.settings.voiceOn ? sys + "\n\n" + T.voicePacing() : sys;
@@ -1797,7 +1801,7 @@
     var d = ST.state.draft;
     if (!d) return;
     if (!LLM.configured(ST.state.settings.ai)) {
-      toast("Connect an AI in Settings - Live sessions to pick this session up");
+      toast("Connect an API key in Settings - AI sessions to pick this session up");
       return;
     }
     var slugs = (d.slugs || []).filter(function (sl) { return !!ST.getPart(sl); });
@@ -1831,17 +1835,17 @@
       MODE_TITLES[sess.mode],
       partNames || (sess.mode === "talk" ? "an open conversation" : "a new part"),
       '<div class="chat">' +
-      '<button class="groundbtn" id="groundBtn">&#9875; ground me</button>' +
+      '<button class="groundbtn" id="groundBtn">' + icon("anchor", 14) + "<span>Ground me</span></button>" +
       '<div class="chat-scroll" id="chatScroll">' +
       '<div class="msg system-note">Private session · ' + esc(LLM.label(s.ai)) + " · saved as you go · you can stop anytime</div>" +
       "</div>" +
       '<div class="voice-orb idle" id="voiceOrb" aria-live="polite"><i></i><span class="vo-label"></span></div>' +
       '<div class="chat-input">' +
       (V.canListen() ? '<button class="micbtn" id="chatMic" aria-label="Dictate">&#127908;</button>' : "") +
-      '<textarea id="chatBox" rows="1" placeholder="Speak as yourself or as the part..."></textarea>' +
+      '<textarea id="chatBox" rows="1" aria-label="Your reply, as yourself or as the part" placeholder="' + (V.canListen() ? "Type or speak…" : "Type a reply…") + '"></textarea>' +
       '<button class="sendbtn" id="chatSend" aria-label="Send">&#8593;</button>' +
       "</div></div>",
-      (voiceCapable ? '<button class="btn btn-soft' + (s.voiceOn ? " voice-on" : "") + '" id="voiceToggle" style="padding:8px 14px;font-size:.8rem">&#128266; Voice</button>' : "") +
+      (voiceCapable ? '<button class="btn btn-soft voicebtn' + (s.voiceOn ? " voice-on" : "") + '" id="voiceToggle" aria-label="Voice mode" aria-pressed="' + (s.voiceOn ? "true" : "false") + '">' + icon("speaker", 18) + "</button>" : "") +
       '<button class="btn btn-soft" id="endSession" style="padding:8px 14px;font-size:.8rem">End &amp; save</button>',
       function () {
         if (session && session.messages.length && !session.closed) {
@@ -1875,6 +1879,7 @@
     if (vt) vt.addEventListener("click", function () {
       s.voiceOn = !s.voiceOn; ST.save();
       vt.classList.toggle("voice-on", s.voiceOn);
+      vt.setAttribute("aria-pressed", s.voiceOn ? "true" : "false");
       buzz();
       /* the pacing rules ride in the system prompt, so toggling mid-session
          has to rebuild it or the model keeps the cadence it started with */
@@ -2275,14 +2280,14 @@
     };
 
     if (!incoming.length) {
-      toast(noted ? "Conversation saved - it will remember this next time"
-        : interviewish ? "Transcript saved - extract it anytime from Settings" : "Session saved");
+      toast(noted ? "Saved - see it in Past sessions; it will remember this next time"
+        : "Saved to Past sessions (in your profile menu)");
       round(700);
       return;
     }
     reviewMerge(incoming, function (saved) {
-      if (!saved.length) { toast("Transcript kept - profiles unchanged"); round(700); return; }
-      toast("Profile saved: " + saved.map(function (p) { return p.name; }).join(", "));
+      if (!saved.length) { toast("Transcript kept in Past sessions - profiles unchanged"); round(700); return; }
+      toast("Saved to " + saved.map(function (p) { return p.name; }).join(", ") + " and Past sessions");
       if (round(500)) return;
       // one part, freshly deepened, still floating alone -> offer to connect it
       var p = saved.length === 1 ? ST.getPart(saved[0].slug) : null;
@@ -2408,8 +2413,7 @@
       page(
         '<div class="card"><h3>This session runs in ' + esc(who) + '</h3><ol class="cp-steps">' +
         steps.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol>" +
-        '<p class="dim cp-note">Different there: no &ldquo;ground me&rdquo; button, no voice from Inner Table, and no draft to pick up later. ' + esc(who) +
-        " follows the same session and safety guidance, but only as instructions it reads. For anything tender, talking here in Inner Table is the safer place.</p></div>" +
+        '<p class="dim cp-note">' + esc(who) + " follows the same session and safety guidance, and gets your grounding plan. Inner Table&rsquo;s own voice and saved drafts aren&rsquo;t there &mdash; and if it gets heavy, Ground me is one tap away on this app&rsquo;s home screen.</p></div>" +
         (h.url ? '<a class="btn btn-primary btn-big" id="lsOpen" href="' + esc(h.url) + '" target="_blank" rel="noopener">Open ' + esc(who) + "</a><div style=\"height:10px\"></div>"
           : how.home ? '<a class="btn btn-primary btn-big" id="lsCopyOpen" href="' + esc(how.home) + '" target="_blank" rel="noopener">Copy the message and open ' + esc(who) + "</a><div style=\"height:10px\"></div>" : "") +
         '<button class="btn ' + (h.url || how.home ? "btn-soft" : "btn-primary") + ' btn-big" id="lsCopy">Copy the message' + (how.home ? " again" : "") + '</button><div style="height:10px"></div>' +
@@ -2435,8 +2439,8 @@
 
     function otherWays() {
       return '<details class="card cp-prompt"><summary>Other ways to hold this session</summary>' +
-        '<button class="btn btn-soft btn-big" id="lsKey">Talk here in Inner Table instead</button>' +
-        '<div class="prose dim" style="margin:8px 2px 12px">Connect your own AI account once and sessions run right here &mdash; paid from that account, separately from a ' + esc(who) + " subscription.</div>" +
+        '<button class="btn btn-soft btn-big" id="lsKey">Talk here in Inner Table with an API key</button>' +
+        '<div class="prose dim" style="margin:8px 2px 12px">Pay per session on your own API account, separately from a ' + esc(who) + " subscription.</div>" +
         (meeting ? '<button class="btn btn-soft btn-big" id="lsSelf">Hold it myself &mdash; I speak for each part</button><div style="height:8px"></div>' : "") +
         '<button class="btn btn-soft btn-big" id="lsManual">Copy-prompt mode &mdash; paste it into any AI chat</button></details>';
     }
@@ -2581,7 +2585,10 @@
   /* ================= grounding ================= */
   var breathTimer = null;
   function showGrounding() {
-    $("#ground").classList.remove("hidden");
+    var g = $("#ground");
+    window.IFS.ui.ground.render();
+    g.classList.remove("hidden");
+    g.scrollTop = 0;
     buzz(20);
     var label = $("#breathLabel");
     var phase = 0;
@@ -2977,6 +2984,20 @@
   /* ================= sessions ================= */
   /* Transcripts lost their tab to the table and now open as a panel from
      Settings, so the list may not be on screen when this is called. */
+  /* Where a finished session lives: the transcript and the conversation
+     notes, here; what it learned, on each part's profile; a meeting's card,
+     on the Table tab. */
+  function openPastSessions() {
+    if (!ST.state.transcripts.length && !ST.state.journal.length) {
+      toast("No sessions yet - each one you finish here is saved in this list");
+      return;
+    }
+    openPanel("Past sessions", ST.state.transcripts.length + " transcripts" +
+      (ST.state.journal.length ? " &middot; " + ST.state.journal.length + " conversation notes" : ""),
+      '<div class="view-pad"><p class="dim" style="margin:0 2px 14px">Every session you finish is kept here. What it learned also goes on each part&rsquo;s profile (under Sessions), and a table meeting leaves a card on the Table tab. Sessions held in your Claude app save their notes and profile updates; their full transcript stays in Claude.</p><div id="sessionsList"></div></div>');
+    renderSessions();
+  }
+
   function renderSessions() {
     var ts = ST.state.transcripts;
     var list = $("#sessionsList");
@@ -3140,9 +3161,46 @@
   /* One line on where a session started now would happen. */
   function sessionsStartLine(s, here, linked) {
     if (here) return "Sessions you start run here, with " + esc(LLM.label(s.ai)) + ".";
-    if (linked) return "Sessions you start open in " + esc(PROVIDER_NAMES[s.provider]) + ". Connect an AI here to have them run in Inner Table instead &mdash; voice, &ldquo;ground me&rdquo; and saved drafts only work here.";
+    if (linked) return "Sessions you start open in " + esc(PROVIDER_NAMES[s.provider]) + " and save back here when they end.";
     if (s.copyPrompt) return 'Sessions you start give you a prompt to copy into any AI chat. <button class="linkbtn" id="askWhere">Ask me each time instead</button>';
     return "When you start a session, you&rsquo;ll be asked where you&rsquo;d like to talk.";
+  }
+
+  /* Every section starts folded, and stays the way the person left it while
+     the page redraws under them (a theme tap redraws the whole pane). */
+  var openGroups = {};
+  function group(id, ic, title, sub, body) {
+    return '<details class="set-group" id="' + id + '"' + (openGroups[id] ? " open" : "") + ">" +
+      '<summary><span class="sr-icon">' + icon(ic, 18) + '</span><span class="sg-main">' + title +
+      '<span class="sg-sub">' + sub + '</span></span><span class="sg-chev">' + icon("chevron", 16) + "</span></summary>" +
+      body + "</details>";
+  }
+  function openSettings(id) {
+    openGroups[id] = true;
+    showView("settings");
+    setTimeout(function () { var g = document.getElementById(id); if (g) g.scrollIntoView({ block: "start" }); }, 80);
+  }
+
+  /* The device's own voices, best first, plus "automatic". getVoices() can
+     come back empty on the first ask; the list fills in when they load. */
+  function fillVoices() {
+    var sel = $("#bvSel");
+    if (!sel) return;
+    var s = ST.state.settings;
+    var vs = V.rankedVoices();
+    var best = vs[0];
+    sel.innerHTML = '<option value="">Best available' + (best ? " (" + esc(best.name) + ")" : "") + "</option>" +
+      vs.map(function (v) {
+        return '<option value="' + esc(v.voiceURI) + '"' + (v.voiceURI === s.browserVoice ? " selected" : "") + ">" + esc(v.name) + "</option>";
+      }).join("");
+    sel.onchange = function () {
+      s.browserVoice = sel.value; ST.save(); buzz();
+      V.speak("Hi. This is how I'll sound in your sessions.", null);
+    };
+    if (!vs.length && V.canSpeak() && !fillVoices.waiting) {
+      fillVoices.waiting = true;
+      speechSynthesis.addEventListener("voiceschanged", function () { fillVoices.waiting = false; fillVoices(); }, { once: true });
+    }
   }
 
   function renderSettings() {
@@ -3154,88 +3212,98 @@
         '<span class="sr-main"' + (danger ? ' style="color:var(--danger)"' : "") + ">" + main + '<span class="sr-sub">' + sub + "</span></span>" +
         (action || "") + "</div>";
     };
-    var jump = [["setAccount", "Account"], ["pushSettingsGroup", "Notifications"], ["setSessions", "Live sessions"],
-      ["setVoice", "Voice"], ["setAppearance", "Appearance"], ["setData", "Your data"], ["setAbout", "About"]];
+    var hasPlan = ST.PLAN_KEYS.some(function (k) { return (ST.state.plan[k] || []).length; });
+    var voiceName = function () {
+      if (s.elevenKey && s.elevenVoiceId) return "ElevenLabs voice";
+      var v = V.pickVoice();
+      return v ? esc(v.name) : "your device&rsquo;s voice";
+    };
+    var sessionsSub = here ? "with an API key &middot; " + esc(LLM.label(s.ai))
+      : linked ? "in your " + esc(PROVIDER_NAMES[s.provider]) + " app" + (s.provider === "anthropic" ? " &middot; your Claude plan" : "")
+      : "not set up yet";
+
     $("#settingsPane").innerHTML =
-      '<nav class="set-jump" aria-label="Settings sections">' + jump.map(function (j) {
-        return '<button data-jump="' + j[0] + '">' + j[1] + "</button>";
-      }).join("") + "</nav>" +
+      group("setAccount", "user", "Account",
+        AUTH.isLoggedIn() ? esc(AUTH.getUsername()) + " &middot; synced" : "not signed in",
+        AUTH.isLoggedIn()
+          ? '<div class="account-card"><span class="avatar large">' + esc(initialsOf(AUTH.getUsername())) + "</span>" +
+            '<span class="sr-main"><b>' + esc(AUTH.getUsername()) + '</b><span class="sr-sub">your parts follow you to every device you sign in on</span></span></div>' +
+            row("sync", "Sync now", "pull in changes from your other devices", '<button class="btn btn-soft" id="syncNowBtn">Sync</button>') +
+            row("logout", "Sign out", "closes your parts and returns to the sign-in screen", '<button class="btn btn-soft" id="signOutBtn">Sign out</button>')
+          : row("user", "Not signed in", "sign in to reach your parts", '<button class="btn btn-soft" id="signInBtn">Sign in</button>')) +
 
-      '<div class="set-group" id="setAccount"><h3>Account</h3>' +
-      (AUTH.isLoggedIn()
-        ? '<div class="account-card"><span class="avatar large">' + esc(initialsOf(AUTH.getUsername())) + "</span>" +
-          '<span class="sr-main"><b>' + esc(AUTH.getUsername()) + '</b><span class="sr-sub">your parts follow you to every device you sign in on</span></span></div>' +
-          row("sync", "Sync now", "pull in changes from your other devices", '<button class="btn btn-soft" id="syncNowBtn">Sync</button>') +
-          row("logout", "Sign out", "closes your parts and returns to the sign-in screen", '<button class="btn btn-soft" id="signOutBtn">Sign out</button>')
-        : row("user", "Not signed in", "sign in to reach your parts", '<button class="btn btn-soft" id="signInBtn">Sign in</button>')) +
-      "</div>" +
+      group("setSessions", "chat", "AI sessions", sessionsSub,
+        '<div class="set-pad"><div class="sr-copy"><b>Use your Claude subscription</b><span class="sr-sub">' +
+        "Sessions run in the Claude app on your Pro or Max plan &mdash; no API key and nothing extra to pay. " +
+        "Link Inner Table to Claude once as a connector: Claude reads your parts and your grounding plan, runs the session, and saves it back here.</span></div>" +
+        '<div class="seg" id="provSeg" style="margin-top:10px">' +
+        segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) + segBtn("gemini", "Gemini", s.provider) + segBtn("manual", "None", s.provider) +
+        "</div>" + (linked ? window.IFS.ui.linkAi.html(s.provider) : "") +
+        '<p class="dim" style="margin:12px 2px 0">' + sessionsStartLine(s, here, linked) + "</p>" +
+        '<details class="advanced"' + (here ? " open" : "") + "><summary>Or run sessions here with an API key</summary>" +
+        '<p class="dim" style="margin:10px 2px">Pay per session on your own API account (a few cents each) instead of a subscription. Voice, the Ground me pause and saved drafts work only when sessions run here.</p>' +
+        row("chat", "Talk here in Inner Table",
+          here ? "connected &middot; " + esc(LLM.label(s.ai)) : "not connected",
+          '<button class="btn btn-soft" id="aiConnect">' + (here ? "Manage" : "Connect") + "</button>") +
+        "</details></div>") +
 
-      '<div class="set-group" id="setSessions"><h3>Live sessions</h3>' +
-      row("chat", "Talk here in Inner Table",
-        here ? "connected &middot; " + esc(LLM.label(s.ai)) : "connect your own AI account &middot; a few cents a session",
-        '<button class="btn ' + (here ? "btn-soft" : "btn-primary") + '" id="aiConnect">' + (here ? "Manage" : "Connect") + "</button>") +
-      '<div class="set-pad"><div class="sr-copy"><b>Your AI app</b><span class="sr-sub">' +
-      (here ? "talk with your parts there too, through a private link" : "without an AI connected here, sessions open in it, through a private link") +
-      "</span></div>" +
-      '<div class="seg" id="provSeg" style="margin-top:10px">' +
-      segBtn("manual", "None", s.provider) + segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) + segBtn("gemini", "Gemini", s.provider) +
-      "</div>" + (linked ? window.IFS.ui.linkAi.html(s.provider) : "") +
-      '<p class="dim" style="margin:12px 2px 0">' + sessionsStartLine(s, here, linked) + "</p>" +
-      "</div></div>" +
+      group("setGround", "anchor", "Ground me", hasPlan ? "your grounding plan is written" : "write your own grounding plan",
+        '<div class="set-pad"><div class="sr-copy"><b>Your grounding plan</b><span class="sr-sub">Your own skills, warning signs and people to call &mdash; like a safety plan. It opens with Ground me, syncs to your devices, and sessions use it when you need grounding.</span></div>' +
+        '<button class="btn btn-soft btn-big" id="setGroundOpen">' + (hasPlan ? "Open my plan" : "Write my plan") + "</button></div>") +
 
-      '<div class="set-group" id="setVoice"><h3>Voice</h3>' +
-      '<div class="set-pad"><details class="advanced" style="margin:0;border:0;padding:0"><summary>Voice settings</summary>' +
-      '<label class="fieldlabel">ElevenLabs API key (optional)</label>' +
-      '<input type="password" id="elKey" autocomplete="off" placeholder="sk_..." value="' + esc(s.elevenKey) + '">' +
-      '<label class="fieldlabel">Voice ID</label>' +
-      '<input id="elVoice" autocomplete="off" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" value="' + esc(s.elevenVoiceId) + '">' +
-      '<button class="btn btn-soft" id="elFind" style="margin-top:8px">Find my voices</button>' +
-      '<label class="fieldlabel">Model</label>' +
-      '<input id="elModel" autocomplete="off" value="' + esc(s.elevenModel) + '">' +
-      '<label class="fieldlabel">Speaking pace</label>' +
-      '<div class="seg" id="rateSeg">' +
-      segBtn("0.8", "Unhurried", String(s.speechRate)) +
-      segBtn("0.9", "Slow", String(s.speechRate)) +
-      segBtn("1", "Normal", String(s.speechRate)) +
-      "</div>" +
-      '<button class="btn btn-soft" id="elTest" style="margin-top:12px">Hear a sample</button>' +
-      '<p class="dim" style="margin:12px 2px 2px">Optional ElevenLabs voice for sessions; reply text is sent to ElevenLabs. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
-      "</details></div></div>" +
+      group("setVoice", "speaker", "Voice", voiceName(),
+        '<div class="set-pad">' +
+        '<label class="fieldlabel" style="margin-top:0" for="bvSel">Voice</label>' +
+        '<select id="bvSel"></select>' +
+        '<p class="dim" style="margin:8px 2px 0">Built into your device, free, and nothing is sent anywhere. For a more natural one: on iPhone, Settings &rarr; Accessibility &rarr; Spoken Content &rarr; Voices, and download an <b>Enhanced</b> or <b>Premium</b> voice (Ava, Zoe or Evan are good); in Edge, pick a voice marked <b>Natural</b>. Inner Table picks the best one it finds.</p>' +
+        '<label class="fieldlabel">Speaking pace</label>' +
+        '<div class="seg" id="rateSeg">' +
+        segBtn("0.8", "Unhurried", String(s.speechRate)) +
+        segBtn("0.9", "Slow", String(s.speechRate)) +
+        segBtn("1", "Normal", String(s.speechRate)) +
+        "</div>" +
+        '<button class="btn btn-soft" id="elTest" style="margin-top:12px">Hear a sample</button>' +
+        '<details class="advanced"><summary>ElevenLabs voice (optional, paid)</summary>' +
+        '<label class="fieldlabel">ElevenLabs API key</label>' +
+        '<input type="password" id="elKey" autocomplete="off" placeholder="sk_..." value="' + esc(s.elevenKey) + '">' +
+        '<label class="fieldlabel">Voice ID</label>' +
+        '<input id="elVoice" autocomplete="off" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" value="' + esc(s.elevenVoiceId) + '">' +
+        '<button class="btn btn-soft" id="elFind" style="margin-top:8px">Find my voices</button>' +
+        '<label class="fieldlabel">Model</label>' +
+        '<input id="elModel" autocomplete="off" value="' + esc(s.elevenModel) + '">' +
+        '<p class="dim" style="margin:12px 2px 2px">Only if you want a cloned or studio voice. Reply text is sent to ElevenLabs. Keys at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>.</p>' +
+        "</details></div>") +
 
-      '<div class="set-group" id="setAppearance"><h3>Appearance</h3>' +
-      '<div class="set-pad"><div class="sr-copy"><b>Theme</b><span class="sr-sub">how Inner Table looks on this device</span></div>' +
-      '<div class="theme-options" id="themeSeg">' +
-      themeOpt("light", "sun", "Light", s.theme) + themeOpt("dark", "moon", "Dark", s.theme) + themeOpt("auto", "monitor", "Auto", s.theme) +
-      "</div></div>" +
-      row("vibrate", "Haptic feedback", "tiny vibrations on taps (where supported)",
-        '<input type="checkbox" class="toggle" role="switch" id="hapt" aria-label="Haptic feedback" ' + (s.haptics ? "checked" : "") + ">") +
-      "</div>" +
+      group("setAppearance", "sun", "Appearance", ({ light: "light", dark: "dark", auto: "matches your device" })[s.theme] || "",
+        '<div class="set-pad"><div class="sr-copy"><b>Theme</b><span class="sr-sub">how Inner Table looks on this device</span></div>' +
+        '<div class="theme-options" id="themeSeg">' +
+        themeOpt("light", "sun", "Light", s.theme) + themeOpt("dark", "moon", "Dark", s.theme) + themeOpt("auto", "monitor", "Auto", s.theme) +
+        "</div></div>" +
+        row("vibrate", "Haptic feedback", "tiny vibrations on taps (where supported)",
+          '<input type="checkbox" class="toggle" role="switch" id="hapt" aria-label="Haptic feedback" ' + (s.haptics ? "checked" : "") + ">")) +
 
-      '<div class="set-group" id="setData"><h3>Your data</h3>' +
-      row("chat", "Session transcripts", ST.state.transcripts.length + " saved from live AI sessions", '<button class="btn btn-soft" id="openTranscripts">Open</button>') +
-      row("download", "Export backup", "everything, including the table, as one JSON file", '<button class="btn btn-soft" id="expAll">Export</button>') +
-      row("upload", "Import backup", "merge a previously exported file", '<button class="btn btn-soft" id="impAll">Import</button>') +
-      row("table", "Export table", "the room, its seats and meeting history as one JSON file", '<button class="btn btn-soft" id="expTable">Export</button>') +
-      row("table", "Import table", "merge a table file into the current room", '<button class="btn btn-soft" id="impTable">Import</button>') +
-      row("trash", "Erase everything", "removes all parts and sessions from this device", '<button class="btn btn-danger" id="wipeAll">Erase</button>', true) +
-      "</div>" +
+      group("setData", "database", "Your data", ST.state.transcripts.length + " session" + (ST.state.transcripts.length === 1 ? "" : "s") + " saved &middot; backups",
+        row("chat", "Past sessions", ST.state.transcripts.length + " transcripts" + (ST.state.journal.length ? " &middot; " + ST.state.journal.length + " conversation notes" : ""), '<button class="btn btn-soft" id="openTranscripts">Open</button>') +
+        row("download", "Export backup", "everything, including the table, as one JSON file", '<button class="btn btn-soft" id="expAll">Export</button>') +
+        row("upload", "Import backup", "merge a previously exported file", '<button class="btn btn-soft" id="impAll">Import</button>') +
+        row("table", "Export table", "the room, its seats and meeting history as one JSON file", '<button class="btn btn-soft" id="expTable">Export</button>') +
+        row("table", "Import table", "merge a table file into the current room", '<button class="btn btn-soft" id="impTable">Import</button>') +
+        row("trash", "Erase everything", "removes all parts and sessions from this device", '<button class="btn btn-danger" id="wipeAll">Erase</button>', true)) +
 
-      '<div class="set-group" id="setAbout"><h3>About</h3>' +
-      row("home",
-        isStandalone() ? "Installed" : "Add to home screen",
-        isStandalone() ? "running from your home screen &middot; works offline" : installHint(),
-        !isStandalone() && deferredInstall ? '<button class="btn btn-soft" id="setInstall">Install</button>' : "") +
-      '<div class="privacy-banner"><span class="pb-i">' + icon("shield") + "</span><div>" +
-      '<b class="serif">This is not therapy.</b>' +
-      '<p><b>Inner Table</b> is the webapp of the open-source <a href="https://github.com/joman124/ifs-agents" target="_blank" rel="noopener">ifs-agents</a> system, inspired by Internal Family Systems (Richard C. Schwartz). It is a self-exploration and journaling tool &mdash; no trauma processing, no unburdening. Read the <a href="https://github.com/joman124/ifs-agents/blob/main/docs/safety.md" target="_blank" rel="noopener">safety guide</a>.</p>' +
-      '<p>In crisis? Call or text <b>988</b> (US) or visit <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p></div></div>' +
-      "</div>";
+      group("setAbout", "info", "About", "Inner Table &middot; open source",
+        row("home",
+          isStandalone() ? "Installed" : "Add to home screen",
+          isStandalone() ? "running from your home screen &middot; works offline" : installHint(),
+          !isStandalone() && deferredInstall ? '<button class="btn btn-soft" id="setInstall">Install</button>' : "") +
+        '<details class="advanced set-pad" style="margin:0"><summary>This is not therapy</summary>' +
+        '<p class="dim" style="margin:10px 2px"><b>Inner Table</b> is the webapp of the open-source <a href="https://github.com/joman124/ifs-agents" target="_blank" rel="noopener">ifs-agents</a> system, inspired by Internal Family Systems (Richard C. Schwartz). It is a self-exploration and journaling tool &mdash; no trauma processing, no unburdening. Read the <a href="https://github.com/joman124/ifs-agents/blob/main/docs/safety.md" target="_blank" rel="noopener">safety guide</a>.</p>' +
+        '<p class="dim" style="margin:0 2px">In crisis? Call or text <b>988</b> (US) or visit <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p></details>');
 
-    $("#settingsPane").querySelector(".set-jump").addEventListener("click", function (e) {
-      var b = e.target.closest("[data-jump]"); if (!b) return;
-      var target = document.getElementById(b.dataset.jump);
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    $("#settingsPane").querySelectorAll("details.set-group").forEach(function (d) {
+      d.addEventListener("toggle", function () { openGroups[d.id] = d.open; });
     });
+    fillVoices();
+    bind("#setGroundOpen", groundAlone);
     bind("#aiConnect", function () {
       if (LLM.configured(ST.state.settings.ai)) window.IFS.ui.connect.manage(renderSettings);
       else window.IFS.ui.connect.open({ done: renderSettings });
@@ -3261,7 +3329,7 @@
     });
     $("#elTest").addEventListener("click", function () {
       buzz();
-      toast(s.elevenKey && s.elevenVoiceId ? "Generating a sample in your voice..." : "No ElevenLabs key set - this is the browser voice");
+      if (s.elevenKey && s.elevenVoiceId) toast("Generating a sample in your ElevenLabs voice...");
       V.speak("Hi, this is how your sessions will sound. Take all the time you need.", null);
     });
     $("#hapt").addEventListener("change", function (e) { s.haptics = e.target.checked; ST.save(); buzz(); });
@@ -3269,13 +3337,7 @@
     bind("#signOutBtn", signOut);
     bind("#syncNowBtn", syncNow);
     bind("#setInstall", doInstall);
-    $("#openTranscripts").addEventListener("click", function () {
-      if (!ST.state.transcripts.length && !ST.state.journal.length) { toast("No transcripts yet - live AI sessions save one each"); return; }
-      openPanel("Session transcripts", ST.state.transcripts.length + " saved" +
-        (ST.state.journal.length ? " &middot; " + ST.state.journal.length + " conversation notes" : ""),
-        '<div class="view-pad" id="sessionsList"></div>');
-      renderSessions();
-    });
+    $("#openTranscripts").addEventListener("click", openPastSessions);
     $("#expAll").addEventListener("click", doExportBackup);
     bind("#expTable", function () {
       exportText(ST.exportTable(), "inner-table-room-" + S.todayISO() + ".json",
@@ -3491,6 +3553,11 @@
       t.addEventListener("click", function () { showView(t.dataset.view); });
     });
     $("#learnBtn").addEventListener("click", window.IFS.ui.learnSheet);
+    // the logo goes home, the way it does everywhere else
+    $("#topTitle").addEventListener("click", function () {
+      showView("parts");
+      $("#view-parts").scrollTo({ top: 0, behavior: "smooth" });
+    });
     $("#profileBtn").addEventListener("click", function () {
       if ($("#profileMenu").classList.contains("hidden")) openProfileMenu(); else closeProfileMenu();
     });
@@ -3559,6 +3626,7 @@
     init: init,
     toast: toast,
     startSession: startSession,
+    openSettings: openSettings,
     renderSettings: function () { if (currentView === "settings") renderSettings(); },
     refresh: function (msg) {
       renderParts();

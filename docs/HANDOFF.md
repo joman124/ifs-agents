@@ -116,7 +116,8 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `ui-table.js` | 776 | The Table tab: the room (and its photo), seating, meetings, the round of the table and the readings-history sheet |
 | `ui-portrait.js` | 299 | Choosing and framing a picture: the sheet, the drag/pinch/zoom cropper, remove. One flow for a part and for the room |
 | `ui-learn.js` | 49 | The Learn library sheet and its pages |
-| `ui-bridge.js` | 124 | Settings → Live sessions → *Your AI app*: makes, shows and revokes the private link |
+| `ui-bridge.js` | 124 | Settings → AI sessions → *Your AI app*: makes, shows and revokes the private link. The Claude app on a Pro/Max plan is the recommended way to run sessions (no API key) |
+| `ui-ground.js` | 150 | *Ground me*: the person's own grounding plan, shaped like a safety plan (`store.plan`: warning signs, skills, people and places, contacts with call/text buttons, professionals, a safer space, reasons) - drawn into the grounding page and edited in place. It syncs, and `templates.groundingBlock` adds the skills and signs (never names or numbers) to every session prompt, in the app and through the bridge |
 | `ui-connect.js` | 249 | *Talk here in Inner Table*: Connect with OpenRouter, paste-any-key (detected, test-called, kept with the account), manage/disconnect, the one-time "where would you like to talk?" choice, and picking a session back up after OpenRouter's sign-in |
 | `ui-practice.js` | 139 | The daily practice: *Notice a part* (ten seconds, no AI — a `notice` entry with an optional `feel` word in the part's own session log, which the next check-in reads as memory), and *Looking back* (`schema.lookBack`: who you sat with, how your feeling toward each part moved, threads that warmed, over 30 days) |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
@@ -163,8 +164,8 @@ the theme switch and sign out.
    meeting card**, where it is filed on that meeting's date rather than today.
    A card says whether a round was recorded; one whose attendees have since
    been deleted says so instead of offering a round nobody can answer.
-4. **Settings** (from the profile avatar, not a tab) — a jump bar of
-   sections, then account (sign in/up/out, "Sync now", sign-out closes your parts
+4. **Settings** (from the profile avatar, not a tab) — every section
+   starts folded (a `<details>` row; open ones stay open across redraws), then account (sign in/up/out, "Sync now", sign-out closes your parts
    and returns to the sign-in screen), push notifications (tied to the signed-in
    account), provider keys, voice, theme, backup/restore, transcripts.
    "Find my voices" lists the ElevenLabs account's own voices (clones first) so

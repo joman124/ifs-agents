@@ -744,6 +744,23 @@
     "- No lists, headings, or formatting in spoken replies - just short, plain, warm sentences."
   ];
 
+  /* The person's own grounding plan (store.plan), for the guide to reach
+     for when they flood: their own words come before any generic advice.
+     Empty when they have written nothing, so it costs a session nothing. */
+  function groundingBlock(plan) {
+    if (!plan || typeof plan !== "object") return "";
+    var list = function (k) { return (Array.isArray(plan[k]) ? plan[k] : []).filter(function (x) { return typeof x === "string" && x.trim(); }); };
+    var skills = list("skills"), signs = list("signs"), places = list("places"), people = list("people");
+    if (!skills.length && !signs.length && !places.length && !people.length) return "";
+    var L = ["## Their own grounding plan", "",
+      "The person wrote this plan for themselves. If they flood, or a warning sign below shows up, use THEIR skills first, by their own words - offer one at a time, as an invitation. Do not quote the whole plan back at them."];
+    if (signs.length) L.push("", "Signs they are getting overwhelmed:", signs.map(function (x) { return "- " + x; }).join("\n"));
+    if (skills.length) L.push("", "What grounds them:", skills.map(function (x) { return "- " + x; }).join("\n"));
+    if (places.length) L.push("", "People and places that help them settle:", places.map(function (x) { return "- " + x; }).join("\n"));
+    if (people.length) L.push("", "They have people they can reach out to listed in Inner Table (Ground me). If it would help, remind them of that - do not ask for names or numbers.");
+    return L.join("\n");
+  }
+
   /* Live in-app voice sessions: same pacing, minus the copy-prompt tail. */
   function voicePacing() {
     return ["## This is being spoken aloud", "", "The person is hearing you, not reading you, and answering by voice. Pace is everything:"]
@@ -962,7 +979,7 @@
     handoff: handoff,
     intake: intake, checkin: checkin, mapping: mapping, talk: talk,
     embody: embody, meeting: meeting, portable: portable, convertNotes: convertNotes,
-    voicePacing: voicePacing,
+    voicePacing: voicePacing, groundingBlock: groundingBlock,
     CLOSE_INSTRUCTION: "We're closing the session now. Please give your short closing reflection and then output the complete updated profile(s) in fenced markdown blocks, exactly as instructed."
   };
 })();

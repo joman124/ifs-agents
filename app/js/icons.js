@@ -39,6 +39,8 @@ script that draws markup, so push.js and ui.js can both reach it. */
     file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/>',
     pen: '<path d="M4 20h4L19 9l-4-4L4 16Z"/>',
     camera: '<path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/>',
+    anchor: '<circle cx="12" cy="5" r="2"/><path d="M12 7v14M8 11h8M4 14a8 7 0 0 0 16 0"/>',
+    speaker: '<path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
     leaf: '<path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14Zm0 0 7-7"/>'
   };
 

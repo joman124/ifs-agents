@@ -60,8 +60,9 @@
     var signedIn = AUTH.isLoggedIn();
     UI.openSheet(
       '<h2 class="sheet-title serif">Talk here in Inner Table</h2>' +
-      '<p class="dim">Sessions run right here, on your own AI account &mdash; you pay it directly, usually a few cents a session. ' +
-      "A Claude or ChatGPT subscription can&rsquo;t be used for this; an account with API credit can.</p>" +
+      '<p class="dim">Sessions run right here, on your own API account &mdash; you pay it directly, usually a few cents a session. ' +
+      "Have a Claude Pro or Max plan? Use it instead, at no extra cost: " +
+      '<button class="linkbtn" id="cxUsePlan">run sessions in your Claude app</button>.</p>' +
       (signedIn
         ? '<button class="btn btn-primary btn-big" id="cxRouter">Connect with OpenRouter</button>' +
           '<p class="dim cx-note">Sign in to OpenRouter (or make an account), add a little credit, approve Inner Table &mdash; and you&rsquo;re back here, connected. Sessions run on Claude.</p>' +
@@ -135,6 +136,12 @@
       }
     });
     bind("#cxCancel", UI.closeSheet);
+    bind("#cxUsePlan", function () {
+      ST.state.settings.provider = "anthropic";
+      ST.save();
+      UI.closeSheet();
+      showSessionsSettings();
+    });
   }
 
   function keyLinks() {
@@ -194,16 +201,24 @@
     };
     UI.openSheet(
       '<h2 class="sheet-title serif">Where would you like to talk?</h2>' +
-      '<p class="dim">Pick once &mdash; you can change it any time in Settings &rarr; Live sessions.</p>' +
-      item("cwHere", "chat", "Here in Inner Table &middot; recommended", "voice, &ldquo;ground me&rdquo; and saved drafts work only here &middot; your own AI account, a few cents a session") +
-      item("cwApp", "sync", "In my Claude, ChatGPT or Gemini app", "link it once &middot; sessions open there and save back here") +
-      item("cwCopy", "file", "Copy a prompt", "paste it into any AI chat, then paste the result back")
+      '<p class="dim">Pick once &mdash; you can change it any time in Settings &rarr; AI sessions.</p>' +
+      item("cwClaude", "chat", "In my Claude app &middot; recommended", "uses your Claude Pro or Max plan &middot; no API key, nothing extra to pay &middot; link it once and sessions save back here") +
+      item("cwApp", "sync", "In ChatGPT or Gemini", "link it once on a paid plan &middot; sessions open there and save back here") +
+      item("cwCopy", "file", "Copy a prompt", "paste it into any AI chat, then paste the result back") +
+      item("cwHere", "spark", "Here in Inner Table, with an API key", "pay per session on your own API account &middot; voice and the Ground me pause run here")
     );
-    bind("#cwHere", function () { openConnect({ resume: resume }); });
-    bind("#cwApp", function () {
+    var link = function (provider) {
+      ST.state.settings.provider = provider;
+      ST.save();
       UI.closeSheet();
       showSessionsSettings();
+    };
+    bind("#cwClaude", function () { link("anthropic"); });
+    bind("#cwApp", function () {
+      var cur = ST.state.settings.provider;
+      link(cur === "openai" || cur === "gemini" ? cur : "openai");
     });
+    bind("#cwHere", function () { openConnect({ resume: resume }); });
     bind("#cwCopy", function () {
       ST.state.settings.copyPrompt = true;
       ST.save();
@@ -214,8 +229,7 @@
 
   function showSessionsSettings() {
     UI.closePanel();
-    UI.showView("settings");
-    setTimeout(function () { var g = $("#setSessions"); if (g) g.scrollIntoView({ block: "start" }); }, 80);
+    window.IFS.ui.openSettings("setSessions");
   }
 
   /* Back from OpenRouter's sign-in: ?connected=openrouter or ?connect_error=… */

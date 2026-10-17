@@ -213,7 +213,8 @@ a.btn-primary { color: var(--accent-ink); }
 }
 .topbar-inner { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; max-width: 1180px; margin: 0 auto; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
-.brand { display: flex; align-items: center; gap: 10px; font-size: 1.3rem; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 1.3rem; padding: 2px 6px 2px 0; border-radius: 12px; font-family: var(--font-serif); }
+.brand:active { transform: scale(.98); }
 /* the app icon itself, so the top bar and the home screen show the same mark */
 .brand-logo { width: 36px; height: 36px; border-radius: 9px; flex: none; display: block; }
 [data-theme="light"] .brand-logo { box-shadow: 0 1px 3px rgba(60,40,10,.18); }
@@ -492,8 +493,8 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   background: color-mix(in srgb, var(--bg) 85%, transparent);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
-.panel-title { flex: 1; font-weight: 650; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.panel-title small { display: block; font-weight: 400; color: var(--ink-dim); font-size: .74rem; }
+.panel-title { flex: 1; min-width: 0; font-weight: 650; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-title small { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 400; color: var(--ink-dim); font-size: .74rem; }
 /* the profile's bar: the part's face beside its name, kept while the page scrolls */
 .panel-title.has-face { display: flex; align-items: center; gap: 10px; }
 .panel-title .pt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -504,7 +505,7 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   font: 700 .95rem/1 Georgia, serif;
 }
 .panel-title .pt-face.has-pic { background: none; }
-.panel-actions { display: flex; gap: 4px; }
+.panel-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .panel-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ---------- profile view ---------- */
@@ -627,9 +628,10 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   border-top: 1px solid var(--line); background: var(--bg2);
 }
 .chat-input textarea {
-  flex: 1; min-height: 44px; max-height: 130px; border-radius: 22px; padding: 11px 16px;
-  resize: none;
+  flex: 1; min-width: 0; min-height: 44px; height: 44px; max-height: 130px; border-radius: 22px;
+  padding: 10px 16px; line-height: 22px; resize: none; overflow-y: auto;
 }
+.chat-input textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sendbtn {
   width: 44px; height: 44px; border-radius: 50%; flex: none;
   background: var(--accent); color: var(--accent-ink);
@@ -656,10 +658,13 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .btn.voice-on { background: var(--accent); color: var(--accent-ink); }
 .groundbtn {
   position: absolute; right: 14px; top: 8px;
-  font-size: .74rem; font-weight: 700; color: var(--ink-dim);
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-size: .78rem; font-weight: 650; line-height: 1; color: var(--ink);
   background: var(--surface2); border: 1px solid var(--line);
-  padding: 6px 12px; border-radius: 999px; z-index: 3;
+  padding: 8px 13px; border-radius: 999px; z-index: 3;
 }
+.panel-actions .btn { white-space: nowrap; }
+.panel-actions .voicebtn { width: 38px; height: 38px; padding: 0; }
 
 /* ================= grounding ================= */
 .ground {
@@ -668,6 +673,36 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   animation: fadeIn .3s ease;
 }
 .ground-inner { max-width: 380px; padding: 30px; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+/* Ground me is a page of its own: it scrolls, and starts at the top */
+#ground { display: block; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#ground.hidden { display: none; }
+#ground .ground-inner { max-width: 460px; margin: 0 auto; box-sizing: border-box; padding: calc(28px + var(--sat)) 16px calc(28px + var(--sab)); }
+#ground .ground-inner > p, #ground .ground-inner > h2 { margin: 0; }
+#ground .breath { margin-bottom: 0; }
+.btn-crisis { background: var(--danger); color: #fff; }
+a.btn-crisis { color: #fff; }
+.ground-crisis-more { margin: -4px 0 6px; font-size: .86rem; }
+.ground-crisis-more a { font-weight: 600; }
+.ground-plan { width: 100%; display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.gp-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.gp-card h3 { margin: 0 0 8px; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-faint); }
+.gp-card h4 { margin: 12px 0 4px; font-size: .86rem; }
+.gp-card .dim { margin: 0 0 10px; }
+.gp-list { margin: 0; padding-left: 18px; line-height: 1.6; }
+.gp-list li { margin: 3px 0; }
+.gp-starters { display: flex; flex-wrap: wrap; gap: 8px; }
+.gp-starters .chip { font-size: .82rem; padding: 7px 12px; text-align: left; color: var(--ink); }
+.gp-contact { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.gp-contact:first-of-type { border-top: 0; }
+.gp-contact .gp-who { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.gp-contact .gp-who small { display: block; font-weight: 400; color: var(--ink-dim); }
+.gp-contact .btn { padding: 8px 14px; font-size: .84rem; }
+.gp-more summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
+.gp-edit .fieldlabel { margin-top: 16px; }
+.gp-edit .gp-hint { margin: -2px 0 6px; font-size: .8rem; }
+.gp-edit textarea { min-height: 76px; }
+.gp-edit .btn-big { margin-top: 14px; }
+.ground-actions { width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .breath { position: relative; width: 130px; height: 130px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
 .breath-ring {
   position: absolute; inset: 0; border-radius: 50%;
@@ -900,22 +935,8 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .banner .btn { padding: 8px 14px; font-size: .82rem; flex: none; }
 
 /* ================= settings ================= */
-/* A jump bar along the top, then one card per section: a quiet label band,
-   rows that each lead with an icon tile, and the control on the right. */
-.set-jump {
-  position: sticky; top: 0; z-index: 3;
-  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
-  margin: 0 -16px 16px; padding: 8px 16px 10px;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-}
-.set-jump::-webkit-scrollbar { display: none; }
-.set-jump button {
-  flex: none; padding: 7px 13px; border-radius: 999px;
-  font-size: .78rem; font-weight: 600; color: var(--ink-dim);
-  background: var(--surface); border: 1px solid var(--line);
-}
-.set-jump button:hover { color: var(--ink); border-color: var(--accent); }
+/* One folded card per section: a row with an icon tile that opens onto the
+   section's own rows, each leading with an icon tile and the control on the right. */
 .set-group {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   margin-bottom: 18px; overflow: hidden; scroll-margin-top: 64px;
@@ -924,6 +945,18 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   margin: 0; padding: 10px 18px; background: var(--surface2); border-bottom: 1px solid var(--line);
   font-size: .64rem; font-weight: 700; text-transform: uppercase; letter-spacing: .13em; color: var(--ink-faint);
 }
+/* Every section starts folded: a row you open, not a page you scroll past */
+details.set-group > summary {
+  display: flex; align-items: center; gap: 12px; padding: 15px 16px; cursor: pointer;
+  list-style: none; font-weight: 650; font-size: .98rem;
+}
+details.set-group > summary::-webkit-details-marker { display: none; }
+details.set-group > summary .sg-sub { display: block; font-weight: 400; font-size: .76rem; color: var(--ink-dim); }
+details.set-group > summary .sg-main { flex: 1; min-width: 0; }
+details.set-group > summary .sg-chev { color: var(--ink-faint); transition: transform .2s ease; }
+details.set-group[open] > summary { border-bottom: 1px solid var(--line); }
+details.set-group[open] > summary .sg-chev { transform: rotate(90deg); }
+.set-group { margin-bottom: 12px; }
 .set-row { display: flex; align-items: center; gap: 13px; padding: 14px 16px; border-bottom: 1px solid var(--line); min-height: 70px; }
 .set-row:last-child { border-bottom: 0; }
 .set-row .sr-main { flex: 1; min-width: 0; font-weight: 600; font-size: .93rem; }

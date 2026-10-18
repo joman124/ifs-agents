@@ -53,8 +53,13 @@
      have the old timer hide the new sheet - so every open/close takes a
      ticket, and a stale timer does nothing. */
   var sheetSeq = 0;
-  function openSheet(html) {
+  /* What a sheet does when it is waved away (backdrop tap, swipe down)
+     rather than answered with one of its own buttons. Most sheets do
+     nothing; one that holds unsaved work must not just drop it. */
+  var sheetDismiss = null;
+  function openSheet(html, onDismiss) {
     sheetSeq++;
+    sheetDismiss = onDismiss || null;
     $("#sheetBody").innerHTML = html;
     $("#sheetBackdrop").classList.remove("hidden");
     var sh = $("#sheet");
@@ -62,6 +67,7 @@
     buzz();
   }
   function closeSheet() {
+    sheetDismiss = null;
     var sh = $("#sheet");
     if (sh.classList.contains("hidden")) return;
     var mine = ++sheetSeq;
@@ -71,6 +77,12 @@
       sh.classList.add("hidden"); sh.classList.remove("closing");
       $("#sheetBackdrop").classList.add("hidden");
     }, 210);
+  }
+
+  function dismissSheet() {
+    var fn = sheetDismiss;
+    closeSheet();
+    if (fn) fn();
   }
 
   /* ================= panel ================= */
@@ -2179,6 +2191,14 @@
      never quietly delete a field. */
   function reviewMerge(incoming, done) {
     var merged = incoming.map(function (p) { return S.mergeSession(ST.getPart(p.slug), p); });
+    var save = function () {
+      merged.forEach(function (p) { ST.upsertPart(p); });
+      renderParts(); buzz(12);
+      done(merged);
+    };
+    /* Waved away, it saves: the merge never erases anything, and a session
+       that quietly never reached its part is the worse loss. Only "Keep the
+       transcript only" leaves the profiles as they were. */
     openSheet(
       '<h2 class="sheet-title serif">' + (merged.length === 1 ? "Update " + esc(merged[0].name) + "?" : "Update " + merged.length + " profiles?") + "</h2>" +
       '<p class="dim">Merged onto what you already had &mdash; nothing the session skipped gets erased.</p>' +
@@ -2190,14 +2210,27 @@
           }).join("")) +
       '<div style="height:12px"></div>' +
       '<button class="btn btn-primary btn-big" id="rmSave">Save to ' + (merged.length === 1 ? esc(merged[0].name) + "'s profile" : "all profiles") + "</button>" +
-      '<button class="btn btn-ghost btn-big" id="rmSkip">Keep the transcript only</button>'
+      '<button class="btn btn-ghost btn-big" id="rmSkip">Keep the transcript only</button>',
+      save
     );
-    bind("#rmSave", function () {
-      merged.forEach(function (p) { ST.upsertPart(p); });
-      closeSheet(); renderParts(); buzz(12);
-      done(merged);
-    });
+    bind("#rmSave", function () { closeSheet(); save(); });
     bind("#rmSkip", function () { closeSheet(); done([]); });
+  }
+
+  /* A session held here leaves a dated line on each part it was about, even
+     when the closing reply's profile skipped its sessions entry or never
+     arrived - otherwise the profile shows no sign it happened. */
+  function stampSession(sess) {
+    if (sess.mode !== "checkin" && sess.mode !== "mapping") return;
+    var today = S.todayISO();
+    sess.slugs.forEach(function (sl) {
+      var p = ST.getPart(sl);
+      if (!p) return;
+      var has = (p.sessions || []).some(function (x) { return x.date === today && x.mode === sess.mode; });
+      if (has) return;
+      p.sessions.push({ date: today, mode: sess.mode, categories: [], note: MODE_TITLES[sess.mode] + " in the app - transcript in Past sessions" });
+      ST.upsertPart(p);
+    });
   }
 
   function finalizeSession(sess, reply, interviewish) {
@@ -2280,6 +2313,8 @@
     };
 
     if (!incoming.length) {
+      stampSession(sess);
+      if (sess.mode === "checkin" || sess.mode === "mapping") renderParts();
       toast(noted ? "Saved - see it in Past sessions; it will remember this next time"
         : "Saved to Past sessions (in your profile menu)");
       round(700);
@@ -2287,6 +2322,7 @@
     }
     reviewMerge(incoming, function (saved) {
       if (!saved.length) { toast("Transcript kept in Past sessions - profiles unchanged"); round(700); return; }
+      stampSession(sess);
       toast("Saved to " + saved.map(function (p) { return p.name; }).join(", ") + " and Past sessions");
       if (round(500)) return;
       // one part, freshly deepened, still floating alone -> offer to connect it
@@ -3564,7 +3600,7 @@
     $("#profileScrim").addEventListener("click", closeProfileMenu);
     $("#profileMenu").addEventListener("click", onProfileMenuClick);
     $("#fabNew").addEventListener("click", newSessionSheet);
-    $("#sheetBackdrop").addEventListener("click", closeSheet);
+    $("#sheetBackdrop").addEventListener("click", dismissSheet);
     $("#panelBack").addEventListener("click", closePanel);
     $("#mapKeyBtn").addEventListener("click", function () { if (keyOpen) closeKey(); else openKey(); });
     $("#mapLegendScrim").addEventListener("click", closeKey);
@@ -3594,7 +3630,7 @@
     var startY = null;
     sheet.addEventListener("touchstart", function (e) { startY = e.touches[0].clientY; }, { passive: true });
     sheet.addEventListener("touchend", function (e) {
-      if (startY != null && e.changedTouches[0].clientY - startY > 80) closeSheet();
+      if (startY != null && e.changedTouches[0].clientY - startY > 80) dismissSheet();
       startY = null;
     }, { passive: true });
 

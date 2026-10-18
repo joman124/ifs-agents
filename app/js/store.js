@@ -191,7 +191,7 @@
     var key = keyFor(owner);
     try {
       var raw = localStorage.getItem(key);
-      if (raw) { adopt(JSON.parse(raw)); return; }
+      if (raw) { adopt(JSON.parse(raw)); if (linkJournals()) save(); return; }
     } catch (e) { /* corrupted store: start fresh but keep old blob for rescue */
       try { localStorage.setItem(key + ".rescue", localStorage.getItem(key) || ""); } catch (e2) {}
     }
@@ -530,6 +530,27 @@
 
   /* Journal entries merge by id, newest last, capped - from a sync, a backup,
      or a save the person's AI made. A tombstone keeps a deleted note deleted. */
+  /* A conversation note lands on the parts it names: each gets the note's
+     line in its session history. A note names parts by slug, or sometimes by
+     name. Not restamped - the line rides the session log's union to every
+     device - and true if anything was added. */
+  function linkJournal(j) {
+    var added = false;
+    (j.parts || []).forEach(function (who) {
+      var w = String(who).trim().toLowerCase();
+      var p = state.parts[w] || listParts().filter(function (x) { return x.name.toLowerCase() === w; })[0];
+      if (p && S.addJournalSession(p, j)) added = true;
+    });
+    return added;
+  }
+  /* Every note already kept, onto its parts - picks up notes saved before
+     notes reached the profiles at all. Idempotent. */
+  function linkJournals() {
+    var added = false;
+    state.journal.forEach(function (j) { if (linkJournal(j)) added = true; });
+    return added;
+  }
+
   function mergeJournal(list, viaSync) {
     var have = {};
     state.journal.forEach(function (j) { have[j.id] = 1; });
@@ -540,6 +561,7 @@
       if (!viaSync) delete state.deleted.journal[j.id];
       have[j.id] = 1;
       state.journal.push(j);
+      linkJournal(j);
     });
     state.journal.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)); });
     if (state.journal.length > S.JOURNAL_CAP) state.journal = state.journal.slice(-S.JOURNAL_CAP);

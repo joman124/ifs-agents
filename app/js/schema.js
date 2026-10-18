@@ -933,7 +933,30 @@
     };
   }
 
+  /* A conversation note's line in each part's own session history - so a
+     "just talk" conversation shows on every part that came up in it, the
+     same way a check-in does. Built from the note alone, so the app, a sync
+     from another device and the bridge all write the identical line, and the
+     session log's union (date|mode|note) keeps exactly one. */
+  function journalSession(j) {
+    var text = String(j.summary || "").replace(/\s+/g, " ").trim();
+    if (text.length > 280) text = text.slice(0, 277).replace(/\s+\S*$/, "") + "…";
+    return { date: j.date || "", mode: "talk", categories: [],
+      note: (j.via === "ai" ? "Conversation in your AI app: " : "Conversation: ") + text };
+  }
+  /* Add that line to a part unless it is already there. True if it added. */
+  function addJournalSession(part, j) {
+    if (!part || !j || !j.date) return false;
+    var line = journalSession(j);
+    part.sessions = part.sessions || [];
+    var has = part.sessions.some(function (x) { return x.date === line.date && x.mode === line.mode && x.note === line.note; });
+    if (has) return false;
+    part.sessions.push(line);
+    return true;
+  }
+
   window.IFS.schema = {
+    journalSession: journalSession, addJournalSession: addJournalSession,
     CATEGORIES: CATEGORIES,
     CATEGORY_LABELS: CATEGORY_LABELS,
     COVERAGE_STATUSES: COVERAGE_STATUSES,

@@ -53,13 +53,8 @@
      have the old timer hide the new sheet - so every open/close takes a
      ticket, and a stale timer does nothing. */
   var sheetSeq = 0;
-  /* What a sheet does when it is waved away (backdrop tap, swipe down)
-     rather than answered with one of its own buttons. Most sheets do
-     nothing; one that holds unsaved work must not just drop it. */
-  var sheetDismiss = null;
-  function openSheet(html, onDismiss) {
+  function openSheet(html) {
     sheetSeq++;
-    sheetDismiss = onDismiss || null;
     $("#sheetBody").innerHTML = html;
     $("#sheetBackdrop").classList.remove("hidden");
     var sh = $("#sheet");
@@ -67,7 +62,6 @@
     buzz();
   }
   function closeSheet() {
-    sheetDismiss = null;
     var sh = $("#sheet");
     if (sh.classList.contains("hidden")) return;
     var mine = ++sheetSeq;
@@ -77,12 +71,6 @@
       sh.classList.add("hidden"); sh.classList.remove("closing");
       $("#sheetBackdrop").classList.add("hidden");
     }, 210);
-  }
-
-  function dismissSheet() {
-    var fn = sheetDismiss;
-    closeSheet();
-    if (fn) fn();
   }
 
   /* ================= panel ================= */
@@ -2186,35 +2174,14 @@
     bind("#closeStay", closeSheet);
   }
 
-  /* What the model wrote, merged onto what's already stored, shown before it
-     saves. Anything the model left out is kept, so a thin closing reply can
-     never quietly delete a field. */
-  function reviewMerge(incoming, done) {
+  /* What the model wrote, merged onto what's already stored - straight in,
+     nothing to confirm. Anything the model left out is kept, so a thin
+     closing reply can never quietly delete a field, and new text is added
+     under the old rather than replacing it (schema.mergeSession). */
+  function saveMerge(incoming) {
     var merged = incoming.map(function (p) { return S.mergeSession(ST.getPart(p.slug), p); });
-    var save = function () {
-      merged.forEach(function (p) { ST.upsertPart(p); });
-      renderParts(); buzz(12);
-      done(merged);
-    };
-    /* Waved away, it saves: the merge never erases anything, and a session
-       that quietly never reached its part is the worse loss. Only "Keep the
-       transcript only" leaves the profiles as they were. */
-    openSheet(
-      '<h2 class="sheet-title serif">' + (merged.length === 1 ? "Update " + esc(merged[0].name) + "?" : "Update " + merged.length + " profiles?") + "</h2>" +
-      '<p class="dim">Merged onto what you already had &mdash; nothing the session skipped gets erased.</p>' +
-      (merged.length === 1 ? previewFieldsHTML(merged[0])
-        : merged.map(function (p) {
-            return '<div class="part-card" style="cursor:default"><div class="part-card-main">' +
-              '<div class="part-card-name">' + esc(p.name) + '</div><div class="part-card-sub">' +
-              Math.round(S.coverageScore(p) * 100) + "% developed</div></div></div>";
-          }).join("")) +
-      '<div style="height:12px"></div>' +
-      '<button class="btn btn-primary btn-big" id="rmSave">Save to ' + (merged.length === 1 ? esc(merged[0].name) + "'s profile" : "all profiles") + "</button>" +
-      '<button class="btn btn-ghost btn-big" id="rmSkip">Keep the transcript only</button>',
-      save
-    );
-    bind("#rmSave", function () { closeSheet(); save(); });
-    bind("#rmSkip", function () { closeSheet(); done([]); });
+    merged.forEach(function (p) { ST.upsertPart(p); });
+    return merged;
   }
 
   /* A session held here leaves a dated line on each part it was about, even
@@ -2242,6 +2209,7 @@
       try { incoming = MD.extractProfiles(reply); } catch (e) { console.error(e); }
       // an open conversation leaves a note behind, so the next one remembers it
       var note = sess.mode === "talk" ? MD.extractJournal(reply) : null;
+      // the note lands on every part it names (store.linkJournal)
       if (note) noted = !!ST.addJournal({ summary: note.summary, parts: note.parts, via: "app" });
     }
     // log meeting/embody sessions on the parts without profile rewrite
@@ -2312,25 +2280,23 @@
       return true;
     };
 
-    if (!incoming.length) {
-      stampSession(sess);
-      if (sess.mode === "checkin" || sess.mode === "mapping") renderParts();
-      toast(noted ? "Saved - see it in Past sessions; it will remember this next time"
-        : "Saved to Past sessions (in your profile menu)");
-      round(700);
-      return;
+    var saved = incoming.length ? saveMerge(incoming) : [];
+    stampSession(sess);
+    renderParts();
+    var where = saved.map(function (p) { return p.name; });
+    if (noted) {
+      (note.parts || []).forEach(function (who) {
+        var p = ST.getPart(who) || ST.listParts().filter(function (x) { return x.name.toLowerCase() === String(who).toLowerCase(); })[0];
+        if (p && where.indexOf(p.name) < 0) where.push(p.name);
+      });
     }
-    reviewMerge(incoming, function (saved) {
-      if (!saved.length) { toast("Transcript kept in Past sessions - profiles unchanged"); round(700); return; }
-      stampSession(sess);
-      toast("Saved to " + saved.map(function (p) { return p.name; }).join(", ") + " and Past sessions");
-      if (round(500)) return;
-      // one part, freshly deepened, still floating alone -> offer to connect it
-      var p = saved.length === 1 ? ST.getPart(saved[0].slug) : null;
-      if (p && !(p.relationships || []).length && ST.listParts().length > 1) {
-        setTimeout(function () { afterGathering(p.slug, null); }, 400);
-      }
-    });
+    toast(where.length ? "Saved to " + where.join(", ") + " and Past sessions" : "Saved to Past sessions (in your profile menu)");
+    if (round(saved.length ? 500 : 700)) return;
+    // one part, freshly deepened, still floating alone -> offer to connect it
+    var lone = saved.length === 1 ? ST.getPart(saved[0].slug) : null;
+    if (lone && !(lone.relationships || []).length && ST.listParts().length > 1) {
+      setTimeout(function () { afterGathering(lone.slug, null); }, 400);
+    }
   }
 
   /* ---------- manual (copy-prompt) mode ----------
@@ -3082,7 +3048,7 @@
   /* Also reached from a meeting card on the Table tab, which is why this is
      its own function rather than living inside the list's click handler. */
   function openTranscript(t) {
-    var interviewish = ["intake", "checkin", "mapping"].indexOf(t.mode) >= 0;
+    var interviewish = ["intake", "checkin", "mapping", "talk"].indexOf(t.mode) >= 0;
     var canExtract = interviewish && LLM.configured(ST.state.settings.ai);
     openPanel(t.title, t.date,
       '<div class="transcript">' +
@@ -3600,7 +3566,7 @@
     $("#profileScrim").addEventListener("click", closeProfileMenu);
     $("#profileMenu").addEventListener("click", onProfileMenuClick);
     $("#fabNew").addEventListener("click", newSessionSheet);
-    $("#sheetBackdrop").addEventListener("click", dismissSheet);
+    $("#sheetBackdrop").addEventListener("click", closeSheet);
     $("#panelBack").addEventListener("click", closePanel);
     $("#mapKeyBtn").addEventListener("click", function () { if (keyOpen) closeKey(); else openKey(); });
     $("#mapLegendScrim").addEventListener("click", closeKey);
@@ -3630,7 +3596,7 @@
     var startY = null;
     sheet.addEventListener("touchstart", function (e) { startY = e.touches[0].clientY; }, { passive: true });
     sheet.addEventListener("touchend", function (e) {
-      if (startY != null && e.changedTouches[0].clientY - startY > 80) dismissSheet();
+      if (startY != null && e.changedTouches[0].clientY - startY > 80) closeSheet();
       startY = null;
     }, { passive: true });
 

@@ -250,6 +250,12 @@ function prepareSave(state, args) {
       summary: note.summary,
       parts: note.parts.map(function (x) { var p = find(x); return p ? p.slug : null; }).filter(Boolean)
     }));
+    // the conversation lands on each part it names, the way it does in the app
+    journal.forEach(function (j) {
+      (j ? j.parts : []).forEach(function (sl) {
+        if (S.addJournalSession(bySlug[sl], j)) { bySlug[sl].updated = stamp; changed[sl] = 1; }
+      });
+    });
   }
 
   var parts = Object.keys(changed).map(function (k) { return bySlug[k]; });

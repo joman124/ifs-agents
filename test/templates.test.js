@@ -121,8 +121,12 @@ module.exports = function (t) {
   t.ok(/do not repeat what you already know/.test(tk) && !/## The profile files/.test(tk), "...and asks for updates of what is new, not whole profile files");
   t.ok(/An update for EVERY part in that parts line/.test(tk), "...one for every part that took part, so the conversation reaches each profile");
   var ask = T.integrateAsk(["The Watcher"], "YOU: hi", "2026-10-15");
-  t.ok(/only these: The Watcher/.test(ask) && /dated 2026-10-15, not today/.test(ask) && /do not continue it/.test(ask),
+  t.ok(/only these: The Watcher/.test(ask) && /Session notes entry 2026-10-15, not today/.test(ask) && /do not continue it/.test(ask),
     "a follow-up asks only for the missing parts, dated the day of the conversation");
+  var isys = T.integrateSystem([known], [known, dreamer2]);
+  t.ok(/You are not in a conversation/.test(isys) && !/Begin now/.test(isys) && /Output only the fenced blocks/.test(isys),
+    "...under a prompt whose one job is writing updates, not one that tells the model to open a conversation");
+  t.ok(/name: The Watcher/.test(isys), "...and that shows the part's profile as it stands, so only what is new is written");
 
   /* a talk stays small enough for a linked AI to take as one tool result,
      however many parts there are - it once carried every profile file whole */

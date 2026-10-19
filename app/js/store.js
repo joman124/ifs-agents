@@ -611,6 +611,23 @@
     save();
   }
 
+  /* A conversation note and the transcript it came from, tied together once
+     found, and how often writing a transcript into a part has come back
+     empty - after three, it stops asking. */
+  function linkTranscript(id, journalId) {
+    var t = state.transcripts.filter(function (x) { return x.id === id; })[0];
+    if (!t || t.journal) return;
+    t.journal = journalId;
+    save();
+  }
+  function noteIntegrateTry(id, slugs) {
+    var t = state.transcripts.filter(function (x) { return x.id === id; })[0];
+    if (!t) return;
+    t.integrateTries = t.integrateTries || {};
+    (slugs || []).forEach(function (sl) { t.integrateTries[sl] = (t.integrateTries[sl] || 0) + 1; });
+    save();
+  }
+
   function deleteTranscript(id) {
     state.transcripts = state.transcripts.filter(function (t) { return t.id !== id; });
     state.deleted.transcripts[id] = nowISO();
@@ -1127,6 +1144,8 @@
     updateMeeting: updateMeeting,
     deleteTranscript: deleteTranscript,
     markIntegrated: markIntegrated,
+    linkTranscript: linkTranscript,
+    noteIntegrateTry: noteIntegrateTry,
     addJournal: addJournal,
     deleteJournal: deleteJournal,
     mergeHistory: mergeHistory,

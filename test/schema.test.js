@@ -474,5 +474,15 @@ module.exports = function (t) {
     same.narrative.in_its_own_words = "hold the line";
     t.eq(S.mergeSession(base, same).narrative.in_its_own_words, base.narrative.in_its_own_words, "nothing new adds nothing");
     t.eq(S.mergeSession(null, delta).narrative.in_its_own_words, delta.narrative.in_its_own_words, "a new part is simply itself");
+    var b2 = S.blankPart("Kept"); b2.positive_intent = "to distract John without being noticed"; b2.age = "9-11";
+    var d2 = S.blankPart("Kept"); d2.positive_intent = "to lighten things for a stressed family"; d2.age = "9-11, how old he feels";
+    var m2 = S.mergeSession(b2, d2);
+    t.eq(m2.positive_intent, "to lighten things for a stressed family; earlier: to distract John without being noticed",
+      "a session's new answer to a one-line field keeps the earlier wording after it");
+    t.eq(m2.age, "9-11, how old he feels", "...unless the new answer already carries the old");
+    var d3 = S.blankPart("Kept"); d3.positive_intent = "To distract John";
+    t.eq(S.mergeSession(b2, d3).positive_intent, b2.positive_intent, "...and a shorter echo of what is there changes nothing");
+    var d4 = S.blankPart("Kept");
+    t.eq(S.mergeSession(b2, d4).positive_intent, b2.positive_intent, "...and a field the session left empty stays as it was");
   })();
 };

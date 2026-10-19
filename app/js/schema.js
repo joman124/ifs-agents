@@ -389,6 +389,17 @@
     var out = mergeParts(base, incoming);
     if (!base) return out;
     var flat = function (t) { return String(t || "").replace(/\s+/g, " ").trim().toLowerCase(); };
+    /* A one-line field the session answers again keeps what was there: the
+       new answer first, the earlier wording after it. One already holding
+       the other is left as the fuller of the two. */
+    ["age", "location", "appearance", "origin", "positive_intent", "unburdened_vision"].forEach(function (k) {
+      var b = String(base[k] || "").trim(), i = String(incoming[k] || "").trim();
+      if (!b || !i) return;                                   // mergeParts already chose
+      var fb = flat(b), fi = flat(i);
+      if (fi.indexOf(fb) >= 0) { out[k] = i; return; }        // the new one carries the old
+      if (fb.indexOf(fi) >= 0) { out[k] = b; return; }        // nothing new
+      out[k] = i + "; earlier: " + b;
+    });
     NARRATIVE_SECTIONS.forEach(function (sec) {
       var b = String((base.narrative || {})[sec.key] || "").trim();
       var i = String((incoming.narrative || {})[sec.key] || "").trim();

@@ -25,6 +25,9 @@
       var fromAi = window.IFS.sync.fromAi();
       if (fromAi.length) window.IFS.ui.refresh("Saved from your AI: " + fromAi.join(", "));
       else if (changed) window.IFS.ui.refresh("Synced with your other device");
+      // conversations not yet written into their parts, now that this
+      // device holds everything the account does
+      setTimeout(window.IFS.ui.integratePending, 2500);
     });
     // the AI connection is kept with the account too: connected or
     // disconnected on another device, this one follows

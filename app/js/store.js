@@ -599,6 +599,18 @@
     return t.id;
   }
 
+  /* Which parts a session's transcript has already been written into, so
+     a conversation is turned into profile updates once and only once - on
+     this device and, through sync, on every other. */
+  function markIntegrated(id, slugs) {
+    var t = state.transcripts.filter(function (x) { return x.id === id; })[0];
+    if (!t) return;
+    var have = Array.isArray(t.integrated) ? t.integrated : [];
+    (slugs || []).forEach(function (sl) { if (have.indexOf(sl) < 0) have.push(sl); });
+    t.integrated = have;
+    save();
+  }
+
   function deleteTranscript(id) {
     state.transcripts = state.transcripts.filter(function (t) { return t.id !== id; });
     state.deleted.transcripts[id] = nowISO();
@@ -868,9 +880,17 @@
     if (data.table && typeof data.table === "object") mergeTable(data.table);
     if (Array.isArray(data.transcripts)) {
       var have = {};
-      state.transcripts.forEach(function (t) { have[t.id] = 1; });
+      state.transcripts.forEach(function (t) { have[t.id] = t; });
       data.transcripts.forEach(function (t) {
-        if (!t || !t.id || have[t.id]) return;
+        if (!t || !t.id) return;
+        if (have[t.id]) {
+          // written into its parts on another device: so it is here too
+          if (Array.isArray(t.integrated)) {
+            var mine = have[t.id].integrated = Array.isArray(have[t.id].integrated) ? have[t.id].integrated : [];
+            t.integrated.forEach(function (sl) { if (typeof sl === "string" && mine.indexOf(sl) < 0) mine.push(sl); });
+          }
+          return;
+        }
         if (viaSync && state.deleted.transcripts[t.id]) return;   // deleted on another device
         if (!viaSync) delete state.deleted.transcripts[t.id];     // a restore asks for it back
         state.transcripts.push(t);
@@ -1106,6 +1126,7 @@
     addMeeting: addMeeting,
     updateMeeting: updateMeeting,
     deleteTranscript: deleteTranscript,
+    markIntegrated: markIntegrated,
     addJournal: addJournal,
     deleteJournal: deleteJournal,
     mergeHistory: mergeHistory,

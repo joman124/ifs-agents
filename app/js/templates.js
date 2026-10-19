@@ -646,9 +646,9 @@
     "2. A conversation note, so the next conversation can pick up the thread, in its own fenced block exactly like this:",
     "```journal",
     "summary: 2-4 plain sentences - what the person brought, which parts showed up and how, anything left open or flagged for next time. Their words where they matter; no diagnosis, no trauma detail.",
-    "parts: the slugs of any parts that came up, comma-separated (empty if none)",
+    "parts: the slugs of the parts that took part - spoke, were felt, or were talked about with some substance - comma-separated (empty if none). A part only named in passing stays out.",
     "```",
-    "3. Only if you learned something new about a part - its own words, a fear, a need, how it relates to another - an update for that part, each inside its own fenced block: ```markdown ... ``` in the profile format, holding ONLY what is new from this conversation. Inner Table adds it to what is already stored - lists are combined, new narrative is added under what is there, nothing is erased - so do not repeat what you already know, and leave every field and section with nothing new empty. A part that only came up in passing gets no update, just a mention in the note.",
+    "3. An update for EVERY part in that parts line - no exceptions, because this is how the conversation reaches each part's profile. Each in its own fenced block: ```markdown ... ``` in the profile format, holding what this conversation showed about that part: its own words, what it did or wanted, what activates it, a fear, a need, its job and age if it said, how it relates to another part, how the person felt toward it. Inner Table adds it to what is already stored - lists are combined, new narrative is added under what is there, nothing is erased - so do not repeat what you already know, and leave every field and section with nothing new empty. Even a short exchange gets a session notes entry.",
     "",
     "Update rules (when you write one):",
     "- The part's exact name, so it lands on the right profile.",
@@ -759,6 +759,16 @@
     if (places.length) L.push("", "People and places that help them settle:", places.map(function (x) { return "- " + x; }).join("\n"));
     if (people.length) L.push("", "They have people they can reach out to listed in Inner Table (Ground me). If it would help, remind them of that - do not ask for names or numbers.");
     return L.join("\n");
+  }
+
+  /* After a conversation whose closing left some of its parts without a
+     profile update - or one from before every part got one - the app asks
+     once more, with the transcript, for exactly those parts. Dated the day
+     the conversation happened, not the day it is asked. */
+  function integrateAsk(names, transcript, date) {
+    return "Here is the transcript of a conversation we already had, on " + date + ". It is over: do not continue it, and do not write a closing reflection or a conversation note.\n\n" +
+      transcript + "\n\n" +
+      "Write the profile update for each of these parts, and only these: " + names.join(", ") + ". Follow the update rules for this conversation exactly - each in its own ```markdown block in the profile format, holding what this conversation showed about that part, nothing invented - except that the sessions entry and the session notes entry are dated " + date + ", not today. Output only the fenced blocks.";
   }
 
   /* Live in-app voice sessions: same pacing, minus the copy-prompt tail. */
@@ -894,11 +904,11 @@
       "When the person says the session is over - 'let's close', 'that's enough for today', 'end the session' - respond with:");
     var writesProfiles = mode === "intake" || mode === "checkin" || mode === "mapping" || mode === "talk";
     if (opts.save && mode === "talk") {
-      sys = sys.replace(/2\. A conversation note, so the next conversation[\s\S]*?3\. Only if you learned something new about a part/,
+      sys = sys.replace(/2\. A conversation note, so the next conversation[\s\S]*?3\. An update for EVERY part in that parts line/,
         "2. Save the conversation: call the save_session tool once, with journal set to a conversation note in exactly this form (so the next conversation can pick up the thread):\n" +
-        "```journal\nsummary: 2-4 plain sentences - what the person brought, which parts showed up and how, anything left open or flagged for next time. Their words where they matter; no diagnosis, no trauma detail.\nparts: the slugs of any parts that came up, comma-separated (empty if none)\n```\n" +
-        "and profiles set to the profile block(s) described next, if any. Do not paste either into the chat; when it saves, say so in one sentence. If it fails, show them the blocks and ask them to paste them into Inner Table - Add a part.\n" +
-        "3. Only if you learned something new about a part");
+        "```journal\nsummary: 2-4 plain sentences - what the person brought, which parts showed up and how, anything left open or flagged for next time. Their words where they matter; no diagnosis, no trauma detail.\nparts: the slugs of the parts that took part - spoke, were felt, or were talked about with some substance - comma-separated (empty if none). A part only named in passing stays out.\n```\n" +
+        "and profiles set to the profile block(s) described next - one for every part in the parts line. Do not paste either into the chat; when it saves, say so in one sentence. If it fails, show them the blocks and ask them to paste them into Inner Table - Add a part.\n" +
+        "3. An update for EVERY part in that parts line");
     }
     if (opts.save && mode === "meeting") {
       sys = sys.replace("say plainly that the app can record these readings, and that they thicken the threads between those parts on the map.",
@@ -979,7 +989,7 @@
     handoff: handoff,
     intake: intake, checkin: checkin, mapping: mapping, talk: talk,
     embody: embody, meeting: meeting, portable: portable, convertNotes: convertNotes,
-    voicePacing: voicePacing, groundingBlock: groundingBlock,
+    voicePacing: voicePacing, groundingBlock: groundingBlock, integrateAsk: integrateAsk,
     CLOSE_INSTRUCTION: "We're closing the session now. Please give your short closing reflection and then output the complete updated profile(s) in fenced markdown blocks, exactly as instructed."
   };
 })();

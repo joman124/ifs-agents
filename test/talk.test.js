@@ -53,4 +53,8 @@ module.exports = function (t) {
   var p = res.parts.filter(function (x) { return x.slug === "dr-john"; })[0];
   t.ok(p && talkLines(p).length === 1, "and puts it on the part right away, so the AI sees it there too");
   t.eq(talkLines(p)[0].note, S.journalSession(res.journal[0]).note, "the same line the app writes, so the two never double up");
+  t.eq(res.unprofiled, ["Dr. John"], "a part the note names but no profile update covers is handed back to the AI");
+  var both = sessions.prepareSave(state, { journal: "```journal\nsummary: Work.\nparts: dr-john\n```",
+    profiles: "```markdown\n---\nname: Dr. John\nfears:\n  - being outsmarted at work\n---\n```" });
+  t.eq(both.unprofiled, [], "and nothing is handed back once every named part has its update");
 };

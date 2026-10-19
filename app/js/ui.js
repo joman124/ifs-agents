@@ -2210,7 +2210,8 @@
       // an open conversation leaves a note behind, so the next one remembers it
       var note = sess.mode === "talk" ? MD.extractJournal(reply) : null;
       // the note lands on every part it names (store.linkJournal)
-      if (note) noted = !!ST.addJournal({ summary: note.summary, parts: note.parts, via: "app" });
+      var journalId = note ? ST.addJournal({ summary: note.summary, parts: note.parts, via: "app" }) : null;
+      noted = !!journalId;
     }
     // log meeting/embody sessions on the parts without profile rewrite
     if (!interviewish) {
@@ -2232,7 +2233,7 @@
       transcriptId = ST.addTranscript({
         date: S.todayISO(), mode: sess.mode,
         title: MODE_TITLES[sess.mode] + (sess.slugs.length ? " · " + sess.slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; }).join(", ") : ""),
-        parts: sess.slugs, text: text
+        parts: sess.slugs, text: text, journal: journalId || undefined
       });
     }
 
@@ -2282,6 +2283,16 @@
 
     var saved = incoming.length ? saveMerge(incoming) : [];
     stampSession(sess);
+    /* Every part the conversation's note names is written into, not just
+       logged. Whichever the closing reply skipped get one more call, with
+       the transcript, straight after - nothing to tap. */
+    if (sess.mode === "talk" && transcriptId) {
+      var named = noted ? slugsOf(note.parts) : [];
+      var done = saved.map(function (p) { return p.slug; });
+      ST.markIntegrated(transcriptId, done);
+      var missing = named.filter(function (sl) { return done.indexOf(sl) < 0; });
+      if (missing.length) setTimeout(function () { followUpIntegrate(transcriptId, missing); }, 1200);
+    }
     renderParts();
     var where = saved.map(function (p) { return p.name; });
     if (noted) {
@@ -2297,6 +2308,89 @@
     if (lone && !(lone.relationships || []).length && ST.listParts().length > 1) {
       setTimeout(function () { afterGathering(lone.slug, null); }, 400);
     }
+  }
+
+  /* ---------- a conversation, written into its parts ---------- */
+  function slugsOf(list) {
+    var out = [];
+    (list || []).forEach(function (who) {
+      var w = String(who).trim().toLowerCase();
+      var p = ST.getPart(w) || ST.listParts().filter(function (x) { return x.name.toLowerCase() === w; })[0];
+      if (p && out.indexOf(p.slug) < 0) out.push(p.slug);
+    });
+    return out;
+  }
+
+  /* One call to the connected AI: this finished transcript, written into
+     these parts as profile updates, merged straight in. Marks the
+     transcript so it is never written in twice. Throws if the call fails,
+     and then marks nothing, so it is tried again later. */
+  async function integrateTranscript(t, slugs) {
+    var parts = slugs.map(ST.getPart).filter(Boolean);
+    if (!parts.length) return [];
+    var reply = await LLM.chat(ST.state.settings.ai, T.talk(ST.listParts(), ST.state.table, ST.state.journal),
+      [{ role: "user", text: T.integrateAsk(parts.map(function (p) { return p.name; }), t.text, t.date) }]);
+    var want = {};
+    parts.forEach(function (p) { want[p.slug] = p; want[p.name.toLowerCase()] = p; });
+    var incoming = [];
+    try { incoming = MD.extractProfiles(reply); } catch (e) { console.error(e); }
+    incoming = incoming.map(function (p) {
+      var hit = want[p.slug] || want[String(p.name || "").toLowerCase()];
+      if (!hit) return null;
+      p.slug = hit.slug; p.name = hit.name;
+      return p;
+    }).filter(Boolean);
+    var saved = saveMerge(incoming);
+    ST.markIntegrated(t.id, parts.map(function (p) { return p.slug; }));
+    return saved;
+  }
+
+  async function followUpIntegrate(transcriptId, slugs) {
+    var t = ST.state.transcripts.filter(function (x) { return x.id === transcriptId; })[0];
+    if (!t || !LLM.configured(ST.state.settings.ai)) return;
+    try {
+      var saved = await integrateTranscript(t, slugs);
+      if (saved.length) { renderParts(); toast("Added this conversation to " + saved.map(function (p) { return p.name; }).join(", ")); }
+    } catch (e) {
+      toast("Couldn't write it into " + slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; }).join(", ") + " yet - it will try again next time");
+    }
+  }
+
+  /* Conversations from before every part got an update - and any whose
+     follow-up failed - are written in when the app opens, a few at a time.
+     A part already holding a profile update from that day (anything but a
+     conversation line or a notice) is left alone: it was written in then. */
+  var integrating = false;
+  async function integratePending() {
+    if (integrating || !LLM.configured(ST.state.settings.ai)) return;
+    integrating = true;
+    try {
+      var talks = ST.state.transcripts.filter(function (t) { return t.mode === "talk" && t.text; });
+      var queue = [];
+      talks.forEach(function (t) {
+        var notes = t.journal
+          ? ST.state.journal.filter(function (j) { return j.id === t.journal; })
+          : talks.filter(function (x) { return x.date === t.date && !x.journal; }).length === 1
+            ? ST.state.journal.filter(function (j) { return j.date === t.date && j.via === "app"; })
+            : [];
+        var named = slugsOf([].concat.apply([], notes.map(function (j) { return j.parts; })));
+        var done = Array.isArray(t.integrated) ? t.integrated : [];
+        var missing = named.filter(function (sl) {
+          if (done.indexOf(sl) >= 0) return false;
+          return !(ST.getPart(sl).sessions || []).some(function (x) { return x.date === t.date && x.mode !== "talk" && x.mode !== "notice"; });
+        });
+        if (missing.length) queue.push({ t: t, slugs: missing });
+      });
+      for (var i = 0; i < queue.length && i < 3; i++) {
+        try {
+          var saved = await integrateTranscript(queue[i].t, queue[i].slugs);
+          if (saved.length) {
+            renderParts();
+            toast("Added your " + queue[i].t.date + " conversation to " + saved.map(function (p) { return p.name; }).join(", "));
+          }
+        } catch (e) { break; }   // offline or out of credit: try again next open
+      }
+    } finally { integrating = false; }
   }
 
   /* ---------- manual (copy-prompt) mode ----------
@@ -3629,6 +3723,7 @@
     toast: toast,
     startSession: startSession,
     openSettings: openSettings,
+    integratePending: integratePending,
     renderSettings: function () { if (currentView === "settings") renderSettings(); },
     refresh: function (msg) {
       renderParts();

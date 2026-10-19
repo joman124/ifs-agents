@@ -176,7 +176,9 @@ async function saveSession(user, args) {
   if (prep.meetings.length) what.push("the meeting itself, so the next meeting remembers it");
   if (prep.journal.length) what.push("a note of this conversation, so the next one can pick up the thread");
   return "Saved to Inner Table: " + (what.join("; ") || "nothing new") + ". The app picks it up the next time it is opened." +
-    (prep.unknown.length ? " Skipped what did not name the person's parts: " + prep.unknown.join(", ") + "." : "");
+    (prep.unknown.length ? " Skipped what did not name the person's parts: " + prep.unknown.join(", ") + "." : "") +
+    (prep.unprofiled.length ? " Not finished: the note names " + prep.unprofiled.join(", ") + " but no profile update was saved for " +
+      (prep.unprofiled.length === 1 ? "it" : "them") + ". Call save_session once more with profiles set to an update for each - what this conversation showed about that part, in the profile format - and no journal." : "");
 }
 
 /* ---------- the plain page (GET) ---------- */

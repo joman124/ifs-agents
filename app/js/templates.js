@@ -765,11 +765,39 @@
      profile update - or one from before every part got one - the app asks
      once more, with the transcript, for exactly those parts. Dated the day
      the conversation happened, not the day it is asked. */
-  function integrateAsk(names, transcript, date) {
-    return "Here is the transcript of a conversation we already had, on " + date + ". It is over: do not continue it, and do not write a closing reflection or a conversation note.\n\n" +
-      transcript + "\n\n" +
-      "Write the profile update for each of these parts, and only these: " + names.join(", ") + ". Follow the update rules for this conversation exactly - each in its own ```markdown block in the profile format, holding what this conversation showed about that part, nothing invented - except that the sessions entry and the session notes entry are dated " + date + ", not today. Output only the fenced blocks.";
+  /* Its own system prompt, not a session's: a session prompt ends by telling
+     the model to open the conversation, and a model handed a transcript
+     under it may do exactly that - greet, ask a question - instead of
+     writing anything down. This one has a single job. */
+  function integrateSystem(parts, roster) {
+    return [
+      "You keep a person's Inner Table profiles: written profiles of their inner parts, from Internal Family Systems-style self-exploration (journalling, not therapy). You are not in a conversation with anyone. You are given the transcript of a conversation that has already happened, and you write profile updates from it - nothing else.",
+      "",
+      "## The parts, as their profiles stand now",
+      parts.map(profileBlock).join("\n\n"),
+      "",
+      "## The person's other parts (for relationships - use these slugs)",
+      (roster || []).map(function (p) { return "- " + p.slug + " (" + p.name + ")"; }).join("\n"),
+      "",
+      "## How to write each update",
+      "- One fenced ```markdown block per part asked for, in the profile format below, with the part's exact name.",
+      "- Hold what this conversation showed about that part: its own words (quoted, in In its own words), what it did or wanted, what activates it, fears, needs, its job and age if it said, how it relates to another part, how the person felt toward it. Only what the transcript says - never invent.",
+      "- Do not repeat what the profile above already says. Leave every field and section with nothing new empty: Inner Table adds the update to what is stored, combining lists and adding new text under the old, and erases nothing.",
+      "- coverage: only the categories this conversation explored for that part - partial, or complete if richly answered; leave the rest untouched.",
+      "- One sessions entry and one dated Session notes entry, on the date you are given.",
+      "- Headline level only for anything painful: no trauma detail.",
+      "- Output only the fenced blocks - no greeting, no question, no commentary.",
+      "",
+      portableFormatSpec()
+    ].join("\n");
   }
+
+  function integrateAsk(names, transcript, date) {
+    return "The transcript of a conversation from " + date + ". It is over - do not continue it, and do not reply to it.\n\n" +
+      "----- transcript -----\n" + transcript + "\n----- end of transcript -----\n\n" +
+      "Write the profile update for each of these parts, and only these: " + names.join(", ") + ". Date the sessions entry and the Session notes entry " + date + ", not today. Output only the fenced ```markdown blocks.";
+  }
+
 
   /* Live in-app voice sessions: same pacing, minus the copy-prompt tail. */
   function voicePacing() {
@@ -989,7 +1017,7 @@
     handoff: handoff,
     intake: intake, checkin: checkin, mapping: mapping, talk: talk,
     embody: embody, meeting: meeting, portable: portable, convertNotes: convertNotes,
-    voicePacing: voicePacing, groundingBlock: groundingBlock, integrateAsk: integrateAsk,
+    voicePacing: voicePacing, groundingBlock: groundingBlock, integrateAsk: integrateAsk, integrateSystem: integrateSystem,
     CLOSE_INSTRUCTION: "We're closing the session now. Please give your short closing reflection and then output the complete updated profile(s) in fenced markdown blocks, exactly as instructed."
   };
 })();

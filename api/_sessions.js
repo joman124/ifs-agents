@@ -176,6 +176,7 @@ function prepareSave(state, args) {
   var changed = {};
   var said = [], unknown = [];
 
+  var profiled = {};   // slugs a profile update was given for
   // profiles
   if (text.trim()) {
     var res = MD.analyze(text);
@@ -188,6 +189,7 @@ function prepareSave(state, args) {
       var merged = mergeOne(S, bySlug[clean.slug], clean, stamp);
       bySlug[merged.slug] = merged;
       changed[merged.slug] = 1;
+      profiled[merged.slug] = 1;
     });
   }
 
@@ -258,8 +260,18 @@ function prepareSave(state, args) {
     });
   }
 
+  /* A conversation reaches each part it names through that part's profile
+     update - the line in its log is only the index. Any named part saved
+     without one is handed back, so the AI writes it before it is done. */
+  var unprofiled = [];
+  journal.forEach(function (j) {
+    (j ? j.parts : []).forEach(function (sl) {
+      if (!profiled[sl] && unprofiled.indexOf(bySlug[sl].name) < 0) unprofiled.push(bySlug[sl].name);
+    });
+  });
+
   var parts = Object.keys(changed).map(function (k) { return bySlug[k]; });
-  return { parts: parts, meetings: meetings, journal: journal.filter(Boolean),
+  return { parts: parts, meetings: meetings, journal: journal.filter(Boolean), unprofiled: unprofiled,
     names: parts.map(function (p) { return p.name; }), said: said, unknown: unknown, noticed: noticed };
 }
 

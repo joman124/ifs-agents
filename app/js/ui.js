@@ -2556,7 +2556,7 @@
           : how.home ? '<a class="btn btn-primary btn-big" id="lsCopyOpen" href="' + esc(how.home) + '" target="_blank" rel="noopener">Copy the message and open ' + esc(who) + "</a><div style=\"height:10px\"></div>" : "") +
         '<button class="btn ' + (h.url || how.home ? "btn-soft" : "btn-primary") + ' btn-big" id="lsCopy">Copy the message' + (how.home ? " again" : "") + '</button><div style="height:10px"></div>' +
         (h.pasteNext ? '<button class="btn btn-soft btn-big" id="lsCopyMat">Copy what&rsquo;s on the table</button><div style="height:10px"></div>' : "") +
-        (s.provider === "gemini" ? '<p class="dim cp-note">If you couldn&rsquo;t add Inner Table to Gemini, the message also carries your private session link. Gemini can read your parts through it but can&rsquo;t save; paste its closing reply into Inner Table &mdash; Add a part.</p>' : "") +
+        (s.provider === "gemini" ? '<p class="dim cp-note">Couldn&rsquo;t add Inner Table to Gemini? Paste the message anyway &mdash; Gemini can still read your parts, but can&rsquo;t save. Bring its closing reply back with Add a part.</p>' : "") +
         otherWays());
       bind("#lsOpen", function () { buzz(12); });
       // the link opens the chat; copying in the same tap keeps the clipboard allowed
@@ -3371,9 +3371,8 @@
           : row("user", "Not signed in", "sign in to reach your parts", '<button class="btn btn-soft" id="signInBtn">Sign in</button>')) +
 
       group("setSessions", "chat", "AI sessions", sessionsSub,
-        '<div class="set-pad"><div class="sr-copy"><b>Use your Claude subscription</b><span class="sr-sub">' +
-        "Sessions run in the Claude app on your Pro or Max plan &mdash; no API key and nothing extra to pay. " +
-        "Link Inner Table to Claude once as a connector: Claude reads your parts and your grounding plan, runs the session, and saves it back here.</span></div>" +
+        '<div class="set-pad"><div class="sr-copy"><b>Use the AI you already have</b><span class="sr-sub">' +
+        "Pick your app below. Sessions run there on your own plan &mdash; no API key, nothing extra to pay.</span></div>" +
         '<div class="seg" id="provSeg" style="margin-top:10px">' +
         segBtn("anthropic", "Claude", s.provider) + segBtn("openai", "ChatGPT", s.provider) + segBtn("gemini", "Gemini", s.provider) + segBtn("manual", "None", s.provider) +
         "</div>" + (linked ? window.IFS.ui.linkAi.html(s.provider) : "") +

@@ -22,7 +22,7 @@
     anthropic: {
       name: "Claude", site: "https://claude.ai/",
       walk: [
-        { t: "Open Claude", say: "The website, the desktop app or the phone app all work.", act: "open" },
+        { t: "Open Claude", say: "The website or the desktop app is easiest. Once it&rsquo;s added, it works on your phone too.", act: "open" },
         { t: "Find Connectors", taps: ["Customize", "Connectors"] },
         { t: "Add a new one", taps: ["+", "Add custom connector"] },
         { t: "Paste your link", say: "Name it <b>Inner Table</b>, paste your link and press <b>Add</b>. Leave everything else empty.", act: "copy" }
@@ -101,8 +101,13 @@
   /* ---------- the walkthrough ---------- */
   var walkAt = 0, walkFor = "anthropic";
 
+  /* On a phone, a step that needs a computer leads with sending the steps
+     there; the phone's share sheet reaches email, messages or AirDrop. */
+  var onPhone = window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 820;
+
   function stepActions(p, s) {
-    if (s.act === "open") return '<a class="btn btn-primary btn-big" id="walkOpen" href="' + p.site + '" target="_blank" rel="noopener">Open ' + p.name + "</a>";
+    var open = '<a class="btn ' + (onPhone && p.need ? "btn-soft" : "btn-primary") + ' btn-big" id="walkOpen" href="' + p.site + '" target="_blank" rel="noopener">Open ' + p.name + "</a>";
+    if (s.act === "open") return onPhone && p.need ? '<button class="btn btn-primary btn-big" id="walkSend">Send these steps to my computer</button>' + open : open;
     if (s.act !== "copy") return "";
     return known ? '<button class="btn btn-primary btn-big" id="walkCopy">Copy your link</button>'
       : '<button class="btn btn-primary btn-big" id="walkMake">Make your private link</button>';
@@ -132,13 +137,21 @@
       (s.say ? "<p>" + s.say + "</p>" : "") +
       stepActions(p, s) +
       '<div class="walk-nav">' +
-      (walkAt ? '<button class="btn btn-ghost" id="walkBack">Back</button>' : "<span></span>") +
+      (walkAt ? '<button class="btn btn-ghost" id="walkBack">Back</button>' : "") +
       '<button class="btn btn-soft" id="walkNext">' + (walkAt === n - 1 ? "Done" : "I did this &rsaquo;") + "</button></div></div>";
     bind("#walkBack", function () { walkAt--; renderWalk(); });
     bind("#walkNext", function () { walkAt++; renderWalk(); });
     bind("#walkOpen", function () { buzz(12); });
+    bind("#walkSend", function () { sendToComputer(p); });
     bind("#walkCopy", function () { copy(urlFor(known), "Link copied - now paste it into " + p.name); });
     bind("#walkMake", function () { act($("#bridgeBox"), "POST", "Link made - now copy it"); });
+  }
+
+  function sendToComputer(p) {
+    var page = location.origin + "/";
+    var text = "Set up Inner Table in " + p.name + ": open " + page + " on your computer, then Settings > AI sessions.";
+    if (navigator.share) navigator.share({ title: "Inner Table setup", text: text, url: page }).catch(function () {});
+    else copy(text, "Copied - send it to yourself and open it on your computer");
   }
 
   /* ---------- managing the link ---------- */

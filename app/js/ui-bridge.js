@@ -1,44 +1,61 @@
 /* Inner Table - UI: linking your own AI.
    The Settings > AI sessions "Link my AI" panel: makes, shows and revokes the
-   private link served by api/bridge.js (reads parts, runs sessions, saves them), and says how to hand it to
-   Claude, ChatGPT or Gemini. An IIFE off window.IFS like every other module;
-   shared shell helpers arrive through window.IFS.ui._share. */
+   private link served by api/bridge.js (reads parts, runs sessions, saves them), and walks the
+   person through handing it to Claude, ChatGPT or Gemini one step at a time.
+   An IIFE off window.IFS like every other module; shared shell helpers arrive
+   through window.IFS.ui._share. */
 (function () {
   "use strict";
   var UI = window.IFS.ui._share;
   var AUTH = window.IFS.auth;
   var esc = UI.esc, toast = UI.toast, bind = UI.bind, buzz = UI.buzz, $ = UI.$;
 
-  /* How each platform takes the link, and what it asks of the person after.
+  /* The walkthrough, one screen per step. Most people have never added a
+     connector, so each step is one thing to do: a short title, the buttons to
+     press in order (taps), and at most one line more. act "open" opens the
+     app, "copy" hands over the link. need is what has to be true first.
      Claude keeps a connector on in every chat; ChatGPT and Gemini need it
-     switched on per chat and ask before each save, so they say so.
-     start/save are the hand-off steps in ui.js linkedSession; home is where
-     a new chat opens when there is no pre-filled chat link. */
+     switched on per chat and ask before each save, so their last step says so.
+     start/save are the hand-off steps in ui.js linkedSession; home is where a
+     new chat opens when there is no pre-filled chat link. */
   var STEPS = {
     anthropic: {
-      lead: "Claude reads your parts through a connector:",
-      steps: ["Open Claude &rarr; <b>Customize</b> &rarr; <b>Connectors</b>.",
-        "Press <b>+</b> &rarr; <b>Add custom connector</b>.",
-        "Name it <b>Inner Table</b> and paste the link below. Leave the OAuth fields empty."],
-      use: "Then just start talking in Claude &mdash; it knows to use your parts."
+      name: "Claude", site: "https://claude.ai/",
+      walk: [
+        { t: "Open Claude", say: "The website or the desktop app is easiest. Once it&rsquo;s added, it works on your phone too.", act: "open" },
+        { t: "Find Connectors", taps: ["Customize", "Connectors"] },
+        { t: "Add a new one", taps: ["+", "Add custom connector"] },
+        { t: "Paste your link", say: "Name it <b>Inner Table</b>, paste your link and press <b>Add</b>. Leave everything else empty.", act: "copy" }
+      ],
+      use: "Just start talking in Claude &mdash; it knows your parts."
     },
     openai: {
-      lead: "ChatGPT takes the link as a custom connector in <b>developer mode</b>. Set it up once on the web at chatgpt.com &mdash; the phone app can&rsquo;t &mdash; on a paid plan (Plus or Pro; on a work account an admin may have to allow it):",
-      steps: ["On chatgpt.com, open <b>Settings</b> &rarr; <b>Apps</b> &rarr; <b>Advanced settings</b> and turn on <b>Developer mode</b>. (On some accounts the page is called Connectors or Plugins.)",
-        "Press <b>Create</b> (or <b>+</b> &rarr; <b>Add custom MCP server</b>). Name it <b>Inner Table</b>, paste the link below as the server URL, set authentication to <b>No authentication</b>, accept the warning and save."],
-      use: "ChatGPT doesn&rsquo;t switch it on by itself. In each new chat, press <b>+</b> in the message box &rarr; <b>Developer mode</b> (it may sit under More) &rarr; turn on <b>Inner Table</b>, then talk. When a session closes ChatGPT asks before it saves &mdash; allow it.",
-      start: "<b>In the new chat, turn on Inner Table:</b> press <b>+</b> &rarr; <b>Developer mode</b> &rarr; <b>Inner Table</b>. Then paste the message and send it.",
-      save: "it asks first, so allow it",
+      name: "ChatGPT", site: "https://chatgpt.com/",
+      need: ["A paid plan (Plus or Pro)", "A computer, just for setup"],
+      walk: [
+        { t: "Open ChatGPT on a computer", say: "The phone app can&rsquo;t do this part. Afterwards it works everywhere.", act: "open" },
+        { t: "Turn on Developer mode", taps: ["Your name, bottom left", "Settings", "Apps", "Advanced settings"], say: "Switch <b>Developer mode</b> on." },
+        { t: "Add Inner Table", taps: ["Create"], say: "Name it <b>Inner Table</b>, paste your link, pick <b>No authentication</b>, tick the box and press <b>Create</b>.", act: "copy" },
+        { t: "Switch it on in each chat", taps: ["+", "Developer mode", "Inner Table"], say: "ChatGPT needs this every time you start a new chat." }
+      ],
+      use: "When a session ends, ChatGPT asks before it saves &mdash; press <b>Allow</b>.",
+      start: "<b>Switch on Inner Table</b> in the new chat: <b>+</b> &rarr; <b>Developer mode</b> &rarr; <b>Inner Table</b>. Then paste and send.",
+      save: "press Allow when it asks",
       home: "https://chatgpt.com/"
     },
     gemini: {
-      lead: "Gemini takes the link as a custom app. Set it up once on the web at gemini.google.com; it then works in the phone app too. For now Google allows this only on a personal Google account, in the US, with <b>Keep Activity</b> on:",
-      steps: ["On gemini.google.com, open <b>Settings</b> &rarr; <b>Connected Apps</b> (if it isn&rsquo;t there, open <b>Personal Intelligence</b> first).",
-        "Under <b>Custom apps</b>, press <b>Add a custom app</b>, paste the link below, press <b>Next</b> and follow what it says."],
-      use: "In each chat, type <b>@</b> and pick <b>Inner Table</b> so Gemini uses it. When a session closes Gemini asks before it saves &mdash; allow it.",
-      fallback: "Can&rsquo;t add it &mdash; outside the US, on a work or school account, or Gemini won&rsquo;t take the link? Press <b>Copy a message for any AI</b> and paste it into Gemini instead. Gemini reads your parts through it but can&rsquo;t save, so paste its closing reply into Inner Table &mdash; Add a part.",
-      start: "<b>In the new chat, type @ and pick Inner Table</b>, then paste the message after it and send.",
-      save: "it asks first, so allow it",
+      name: "Gemini", site: "https://gemini.google.com/app",
+      need: ["A personal Google account", "In the US", "Keep Activity on", "A computer, just for setup"],
+      walk: [
+        { t: "Open Gemini on a computer", say: "Afterwards it works in the phone app too.", act: "open" },
+        { t: "Find Connected Apps", taps: ["Settings", "Connected Apps"], say: "Not there? Open <b>Personal Intelligence</b> first." },
+        { t: "Add Inner Table", taps: ["Add a custom app"], say: "Paste your link, press <b>Next</b> and follow along.", act: "copy" },
+        { t: "Pick it in each chat", taps: ["@", "Inner Table"], say: "Type <b>@</b> in the message box and choose Inner Table." }
+      ],
+      use: "When a session ends, Gemini asks before it saves &mdash; press <b>Allow</b>.",
+      fallback: "Gemini won&rsquo;t let you add it? Open <b>Manage your link</b> below, press <b>Copy a message for any AI</b> and paste that into Gemini instead.",
+      start: "<b>Type @ and pick Inner Table</b> in the new chat, then paste and send.",
+      save: "press Allow when it asks",
       home: "https://gemini.google.com/app"
     }
   };
@@ -65,22 +82,83 @@
 
   function html(provider) {
     var p = STEPS[provider] || STEPS.anthropic;
-    var name = { anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini" }[provider] || "your AI";
+    walkAt = 0;
+    walkFor = provider;
     return '<div class="bridge">' +
-      '<p class="dim" style="margin:14px 2px 6px"><b>Sessions you start in Inner Table open in ' + name + '</b>, with your parts&rsquo; history, and save back here when they end.</p>' +
-      '<p class="dim" style="margin:10px 2px 6px">' + p.lead + "</p>" +
-      "<ol>" + p.steps.map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol>" +
-      '<div id="bridgeBox" class="bridge-box"><p class="dim" style="margin:0">Checking for your link&hellip;</p></div>' +
-      '<p class="dim" style="margin:10px 2px 0">' + p.use + "</p>" +
-      (p.fallback ? '<p class="dim" style="margin:10px 2px 0">' + p.fallback + "</p>" : "") +
-      '<p class="dim" style="margin:10px 2px 0">Your AI can <b>talk with you as someone who knows your parts</b> &mdash; just start talking, or ask it to &ldquo;check in with The Critic&rdquo; or &ldquo;hold a table meeting about the job offer&rdquo; &mdash; using Inner Table&rsquo;s own sessions. When a conversation ends it <b>saves</b> what was learned: profile updates, a meeting&rsquo;s readings, and a short note of the conversation, so the next one &mdash; there or here &mdash; picks up where you left off. Everything merges in and nothing is erased. It cannot delete a part, see your pictures, or read your session transcripts or keys. Anyone holding the link can do the same, so keep it private; revoke it any time.</p>' +
+      '<p class="bridge-lead">Sessions open in <b>' + p.name + "</b> and save back here. Set it up once &mdash; about two minutes.</p>" +
+      (p.need ? '<div class="bridge-need"><span>You&rsquo;ll need</span>' +
+        p.need.map(function (n) { return '<span class="chip">' + n + "</span>"; }).join("") + "</div>" : "") +
+      '<div id="linkWalk" class="walk"></div>' +
+      (p.fallback ? '<p class="dim bridge-small">' + p.fallback + "</p>" : "") +
+      '<details class="advanced"><summary>Manage your link</summary>' +
+      '<div id="bridgeBox" class="bridge-box"><p class="dim" style="margin:0">Checking for your link&hellip;</p></div></details>' +
+      '<details class="advanced"><summary>What can my AI see?</summary>' +
+      '<p class="dim bridge-small">Your AI can <b>talk with you as someone who knows your parts</b> &mdash; just start talking, or ask it to &ldquo;check in with The Critic&rdquo; or &ldquo;hold a table meeting about the job offer&rdquo;. When a conversation ends it <b>saves</b> what was learned &mdash; profile updates, a meeting&rsquo;s readings, a short note &mdash; so the next one picks up where you left off. Nothing is erased.</p>' +
+      '<p class="dim bridge-small">It can&rsquo;t delete a part, see your pictures, or read your transcripts or keys. Anyone holding the link can do the same, so keep it private &mdash; you can revoke it any time.</p></details>' +
       "</div>";
   }
 
+  /* ---------- the walkthrough ---------- */
+  var walkAt = 0, walkFor = "anthropic";
+
+  /* On a phone, a step that needs a computer leads with sending the steps
+     there; the phone's share sheet reaches email, messages or AirDrop. */
+  var onPhone = window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 820;
+
+  function stepActions(p, s) {
+    var open = '<a class="btn ' + (onPhone && p.need ? "btn-soft" : "btn-primary") + ' btn-big" id="walkOpen" href="' + p.site + '" target="_blank" rel="noopener">Open ' + p.name + "</a>";
+    if (s.act === "open") return onPhone && p.need ? '<button class="btn btn-primary btn-big" id="walkSend">Send these steps to my computer</button>' + open : open;
+    if (s.act !== "copy") return "";
+    return known ? '<button class="btn btn-primary btn-big" id="walkCopy">Copy your link</button>'
+      : '<button class="btn btn-primary btn-big" id="walkMake">Make your private link</button>';
+  }
+
+  function renderWalk() {
+    var box = $("#linkWalk");
+    if (!box) return;
+    var p = STEPS[walkFor] || STEPS.anthropic;
+    var n = p.walk.length;
+    if (walkAt >= n) {
+      box.innerHTML = '<div class="walk-card walk-done"><div class="walk-tick">&#10003;</div><h4>You&rsquo;re linked</h4>' +
+        "<p>" + p.use + "</p>" +
+        '<p class="dim">Start any session in Inner Table and it opens in ' + p.name + ".</p>" +
+        '<button class="btn btn-ghost" id="walkAgain">Show the steps again</button></div>';
+      bind("#walkAgain", function () { walkAt = 0; renderWalk(); });
+      return;
+    }
+    var s = p.walk[walkAt];
+    var dots = p.walk.map(function (_, i) {
+      return '<span class="walk-dot' + (i < walkAt ? " past" : i === walkAt ? " on" : "") + '"></span>';
+    }).join("");
+    box.innerHTML = '<div class="walk-card">' +
+      '<div class="walk-top"><span>Step ' + (walkAt + 1) + " of " + n + '</span><span class="walk-dots">' + dots + "</span></div>" +
+      "<h4>" + s.t + "</h4>" +
+      (s.taps ? '<div class="walk-taps">' + s.taps.map(function (t) { return '<span class="walk-tap">' + t + "</span>"; }).join('<span class="walk-arrow">&rsaquo;</span>') + "</div>" : "") +
+      (s.say ? "<p>" + s.say + "</p>" : "") +
+      stepActions(p, s) +
+      '<div class="walk-nav">' +
+      (walkAt ? '<button class="btn btn-ghost" id="walkBack">Back</button>' : "") +
+      '<button class="btn btn-soft" id="walkNext">' + (walkAt === n - 1 ? "Done" : "I did this &rsaquo;") + "</button></div></div>";
+    bind("#walkBack", function () { walkAt--; renderWalk(); });
+    bind("#walkNext", function () { walkAt++; renderWalk(); });
+    bind("#walkOpen", function () { buzz(12); });
+    bind("#walkSend", function () { sendToComputer(p); });
+    bind("#walkCopy", function () { copy(urlFor(known), "Link copied - now paste it into " + p.name); });
+    bind("#walkMake", function () { act($("#bridgeBox"), "POST", "Link made - now copy it"); });
+  }
+
+  function sendToComputer(p) {
+    var page = location.origin + "/";
+    var text = "Set up Inner Table in " + p.name + ": open " + page + " on your computer, then Settings > AI sessions.";
+    if (navigator.share) navigator.share({ title: "Inner Table setup", text: text, url: page }).catch(function () {});
+    else copy(text, "Copied - send it to yourself and open it on your computer");
+  }
+
+  /* ---------- managing the link ---------- */
   function render(box, token) {
+    if (!box) return;
     if (!token) {
-      box.innerHTML = '<button class="btn btn-primary btn-big" id="bridgeMake">Create my private link</button>';
-      bind("#bridgeMake", function () { act(box, "POST", "Link created"); });
+      box.innerHTML = '<p class="dim bridge-small" style="margin-top:0">No link yet &mdash; the steps above make one when you reach the paste step.</p>';
       return;
     }
     var url = urlFor(token);
@@ -101,7 +179,7 @@
   }
 
   async function act(box, method, done) {
-    try { known = await call(method); render(box, known); toast(done); }
+    try { known = await call(method); render(box, known); renderWalk(); toast(done); }
     catch (e) { toast(e.message); }
   }
 
@@ -109,9 +187,10 @@
   async function mount() {
     var box = $("#bridgeBox");
     if (!box) return;
+    renderWalk();
     try {
-      var token = known = await call("GET");
-      if (document.body.contains(box)) render(box, token);
+      known = await call("GET");
+      if (document.body.contains(box)) { render(box, known); renderWalk(); }
     } catch (e) {
       if (document.body.contains(box)) box.innerHTML = '<p class="dim" style="margin:0">' + esc(e.message) + "</p>";
     }

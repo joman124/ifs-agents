@@ -6,6 +6,9 @@
   window.IFS.store.load(window.IFS.auth.isLoggedIn() ? window.IFS.auth.getUsername() : null);
   window.IFS.ui.init();
 
+  // whether this deployment runs a free AI, for people with none of their own
+  window.IFS.llm.checkFree().then(function (changed) { if (changed) window.IFS.ui.renderSettings(); });
+
   // durability: mirror state into IndexedDB (restores if localStorage was
   // cleared) and ask the browser not to evict this origin's storage
   window.IFS.store.initMirror(function (restored) {

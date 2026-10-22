@@ -1,6 +1,8 @@
 /* Inner Table - UI: connecting the person's own AI, so sessions run here.
 
-   Everyone pays for their own sessions, on their own AI account. Two ways in,
+   Where the deployment runs a free AI (api/free-ai.js), nobody needs to
+   connect anything: the first session on it says once where the words go
+   (offerFree), and that is all. For their own AI account, two ways in,
    both one screen:
    - Connect with OpenRouter: sign in there, approve, and come back connected
      (api/ai-key.js runs the exchange) - nothing to copy.
@@ -227,6 +229,31 @@
     });
   }
 
+  /* The first session on the free AI: what it is and where the words go,
+     said once. Yes is remembered (settings.freeAi), so it is never asked
+     again; "my own AI" leads to the usual choice and asks again next time
+     if nothing comes of it. */
+  function offerFree(resume, onCopy) {
+    UI.openSheet(
+      '<h2 class="sheet-title serif">Talk here, for free</h2>' +
+      '<p class="dim">Sessions run right here on free AI models Inner Table provides &mdash; nothing to set up, nothing to pay, up to a daily limit.</p>' +
+      '<p class="dim">What you say passes through Inner Table&rsquo;s server to whichever free provider has room, and some free providers keep or learn from what they are sent. ' +
+      "For more privacy, use your own AI instead. You can change this any time in Settings &rarr; AI sessions.</p>" +
+      '<button class="btn btn-primary btn-big" id="frStart">Start</button><div style="height:8px"></div>' +
+      '<button class="btn btn-soft btn-big" id="frOwn">Use my own AI instead</button>' +
+      '<button class="btn btn-ghost btn-big" id="frCancel">Not now</button>'
+    );
+    bind("#frStart", function () {
+      ST.state.settings.freeAi = "on";
+      ST.save();
+      UI.closeSheet();
+      buzz(12);
+      setTimeout(function () { window.IFS.ui.startSession(resume.mode, resume.slugs, resume.material); }, 250);
+    });
+    bind("#frOwn", function () { chooseWhere(resume, onCopy); });
+    bind("#frCancel", UI.closeSheet);
+  }
+
   function showSessionsSettings() {
     UI.closePanel();
     window.IFS.ui.openSettings("setSessions");
@@ -257,7 +284,7 @@
   }
 
   window.IFS.ui.connect = {
-    open: openConnect, manage: openManage, chooseWhere: chooseWhere,
+    open: openConnect, manage: openManage, chooseWhere: chooseWhere, offerFree: offerFree,
     handleReturn: handleReturn, showSessionsSettings: showSessionsSettings
   };
 })();

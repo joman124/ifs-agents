@@ -1,13 +1,17 @@
-/* Inner Table - browser-side LLM clients (bring your own key).
+/* Inner Table - browser-side LLM clients (bring your own key, or the free AI).
    One connection - { provider, key, model } - held in settings.ai and, for a
    signed-in person, kept with their account (api/ai-key.js) so it follows
    them to every device. Calls go straight from the browser to the provider,
    paid from the person's own account there. Supports Anthropic Claude,
-   OpenRouter (any model, one-tap connect), OpenAI ChatGPT and Google Gemini. */
+   OpenRouter (any model, one-tap connect), OpenAI ChatGPT and Google Gemini.
+   With none of their own, a signed-in person can use the free AI the
+   deployment runs (api/free-ai.js): active() hands back that connection,
+   { provider: "free", key: <their session token> }, which goes through the
+   app's own server rather than straight to a provider. */
 (function () {
   "use strict";
 
-  var NAMES = { anthropic: "Anthropic", openrouter: "OpenRouter", openai: "OpenAI", gemini: "Gemini" };
+  var NAMES = { anthropic: "Anthropic", openrouter: "OpenRouter", openai: "OpenAI", gemini: "Gemini", free: "Free AI" };
   var DEFAULT_MODELS = {
     anthropic: "claude-sonnet-5-5",
     openrouter: "anthropic/claude-sonnet-5.5",
@@ -40,6 +44,7 @@
 
   function label(ai) {
     if (!configured(ai)) return "";
+    if (ai.provider === "free") return "Inner Table’s free AI";
     return modelName(ai.model || DEFAULT_MODELS[ai.provider]) + " via " + (ai.provider === "openrouter" ? "OpenRouter" : "your " + NAMES[ai.provider] + " key");
   }
 
@@ -57,6 +62,8 @@
         (j.detail && (j.detail.message || j.detail)) || "";
       if (typeof detail !== "string") detail = "";
     } catch (e) {}
+    // the free AI's own server already words its errors for the person
+    if (provider === NAMES.free) return detail || "The free AI did not answer (" + status + "). Try again in a minute.";
     var said = detail ? " " + provider + " said: " + detail.slice(0, 200) : "";
     if (status === 401) return "The " + provider + " API key was rejected." + (said || " Check it in Settings.");
     if (status === 403) return provider + " refused that request (403)." +
@@ -162,7 +169,19 @@
     };
   }
 
+  /* The free AI: the app's own endpoint, which holds the gateway's key and
+     answers in the chat-completions dialect. Only the session's words go;
+     the model is the server's choice. */
+  function freeRequest(ai, system, messages, stream) {
+    return {
+      url: "/api/free-ai",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + ai.key },
+      body: { system: system, messages: messages.map(function (m) { return { role: m.role, text: m.text }; }), stream: !!stream }
+    };
+  }
+
   function request(ai, system, messages, stream, noFallback) {
+    if (ai.provider === "free") return freeRequest(ai, system, messages, stream);
     if (ai.provider === "gemini") return geminiRequest(ai, system, messages, stream);
     if (ai.provider === "anthropic") return anthropicRequest(ai, system, messages, stream, noFallback);
     return chatCompletionsRequest(ai, system, messages, stream);
@@ -214,7 +233,8 @@
       if (!res.ok) {
         var txt = await res.text();
         var err = new Error(friendly(res.status, txt, NAMES[ai.provider]));
-        err.retryable = res.status >= 500 || res.status === 429;
+        // the free AI's 429 is the day's allowance, which waiting seconds won't bring back
+        err.retryable = res.status >= 500 || (res.status === 429 && ai.provider !== "free");
         throw err;
       }
       var data = await res.json();
@@ -300,6 +320,42 @@
     return !!(ai && NAMES[ai.provider] && ai.key);
   }
 
+  /* ---------------- the free AI ----------------
+     Whether this deployment offers it is asked of the server once per app
+     open and remembered on the device, so the answer is there at once next
+     time - and offline. */
+  var FREE_SEEN = "innertable.freeAi";
+  var freeOn = false;
+  try { freeOn = localStorage.getItem(FREE_SEEN) === "1"; } catch (e) {}
+
+  /* Resolves to whether the answer changed. A failed ask keeps the last one. */
+  async function checkFree() {
+    try {
+      var r = await fetch("/api/free-ai", { headers: { "Accept": "application/json" } });
+      if (!r.ok) return false;
+      var on = !!(await r.json()).available;
+      if (on === freeOn) return false;
+      freeOn = on;
+      try { localStorage.setItem(FREE_SEEN, on ? "1" : "0"); } catch (e) {}
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* The free AI is there for this person: the deployment runs one and they
+     are signed in (it is paid for by the deployment, so it is for accounts). */
+  function freeReady() {
+    var auth = window.IFS.auth;
+    return !!(freeOn && auth && auth.isLoggedIn() && auth.getToken());
+  }
+
+  /* The connection to use: the person's own when they have one, otherwise
+     the free AI when it is there for them, otherwise theirs as it stands
+     (not connected). */
+  function active(ai) {
+    if (configured(ai) || !freeReady()) return ai;
+    return { provider: "free", key: window.IFS.auth.getToken(), model: "" };
+  }
+
   /* One short round trip, so a wrong key is found out at connect time rather
      than halfway through someone's first session. */
   async function test(ai) {
@@ -308,6 +364,7 @@
 
   window.IFS.llm = {
     chat: chat, chatStream: chatStream, configured: configured, test: test,
+    active: active, freeReady: freeReady, checkFree: checkFree,
     detect: detect, label: label, modelName: modelName, modelOf: modelOf,
     NAMES: NAMES, DEFAULT_MODELS: DEFAULT_MODELS,
     _request: request // for tests

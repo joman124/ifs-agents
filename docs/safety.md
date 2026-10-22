@@ -67,6 +67,15 @@ Part profiles are intimate personal data.
   OpenRouter, OpenAI or Google) and falls under its data policy. Disconnect in
   Settings → Live sessions, and revoke the key at the provider if it may have
   leaked.
+- **The free AI** (where a deployment offers it) runs sessions for people
+  with no AI of their own. What you say goes through the app's server to a
+  FreeLLMAPI gateway that whoever runs the deployment hosts, and from there
+  to whichever free-tier provider has room. Some free tiers keep what they
+  are sent or use it to improve their models. The app says this once before
+  your first session on it, and nothing goes to it before you agree. Turn it
+  off in Settings → AI sessions; your own key or linked app always takes its
+  place. If you run a deployment, choose the gateway's providers with this
+  in mind ([free-ai.md](free-ai.md)).
 
 ## For people using this with others
 

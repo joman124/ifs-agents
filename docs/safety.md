@@ -55,18 +55,29 @@ Part profiles are intimate personal data.
   policies — check them before pasting profiles.
 - Compiled agents *contain the profile text*. Treat generated
   `.claude/agents/part-*.md` files with the same care as the profiles.
-- The **Link my AI** link lets whoever holds it read your parts and your
+- A **private link to your AI app**, made back when the app offered linking
+  Claude, ChatGPT or Gemini, lets whoever holds it read your parts and your
   conversation notes, and save sessions into them (merged in — it cannot
   delete a part or erase a field). Conversation notes can be forgotten one by
   one under Settings → Session transcripts.
-  Keep it private, and revoke it in Settings if it may have leaked.
-- **Talk here in Inner Table** runs sessions on your own AI account. Signed in,
-  its API key is kept with your account, encrypted, so your other devices are
-  connected too; it is never readable through the private link. What you say
-  in a session goes straight from your device to that provider (Anthropic,
-  OpenRouter, OpenAI or Google) and falls under its data policy. Disconnect in
-  Settings → Live sessions, and revoke the key at the provider if it may have
+  Keep it private, and revoke it under Settings → Your own AI if it may have
   leaked.
+- **Your own API key**, if you connected one back when the app took them, is
+  kept with your account, encrypted, so your other devices are connected too;
+  it is never readable through the private link. What you say in a session
+  goes straight from your device to that provider (Anthropic, OpenRouter,
+  OpenAI or Google) and falls under its data policy. Disconnect it under
+  Settings → Your own AI, and revoke the key at the provider if it may have
+  leaked.
+- **The free AI** (where a deployment offers it) runs sessions for people
+  with no AI of their own. What you say goes through the app's server to a
+  FreeLLMAPI gateway that whoever runs the deployment hosts, and from there
+  to whichever free-tier provider has room. Some free tiers keep what they
+  are sent or use it to improve their models. The app says this once before
+  your first session on it, and nothing goes to it before you agree. Say no
+  and it hands you the session as a prompt to paste into an AI chat you
+  already use. If you run a deployment, choose the gateway's providers with
+  this in mind ([free-ai.md](free-ai.md)).
 
 ## For people using this with others
 

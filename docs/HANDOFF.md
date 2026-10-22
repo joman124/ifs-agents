@@ -52,6 +52,7 @@ gracefully (local-only mode), it never crashes.
 | `SESSION_SECRET` | signing login tokens (HMAC-SHA256) | any long random string |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | `node scripts/gen-vapid-keys.js` |
 | `VAPID_SUBJECT` | Web Push contact | `mailto:` address |
+| `FREELLMAPI_URL` / `FREELLMAPI_KEY` | the free AI (`api/free-ai.js`) — optional; without them the app simply offers no free AI | a FreeLLMAPI gateway you host, and its unified key — see `docs/free-ai.md`. Optional `FREELLMAPI_MODEL` (default `auto`) and `FREE_AI_DAILY_LIMIT` (default 200 per account per UTC day) |
 | `CRON_SECRET` | check-in reminders (`api/push-remind.js`) | any long random string — Vercel sends it to the 24 daily crons in `vercel.json` (one per UTC hour: the Hobby-plan way to get an hourly clock); also set as a GitHub Actions secret of the same name for the backup tick in `.github/workflows/reminders.yml`. The endpoint notifies each device once a day at the hour chosen for it in Settings (8pm by default), on its own clock, up to 3 hours late if a run was missed, and never twice (`last` on the subscription); tapping the notification opens *Notice a part* |
 
 `scripts/add-user.js` provisions accounts from the command line when needed.
@@ -78,7 +79,11 @@ api/                 serverless functions (Vercel): signup, login, sync,
                      talk" conversation note - the synced `journal`, which is
                      what lets the next conversation, in either place, remember),
                      ai-key (the person's own AI connection, AES-GCM-sealed per
-                     account, plus OpenRouter's one-tap PKCE sign-in)
+                     account, plus OpenRouter's one-tap PKCE sign-in),
+                     free-ai (the free AI: signed-in accounts' sessions relayed
+                     to the deployment's FreeLLMAPI gateway, whose key never
+                     leaves the server; per-account daily allowance in Upstash;
+                     SSE passed straight through - see docs/free-ai.md)
   root package.json  holds the `web-push` dependency for the functions only
 test/                node test/run.js — 741 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
@@ -106,7 +111,7 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `store.js` | 959 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart`, table-only `exportTable`/`importTable`; the pictures blob (`exportImages`/`importImages`/`imageFingerprint`) and `exportAll({images:false})` for sync |
 | `portrait.js` | 194 | A part's picture and the room's photo: drawing (`face`/`cls`, the picture or the initial inside a circle) and making (open a picked file, crop, shrink to a small JPEG in a named shape: square for a part, 16:9 for the room) |
 | `templates.js` | 425 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
-| `llm.js` | 300 | One connection `{provider, key, model}` (`settings.ai`): Anthropic, OpenRouter, OpenAI, Gemini; provider detected from the key's shape; chat + SSE streaming, retry; the system prompt is cached (Anthropic `cache_control`, and on OpenRouter's Claude models); current Claude models run at medium effort with server-side refusal fallback |
+| `llm.js` | 300 | One connection `{provider, key, model}` (`settings.ai`): Anthropic, OpenRouter, OpenAI, Gemini; provider detected from the key's shape; chat + SSE streaming, retry; the system prompt is cached (Anthropic `cache_control`, and on OpenRouter's Claude models); current Claude models run at medium effort with server-side refusal fallback; `active()` falls back to the free AI (`{provider: "free", key: <session token>}`, via `api/free-ai.js`) for a signed-in person with no connection, once `checkFree()` has heard the deployment runs one. `ui.js` `sessionAi()` only uses it after the person said yes (`settings.freeAi`), asked once by `ui-connect.js` `offerFree`. Pasting a key is no longer offered in the UI; keys from before still work |
 | `voice.js` | 360 | Web Speech dictation + TTS, optional ElevenLabs voice |
 | `graph.js` | 615 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat; a part's picture fills its circle; a dragged part stays where it is dropped (per device, per account) |
 | `auth.js` | 62 | Session token storage, sign-in/up/out flows against `api/` |
@@ -116,9 +121,9 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `ui-table.js` | 776 | The Table tab: the room (and its photo), seating, meetings, the round of the table and the readings-history sheet |
 | `ui-portrait.js` | 299 | Choosing and framing a picture: the sheet, the drag/pinch/zoom cropper, remove. One flow for a part and for the room |
 | `ui-learn.js` | 49 | The Learn library sheet and its pages |
-| `ui-bridge.js` | 124 | Settings → AI sessions → *Your AI app*: makes, shows and revokes the private link. The Claude app on a Pro/Max plan is the recommended way to run sessions (no API key) |
+| `ui-bridge.js` | 74 | The private link for people who linked Claude, ChatGPT or Gemini before the free AI: `currentToken`, `revoke` (Settings → *Your own AI*), `sessionUrl` and the per-app hand-off words `linkedSession` uses. Linking a new app is no longer offered |
 | `ui-ground.js` | 150 | *Ground me*: the person's own grounding plan, shaped like a safety plan (`store.plan`: warning signs, skills, people and places, contacts with call/text buttons, professionals, a safer space, reasons) - drawn into the grounding page and edited in place. It syncs, and `templates.groundingBlock` adds the skills and signs (never names or numbers) to every session prompt, in the app and through the bridge |
-| `ui-connect.js` | 249 | *Talk here in Inner Table*: Connect with OpenRouter, paste-any-key (detected, test-called, kept with the account), manage/disconnect, the one-time "where would you like to talk?" choice, and picking a session back up after OpenRouter's sign-in |
+| `ui-connect.js` | 52 | The free AI's one-time notice (`offerFree`): what it is, where the words go, Start or copy-prompt instead; `sayYes` and the shared `WHERE_WORDS_GO` sentence. The connect-a-key and "where would you like to talk?" sheets are gone |
 | `ui-practice.js` | 139 | The daily practice: *Notice a part* (ten seconds, no AI — a `notice` entry with an optional `feel` word in the part's own session log, which the next check-in reads as memory), and *Looking back* (`schema.lookBack`: who you sat with, how your feeling toward each part moved, threads that warmed, over 30 days) |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
 
@@ -167,7 +172,10 @@ the theme switch and sign out.
 4. **Settings** (from the profile avatar, not a tab) — every section
    starts folded (a `<details>` row; open ones stay open across redraws), then account (sign in/up/out, "Sync now", sign-out closes your parts
    and returns to the sign-in screen), push notifications (tied to the signed-in
-   account), provider keys, voice, theme, backup/restore, transcripts.
+   account), *Your own AI* (only for someone with a key or linked app from
+   before the free AI: disconnect / revoke, nothing to set up), voice, theme,
+   backup/restore, transcripts. There is no AI section: sessions run on the
+   free AI, or as copy-prompt mode.
    "Find my voices" lists the ElevenLabs account's own voices (clones first) so
    no ID is copied by hand; "Test this key" does a live round-trip for
    whichever LLM provider is active instead of failing silently mid-session.
@@ -255,7 +263,7 @@ a disconnect on one device reaches the others; a key from before this existed
 (no `at`) goes up once. `store.adopt` carries the old per-provider key fields
 into `settings.ai` once.
 
-**Connect with OpenRouter** is OAuth PKCE run server-side: the app asks
+**Connect with OpenRouter** (no longer offered in the app, which now runs on the free AI; the server side below still works) is OAuth PKCE run server-side: the app asks
 `POST /api/ai-key {action:"openrouter"}`, which parks the verifier and username
 under a one-time `innertable:oauth:<state>` (15 min) and returns OpenRouter's
 sign-in URL; OpenRouter returns to `/api/ai-key?state=…&code=…`, which exchanges

@@ -1008,34 +1008,6 @@ input.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
 .privacy-banner b.serif { font-size: 1.1rem; display: block; margin-bottom: 4px; }
 .privacy-banner p { margin: 0 0 8px; font-size: .8rem; line-height: 1.55; color: var(--ink-dim); }
 .privacy-banner p:last-child { margin: 0; }
-.bridge-lead { margin: 14px 2px 8px; font-size: .95rem; line-height: 1.45; }
-.bridge-small { margin: 10px 2px 0; font-size: .84rem; line-height: 1.5; }
-.bridge-need { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 2px 12px; font-size: .78rem; color: var(--ink-faint); }
-.walk-card { background: var(--bg2); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
-.walk-card h4 { margin: 8px 0 10px; font-size: 1.12rem; }
-.walk-card p { margin: 0 0 12px; line-height: 1.5; }
-.walk-top { display: flex; justify-content: space-between; align-items: center; font-size: .76rem; color: var(--ink-faint); }
-.walk-dots { display: flex; gap: 5px; }
-.walk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
-.walk-dot.past { background: var(--accent); opacity: .45; }
-.walk-dot.on { background: var(--accent); }
-.walk-taps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
-.walk-tap { padding: 4px 9px; border-radius: 6px; font-size: .88rem; font-weight: 650; background: var(--accent-soft); color: var(--ink); user-select: none; }
-.walk-arrow { color: var(--ink-faint); font-size: 1.1rem; }
-.walk-nav { display: flex; gap: 8px; margin-top: 12px; }
-.walk-nav .btn { flex: 1; min-height: 48px; }
-.walk-nav #walkBack { flex: 0 0 34%; }
-.walk-card .btn-big + .btn-big { margin-top: 8px; }
-@media (max-width: 420px) {
-  .walk-card { padding: 14px; border-radius: 14px; }
-  .walk-card h4 { font-size: 1.05rem; }
-}
-.walk-done { text-align: center; }
-.walk-tick { width: 40px; height: 40px; margin: 0 auto; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
-.bridge-box { margin-top: 10px; }
-.bridge-box input { font-size: .8rem; }
-.bridge-row { display: flex; gap: 8px; margin-top: 8px; }
-.bridge-row .btn { flex: 1; }
 details.advanced { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
 details.advanced summary { cursor: pointer; font-size: .86rem; font-weight: 600; color: var(--ink-dim); }
 /* import preview: which field each piece of the text landed in */
@@ -1440,12 +1412,6 @@ img.pic {
 /* framing a wide photo: the window takes the width, not a fixed square */
 .crop.wide { width: min(100%, 440px, 64dvh); }
 
-/* ---- connecting the person's own AI (ui-connect.js) ---- */
-.cx-note { margin: 8px 2px 14px; font-size: .84rem; }
-.cx-note.cx-error { color: var(--danger); }
-.cx-or { display: flex; align-items: center; gap: 10px; margin: 6px 0 12px; color: var(--ink-dim); font-size: .8rem; }
-.cx-or::before, .cx-or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
-#cxKey, #cxModel { width: 100%; box-sizing: border-box; }
 .linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
 
 /* ---- the daily practice (ui-practice.js) ---- */

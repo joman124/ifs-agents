@@ -6,6 +6,9 @@
   window.IFS.store.load(window.IFS.auth.isLoggedIn() ? window.IFS.auth.getUsername() : null);
   window.IFS.ui.init();
 
+  // whether this deployment runs a free AI, for people with none of their own
+  window.IFS.llm.checkFree().then(function (changed) { if (changed) window.IFS.ui.renderSettings(); });
+
   // durability: mirror state into IndexedDB (restores if localStorage was
   // cleared) and ask the browser not to evict this origin's storage
   window.IFS.store.initMirror(function (restored) {
@@ -50,14 +53,7 @@
     });
   }
 
-  // back from OpenRouter's sign-in, the connection is already on the account
-  if (/[?&](connected|connect_error)=/.test(location.search)) {
-    lastPull = Date.now();
-    window.IFS.sync.pull();
-    window.IFS.ui.connect.handleReturn();
-  } else {
-    pullNow();
-  }
+  pullNow();
   /* An installed app is rarely restarted - it is brought back from the
      background. Pull then too, so a session saved from another app in the
      meantime is here when the person looks, and is in before this device's

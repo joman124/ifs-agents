@@ -108,6 +108,10 @@
            manual = none linked. */
         provider: "manual",      // manual | anthropic | openai | gemini
         copyPrompt: false,       // chose copy-a-prompt as the way to hold sessions
+        /* The free AI the deployment runs (api/free-ai.js), which sessions
+           use when there is no key or linked app from before: "" not asked
+           yet, "on" said yes (asked once, at their first session). */
+        freeAi: "",
         // keys from before settings.ai; carried into it once by adopt()
         geminiKey: "",
         geminiModel: "gemini-2.5-flash",

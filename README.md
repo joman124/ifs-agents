@@ -129,12 +129,13 @@ It follows one spine — **add a part → gather → integrate → connect**:
   syncing), and are never sent to an AI or written into an exported `.md` — they
   are for you, not for the model.
 - **Live guided sessions** (just talk, intake, check-in, mapping, embody, table
-  meeting) as a chat inside the app, on your own AI account: **Connect with
-  OpenRouter** in one tap, or paste a key from Anthropic, OpenRouter, OpenAI or
-  Google — the app tells which from the key. Signed in, the connection is kept
-  with your account (encrypted) so every device you use is connected; messages
-  go straight from your device to that provider. Or link Claude, ChatGPT or
-  Gemini and sessions open there; or use **copy-prompt mode** with any chat.
+  meeting) as a chat inside the app, with **nothing to set up**: they run on
+  the app's [free AI](#free-ai-for-everyone). Before the first one, the app
+  says once where your words go. If you'd rather not use it, **copy-prompt
+  mode** hands you the session to paste into any AI chat you already use.
+  There are no API keys or AI settings to manage. People who connected a key
+  or linked Claude, ChatGPT or Gemini before this keep using it, and can
+  disconnect it under Settings → Your own AI.
 - **Voice first**: sessions are spoken by default where the browser supports
   it. The answer to an IFS question arrives in the pause, spoken, long before
   anyone would type it. The microphone stays open *through* the reply, so you
@@ -235,6 +236,32 @@ Set the three variables it prints as Vercel env vars:
 | `VAPID_PRIVATE_KEY` | same — keep this one secret |
 | `VAPID_SUBJECT` | a `mailto:` address or the site's `https://` URL |
 
+### Free AI for everyone
+
+So that nobody *has* to bring an API key, the app can run sessions on free
+AI models through a [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi)
+gateway you host. FreeLLMAPI routes each request to whichever free-tier
+provider (Google AI Studio, Groq, Cerebras, OpenRouter's free models…) still
+has room. The gateway's key stays server-side in
+[`api/free-ai.js`](api/free-ai.js). Only signed-in accounts can use it, each
+up to a daily allowance. It is the only AI set-up the app shows: Settings has
+no AI section. Everyone is told once, before their first session on it, where
+their words go, and can choose copy-prompt mode instead. Without the gateway
+configured, sessions fall back to copy-prompt mode.
+
+| Variable | Where it comes from |
+|---|---|
+| `FREELLMAPI_URL` | your FreeLLMAPI gateway's HTTPS address |
+| `FREELLMAPI_KEY` | its unified key (`freellmapi-…`) from the gateway's Keys page |
+| `FREELLMAPI_MODEL` | optional — `auto` by default |
+| `FREE_AI_DAILY_LIMIT` | optional — messages per account per day, `200` by default |
+
+FreeLLMAPI can't run on Vercel; it needs an always-on host. On Railway that
+is a few clicks in a browser. [docs/free-ai.md](docs/free-ai.md) walks
+through it step by step, along with your own server as the other option,
+choosing providers with your users' privacy in mind, and the limits of free
+models.
+
 ## Quickstart B — Claude Code
 
 Install as a plugin (or clone and add the `skills/` to your project), then from
@@ -275,6 +302,7 @@ The `templates/` files are self-contained prompts:
 | `skills/` | Claude Code slash-command wrappers around the templates |
 | `docs/ifs-primer.md` | IFS concepts as used here |
 | `docs/safety.md` | Boundaries, when to stop, privacy — **read this** |
+| `docs/free-ai.md` | Hosting the FreeLLMAPI gateway behind the app's free AI |
 | `docs/source/` | The source question set this system was built from |
 | `examples/` | A fully fictional sample part ("The Critic") and its compiled agent |
 | `parts/`, `sessions/` | **Your** data — created at use time, gitignored, never shipped |

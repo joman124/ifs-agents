@@ -111,6 +111,57 @@ module.exports = async function (t) {
   };
   t.eq(await L.chatStream(ai, "S", [], function () {}), "Plain.", "a stream that fails falls back to a plain call");
 
+  /* ---- the free AI (api/free-ai.js) ---- */
+  var free = { provider: "free", key: "session-token", model: "" };
+  var f = L._request(free, "SYSTEM", [{ role: "user", text: "hi" }], true);
+  t.eq([f.url, f.headers.Authorization], ["/api/free-ai", "Bearer session-token"],
+    "the free AI goes through the app's own server, on the person's session");
+  t.eq(f.body, { system: "SYSTEM", messages: [{ role: "user", text: "hi" }], stream: true },
+    "carrying only the session's words - the model is the server's choice");
+  t.eq(L.label(free), "Inner Table’s free AI", "and it is named as the app's own");
+
+  calls = [];
+  var limitWords = "That's today's free AI used up (200 messages). It comes back tomorrow.";
+  reply = function () { return json({ error: { message: limitWords, code: "daily_limit" } }, 429); };
+  var lim = null;
+  try { await L.chat(free, "S", [{ role: "user", text: "hi" }]); } catch (e) { lim = e.message; }
+  t.eq(lim, limitWords, "the free AI's own words reach the person as they are");
+  t.eq(calls.length, 1, "and the day's allowance is not retried seconds later");
+
+  seen = [];
+  reply = function () {
+    return Promise.resolve(sse('data: {"choices":[{"delta":{"content":"Free"}}]}\n\ndata: {"choices":[{"delta":{"content":" words"}}]}\n\ndata: [DONE]\n\n'));
+  };
+  t.eq(await L.chatStream(free, "S", [], function (x) { seen.push(x); }), "Free words", "a free AI stream is read like any chat-completions one");
+
+  var none = { provider: "", key: "", model: "", at: "" };
+  var own = { provider: "anthropic", key: "sk-ant-k", model: "", at: "" };
+  var offers = function (answer, storage) {
+    var extra = { fetch: function (url) {
+      if (String(url) !== "/api/free-ai") return Promise.reject(new Error("unexpected " + url));
+      return answer === "offline" ? Promise.reject(new Error("offline")) : json({ available: answer, daily: 200 });
+    } };
+    if (storage) extra.localStorage = storage;
+    return H.load(["schema", "auth", "llm"], extra);
+  };
+  var fe = offers(true);
+  t.eq(fe.IFS.llm.active(none), none, "nothing is offered before the server says so");
+  t.eq(await fe.IFS.llm.checkFree(), true, "the server says this deployment runs a free AI");
+  t.eq(fe.IFS.llm.active(none), none, "but it is only for someone signed in");
+  fe.storage.setItem("innertable.session", JSON.stringify({ token: "tok-ann", username: "ann", exp: Date.now() + 60000 }));
+  t.eq(fe.IFS.llm.active(none), { provider: "free", key: "tok-ann", model: "" }, "signed in, it is the connection, on their own session");
+  t.ok(fe.IFS.llm.configured(fe.IFS.llm.active(none)), "and counts as connected");
+  t.eq(fe.IFS.llm.active(own), own, "their own AI always comes first");
+  t.eq(await fe.IFS.llm.checkFree(), false, "asking again with the same answer changes nothing");
+
+  var reopened = offers("offline", fe.storage);
+  t.ok(reopened.IFS.llm.freeReady(), "the answer is remembered, so the next open knows at once");
+  t.eq(await reopened.IFS.llm.checkFree(), false, "and keeps it when the server can't be reached");
+  t.ok(reopened.IFS.llm.freeReady(), "still offered offline");
+  var switchedOff = offers(false, fe.storage);
+  t.eq(await switchedOff.IFS.llm.checkFree(), true, "switched off on the server");
+  t.eq(switchedOff.IFS.llm.active(none), none, "it is no longer offered");
+
   /* ---- keys from before settings.ai are carried over once ---- */
   var st = H.load(["schema", "markdown", "store"]);
   st.storage.setItem("innertable.v1", JSON.stringify({ parts: {}, settings: {

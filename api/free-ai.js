@@ -83,13 +83,13 @@ function upstreamError(status, bodyText) {
     if (typeof said !== "string") said = "";
   } catch (e) {}
   if (status === 400) return { status: 400, message: "The free AI could not take that request." + (said ? " It said: " + said.slice(0, 200) : "") };
-  if (status === 413) return { status: 400, message: "This session is too long for the free AI's models. Start a new one, or connect your own AI in Settings." };
+  if (status === 413) return { status: 400, message: "This session is too long for the free AI's models. Start a new one." };
   if (status === 401 || status === 403 || status === 404) {
     return { status: 502, message: "The free AI is not set up right on the server - its gateway turned the request down (" + status + ")." };
   }
   // 429: every free model at its cap; 503: none with room (or none set up) just now
   if (status === 429 || status === 503) {
-    return { status: 503, message: "Every free model is at its limit right now. Try again in a few minutes, or connect your own AI in Settings." };
+    return { status: 503, message: "Every free model is at its limit right now. Try again in a few minutes." };
   }
   return { status: 502, message: "The free AI could not answer just now (" + status + "). Try again in a minute." };
 }
@@ -130,7 +130,7 @@ module.exports = async function handler(req, res) {
     return;
   }
   if (req.method !== "POST") { fail(res, 405, "Method not allowed"); return; }
-  if (!cfg.ready) { fail(res, 503, "The free AI is not switched on for this app. Connect your own AI in Settings."); return; }
+  if (!cfg.ready) { fail(res, 503, "The free AI is not switched on for this app."); return; }
 
   var auth = req.headers.authorization || "";
   var session = verifySession(auth.indexOf("Bearer ") === 0 ? auth.slice(7) : "", process.env.SESSION_SECRET);
@@ -157,8 +157,8 @@ module.exports = async function handler(req, res) {
       if (used === 1) await command(["EXPIRE", counted, "172800"]);
       if (used > cfg.daily) {
         await command(["DECR", counted]).catch(function () {});
-        fail(res, 429, "That's today's free AI used up (" + cfg.daily + (cfg.daily === 1 ? " message" : " messages") + "). It comes back tomorrow - " +
-          "or connect your own AI in Settings to keep going now.", "daily_limit");
+        fail(res, 429, "That's today's free AI used up (" + cfg.daily + (cfg.daily === 1 ? " message" : " messages") + "). " +
+          "It comes back tomorrow.", "daily_limit");
         return;
       }
     } catch (e) {

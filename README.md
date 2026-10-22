@@ -129,14 +129,13 @@ It follows one spine — **add a part → gather → integrate → connect**:
   syncing), and are never sent to an AI or written into an exported `.md` — they
   are for you, not for the model.
 - **Live guided sessions** (just talk, intake, check-in, mapping, embody, table
-  meeting) as a chat inside the app. Where the deployment runs one, they work
-  with **no AI account at all**, on the [free AI](#free-ai-for-everyone).
-  Or use your own AI account: **Connect with
-  OpenRouter** in one tap, or paste a key from Anthropic, OpenRouter, OpenAI or
-  Google — the app tells which from the key. Signed in, the connection is kept
-  with your account (encrypted) so every device you use is connected; messages
-  go straight from your device to that provider. Or link Claude, ChatGPT or
-  Gemini and sessions open there; or use **copy-prompt mode** with any chat.
+  meeting) as a chat inside the app, with **nothing to set up**: they run on
+  the app's [free AI](#free-ai-for-everyone). Before the first one, the app
+  says once where your words go. If you'd rather not use it, **copy-prompt
+  mode** hands you the session to paste into any AI chat you already use.
+  There are no API keys or AI settings to manage. People who connected a key
+  or linked Claude, ChatGPT or Gemini before this keep using it, and can
+  disconnect it under Settings → Your own AI.
 - **Voice first**: sessions are spoken by default where the browser supports
   it. The answer to an IFS question arrives in the pause, spoken, long before
   anyone would type it. The microphone stays open *through* the reply, so you
@@ -245,9 +244,10 @@ gateway you host. FreeLLMAPI routes each request to whichever free-tier
 provider (Google AI Studio, Groq, Cerebras, OpenRouter's free models…) still
 has room. The gateway's key stays server-side in
 [`api/free-ai.js`](api/free-ai.js). Only signed-in accounts can use it, each
-up to a daily allowance. People with their own AI connected or linked never
-touch it, and everyone else is told once, before their first session on it,
-where their words go.
+up to a daily allowance. It is the only AI set-up the app shows: Settings has
+no AI section. Everyone is told once, before their first session on it, where
+their words go, and can choose copy-prompt mode instead. Without the gateway
+configured, sessions fall back to copy-prompt mode.
 
 | Variable | Where it comes from |
 |---|---|

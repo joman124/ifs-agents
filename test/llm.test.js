@@ -121,7 +121,7 @@ module.exports = async function (t) {
   t.eq(L.label(free), "Inner Table’s free AI", "and it is named as the app's own");
 
   calls = [];
-  var limitWords = "That's today's free AI used up (200 messages). It comes back tomorrow - or connect your own AI in Settings to keep going now.";
+  var limitWords = "That's today's free AI used up (200 messages). It comes back tomorrow.";
   reply = function () { return json({ error: { message: limitWords, code: "daily_limit" } }, 429); };
   var lim = null;
   try { await L.chat(free, "S", [{ role: "user", text: "hi" }]); } catch (e) { lim = e.message; }

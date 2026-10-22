@@ -53,14 +53,7 @@
     });
   }
 
-  // back from OpenRouter's sign-in, the connection is already on the account
-  if (/[?&](connected|connect_error)=/.test(location.search)) {
-    lastPull = Date.now();
-    window.IFS.sync.pull();
-    window.IFS.ui.connect.handleReturn();
-  } else {
-    pullNow();
-  }
+  pullNow();
   /* An installed app is rarely restarted - it is brought back from the
      background. Pull then too, so a session saved from another app in the
      meantime is here when the person looks, and is in before this device's

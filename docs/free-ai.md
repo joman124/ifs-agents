@@ -20,13 +20,20 @@ Groq, Cerebras, Mistral, OpenRouter's free models and so on.
 - **Only signed-in accounts can use it.** Every account gets a **daily
   allowance**, 200 messages by default, so one person cannot use up the free
   quota everyone shares. A request that fails is not counted.
-- **People's own AI always comes first.** Someone who connects their own key,
-  or links their Claude, ChatGPT or Gemini app, never touches the free AI.
+- **Nothing to set up.** The app has no AI settings: sessions run on the free
+  AI. People who connected their own key, or linked their Claude, ChatGPT or
+  Gemini app, before this keep using it. They can disconnect it under
+  **Settings → Your own AI**, which only they see.
 - **People are asked once.** Before the first session on the free AI, the app
-  says once where the words go. After that, sessions just start. The free AI
-  can be turned off in **Settings → AI sessions**. Nothing goes to the free AI
-  before that yes, not even the background step that writes conversations
+  says once where the words go. After that, sessions just start. Anyone who
+  would rather not can pick copy-prompt mode on that notice, and get the
+  session to paste into an AI chat they already use. Nothing goes to the free
+  AI before that yes, not even the background step that writes conversations
   into profiles.
+- **When it can't answer.** If the free AI is busy or someone's allowance is
+  used up, the chat offers to hold the session in another AI chat instead.
+  If the gateway isn't configured at all, sessions go straight to
+  copy-prompt mode.
 
 ## 1. Host FreeLLMAPI
 

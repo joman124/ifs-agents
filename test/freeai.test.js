@@ -123,7 +123,7 @@ module.exports = async function (t) {
   var over = await call("POST", as("ann", ask()));
   t.eq(over.code, 429, "her fourth does not");
   t.eq(over.body.error.code, "daily_limit", "marked as the day's allowance");
-  t.ok(/tomorrow/.test(over.body.error.message) && /your own AI/.test(over.body.error.message), "in words that say when, and what else to do");
+  t.ok(/tomorrow/.test(over.body.error.message), "in words that say when it comes back");
   t.eq(used("ann"), 3, "a refused message is not counted");
   t.eq((await call("POST", as("bob", ask()))).code, 200, "one account's allowance is not another's");
 

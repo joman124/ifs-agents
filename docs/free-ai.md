@@ -38,16 +38,60 @@ Groq, Cerebras, Mistral, OpenRouter's free models and so on.
 ## 1. Host FreeLLMAPI
 
 FreeLLMAPI is a long-running Node server that keeps a SQLite database on disk.
-That means it **cannot run on Vercel**. Use any always-on host with a
-persistent disk: a small VPS, Fly.io, Railway, or Render with a disk attached.
+That means it **cannot run on Vercel**: it needs an always-on host with a
+persistent disk. **Railway** (option A) is the easiest. It takes clicks in a
+browser, with no terminal and no server to look after, and gives you HTTPS. If
+you already run a server, use option B.
 
-With Docker on a VPS:
+### First, make an encryption key
+
+FreeLLMAPI encrypts the provider keys it stores with a 64-character key you
+choose. Make one, and **keep it somewhere safe**. If it changes or is lost,
+the stored provider keys can't be decrypted and have to be added again.
+
+- Mac or Linux, in Terminal: `openssl rand -hex 32`
+- Windows, in PowerShell:
+  ```powershell
+  $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); ($b | % { $_.ToString('x2') }) -join ''
+  ```
+
+### Option A: Railway (easiest)
+
+Railway's Hobby plan is $5 a month, which includes $5 of usage; usage beyond
+that is billed on top. New accounts start with a one-time $5 trial credit.
+Check [railway.com/pricing](https://railway.com/pricing) for the current
+terms.
+
+1. Sign up at [railway.com](https://railway.com) and create a new project.
+2. Click **+ New → Docker Image** and enter:
+   ```
+   ghcr.io/tashfeenahmed/freellmapi:latest
+   ```
+3. Open the new service's **Variables** tab and add:
+
+   | Variable | Value |
+   |---|---|
+   | `ENCRYPTION_KEY` | the key you just made |
+   | `PORT` | `3001` |
+   | `PROXY_RATE_LIMIT_RPM` | `600` |
+
+4. In **Settings → Volumes**, add a volume with mount path
+   `/app/server/data`. This is where FreeLLMAPI keeps its database: your
+   account, provider keys and settings. **Without it they are wiped every
+   time the service restarts.**
+5. In **Settings → Networking**, click **Generate Domain** and set the target
+   port to `3001`. You get an address like
+   `https://freellmapi-production-1234.up.railway.app`. That is your gateway's
+   address.
+6. Wait until the deployment shows as active, then go on to step 2 below.
+
+### Option B: Docker on your own server
 
 ```sh
 mkdir freellmapi && cd freellmapi
 curl -fsSLO https://raw.githubusercontent.com/tashfeenahmed/freellmapi/main/docker-compose.yml
 cat > .env <<EOF
-ENCRYPTION_KEY=$(openssl rand -hex 32)
+ENCRYPTION_KEY=paste-the-key-you-made-here
 PORT=3001
 HOST_BIND=0.0.0.0
 PROXY_RATE_LIMIT_RPM=600
@@ -55,42 +99,60 @@ EOF
 docker compose up -d
 ```
 
-- **`PROXY_RATE_LIMIT_RPM`**: the gateway limits requests per minute **per
-  client IP**, 120 by default. Every Inner Table request reaches it from
-  Vercel's servers, so all your users would share that one limit. Raise it.
-  Inner Table already caps each account per day.
-- **Put HTTPS in front of it**, for example Caddy, nginx with Let's Encrypt,
-  or a Cloudflare Tunnel. The gateway key travels in a request header, so it
-  must not cross the internet in plain HTTP. FreeLLMAPI binds to localhost by
-  default and describes itself as single-user. Exposing it is fine only
-  because its unified key guards every request and only your Vercel functions
-  hold that key.
+**Put HTTPS in front of it**, for example Caddy, nginx with Let's Encrypt,
+or a Cloudflare Tunnel. The gateway key travels in a request header, so it
+must not cross the internet in plain HTTP. FreeLLMAPI binds to localhost by
+default and describes itself as single-user. Exposing it is fine only because
+its unified key guards every request and only your Vercel functions hold that
+key.
 
-## 2. Add free provider keys
+### Why `PROXY_RATE_LIMIT_RPM`
 
-Open the gateway's dashboard at `https://your-gateway-host/` and create the
-admin account. Then, on the **Keys** page, add free-tier keys from as many
-providers as you like. More providers means more free capacity before
-everything hits its daily cap. Caps reset at UTC midnight.
+The gateway limits requests per minute **per client IP**, 120 by default.
+Every Inner Table request reaches it from Vercel's servers, so all your users
+would share that one limit. Raise it, as above. Inner Table already caps each
+account per day.
 
-**Choose providers with your users' privacy in mind.** Profiles and
-sessions here are intimate journaling. Some free tiers say they may use what
-is sent to them to train or improve their models, or that people may read it.
-Read each provider's free-tier terms, and leave out or disable any you are not
-comfortable sending journaling to. Some free tiers also limit or forbid
-serving a public app. That is between you and each provider.
+## 2. Create the dashboard account and add free provider keys
 
-Finally, copy the **unified API key** (it starts `freellmapi-`) from the
-header of the Keys page.
+1. Open your gateway's address in a browser. It asks you to create the first
+   account, and for a **setup code**. The code is in the gateway's logs, on a
+   line reading `First-run setup code: …`:
+   - Railway: the service → **Deployments** → the active deployment →
+     **Deploy Logs**.
+   - Docker: `docker compose logs freellmapi`.
+
+   A new code is printed each time the gateway starts, until an account
+   exists. Use a strong password: this dashboard is reachable from the
+   internet.
+2. On the **Keys** page, add free-tier keys from a few providers. Two or
+   three are enough to start. More providers means more free capacity before
+   everything hits its daily cap, and caps reset at UTC midnight. Some places
+   to get one:
+   - Groq: [console.groq.com/keys](https://console.groq.com/keys)
+   - Google AI Studio: [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+   - Cerebras: [cloud.cerebras.ai](https://cloud.cerebras.ai)
+   - OpenRouter (its free models): [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)
+3. Copy the **unified API key** from the header of the Keys page. It starts
+   `freellmapi-`.
+
+**Choose providers with your users' privacy in mind.** Profiles and sessions
+here are intimate journaling. Some free tiers say they may use what is sent to
+them to train or improve their models, or that people may read it. Google's
+unpaid Gemini tier is one. FreeLLMAPI's own notes say its keyless Kilo
+provider logs free prompts for training. Read each provider's free-tier terms,
+and leave out or disable any you are not comfortable sending journaling to.
+Some free tiers also limit or forbid serving a public app. That is between you
+and each provider.
 
 ## 3. Connect it to Inner Table
 
-Set these on the Vercel project (Settings → Environment Variables), then
-redeploy:
+In Vercel, open the project → **Settings → Environment Variables**. Add these
+for both **Production** and **Preview**:
 
 | Variable | What it is |
 |---|---|
-| `FREELLMAPI_URL` | The gateway's address, e.g. `https://llm.example.com` (with or without `/v1`) |
+| `FREELLMAPI_URL` | The gateway's address, e.g. `https://freellmapi-production-1234.up.railway.app` (with or without `/v1`) |
 | `FREELLMAPI_KEY` | Its unified key, `freellmapi-…`. Mark it **Sensitive** |
 | `FREELLMAPI_MODEL` | Optional. Defaults to `auto` (the gateway's fallback chain); `auto:reliable`, `auto:smart` and the other routing strategies also work |
 | `FREE_AI_DAILY_LIMIT` | Optional. Messages per account per UTC day, default `200`; `0` means no cap |
@@ -100,15 +162,24 @@ README (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
 `SESSION_SECRET`), because it is only for signed-in accounts and the daily
 count lives in Upstash.
 
-Check it:
+Environment variables only reach a deployment made after they are set, so
+**redeploy**: Vercel → **Deployments** → the latest one → **Redeploy**.
 
-```sh
-curl https://your-app.vercel.app/api/free-ai
-# {"available":true,"daily":200}
-```
+### Check it
 
-The next time anyone opens the app, it notices the free AI. Starting a
-session with no AI of their own offers it.
+1. Open your app's address with `/api/free-ai` on the end, for example
+   `https://your-app.vercel.app/api/free-ai`. It should show:
+   ```
+   {"available":true,"daily":200}
+   ```
+   `"available":false` means the deployment doesn't have `FREELLMAPI_URL`,
+   `FREELLMAPI_KEY` or the account variables yet. Check them, and redeploy.
+2. Sign in and start a session. The first time, the app shows its one-time
+   free AI notice; press **Start**, and a reply should come back.
+
+To try it before it goes live, do both checks on a pull request's
+**preview** deployment: it has its own address, linked from the pull request,
+and uses the **Preview** variables.
 
 ## When something goes wrong
 

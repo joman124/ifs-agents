@@ -256,9 +256,11 @@ configured, sessions fall back to copy-prompt mode.
 | `FREELLMAPI_MODEL` | optional — `auto` by default |
 | `FREE_AI_DAILY_LIMIT` | optional — messages per account per day, `200` by default |
 
-FreeLLMAPI can't run on Vercel; it needs an always-on host. Hosting it,
-choosing providers with your users' privacy in mind, and the limits of
-free models are all covered in [docs/free-ai.md](docs/free-ai.md).
+FreeLLMAPI can't run on Vercel; it needs an always-on host. On Railway that
+is a few clicks in a browser. [docs/free-ai.md](docs/free-ai.md) walks
+through it step by step, along with your own server as the other option,
+choosing providers with your users' privacy in mind, and the limits of free
+models.
 
 ## Quickstart B — Claude Code
 

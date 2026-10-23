@@ -78,6 +78,19 @@ Part profiles are intimate personal data.
   and it hands you the session as a prompt to paste into an AI chat you
   already use. If you run a deployment, choose the gateway's providers with
   this in mind ([free-ai.md](free-ai.md)).
+- **What the app counts.** When you are signed in, the server notes which
+  days your account opened the app, so whoever runs the deployment can see
+  how many people come back. It keeps, for each day, a list of pseudonymous
+  ids (made from your username with a server secret, so the list holds no
+  names), and the day your account was made. Nothing about what you write,
+  which parts you have, or how long you stay is recorded, and there is no
+  third-party analytics. Each day's list is deleted after 150 days. The
+  Usage view shows only totals, and only to the accounts the deployment's
+  owner names (`STATS_USERS`); it never says which account came back when.
+  The lists sit on the deployment's own server, beside your parts, so
+  whoever runs it holds the secret that could match an id back to a
+  username - the same person who could already open your synced parts.
+  Using the app signed out is not counted at all.
 
 ## For people using this with others
 

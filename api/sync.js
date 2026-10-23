@@ -6,6 +6,7 @@
 "use strict";
 
 var crypto = require("crypto");
+var markActive = require("./_activity.js").markActive;
 
 function stateKey(username) { return "innertable:state:" + username; }
 // sessions the person's own AI saved through their link (api/bridge.js),
@@ -66,12 +67,18 @@ module.exports = async function handler(req, res) {
   var key = stateKey(session.u);
 
   if (req.method === "GET") {
-    var getRes = await fetch(base + "/get/" + key, {
+    var reading = fetch(base + "/get/" + key, {
       headers: { Authorization: "Bearer " + token }
     });
-    if (!getRes.ok) { res.status(502).json({ error: "Upstash read failed" }); return; }
+    // a pull is the app opening signed in: the day is marked alongside the
+    // read, never in its way (api/_activity.js - it cannot fail this)
+    var counted = markActive(base, token, secret, session.u);
+    var getRes = await reading;
+    if (!getRes.ok) { await counted; res.status(502).json({ error: "Upstash read failed" }); return; }
     var data = await getRes.json();
-    res.status(200).json({ state: data.result || null, inbox: await readInbox(base, token, session.u) });
+    var inbox = await readInbox(base, token, session.u);
+    await counted;
+    res.status(200).json({ state: data.result || null, inbox: inbox });
     return;
   }
 

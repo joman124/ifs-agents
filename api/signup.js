@@ -7,6 +7,7 @@
 "use strict";
 
 var crypto = require("crypto");
+var markNew = require("./_activity.js").markNew;
 
 function userKey(username) { return "innertable:user:" + username; }
 
@@ -47,6 +48,9 @@ module.exports = async function handler(req, res) {
     body: JSON.stringify({ salt: salt, hash: hash })
   });
   if (!written.ok) { res.status(502).json({ error: "Upstash write failed" }); return; }
+  // the day this account was made, so the returning-user counts can tell a
+  // newcomer from someone who was here before counting began
+  await markNew(base, token, process.env.SESSION_SECRET, username);
 
   res.status(200).json({ ok: true, username: username });
 };

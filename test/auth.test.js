@@ -74,8 +74,10 @@ module.exports = async function (t) {
     var made = res();
     await signup({ method: "POST", body: { username: "newcomer", password: "eight-plus" } }, made);
     t.eq(made.code, 200, "a free name creates an account");
-    t.ok(calls.length === 2 && calls[1].url.indexOf("innertable:user:newcomer") !== -1,
+    t.ok(calls.length === 3 && calls[1].url.indexOf("innertable:user:newcomer") !== -1,
       "it checks the name is free, then writes it");
+    t.ok(/"HSETNX","innertable:firstseen"/.test(calls[2].opts.body) && calls[2].opts.body.indexOf("newcomer") === -1,
+      "...then notes the day it was made, under a pseudonym rather than the name (api/_activity.js)");
     t.ok(!(made.body && made.body.token), "sign-up mints no session of its own");
 
     /* the takeover case: signing up as someone who exists must not overwrite
@@ -123,8 +125,14 @@ module.exports = async function (t) {
     t.eq(mine.code, 200, "a valid token reads");
     t.ok(calls.length >= 1 && calls[0].url.indexOf("innertable:state:alice") !== -1,
       "alice's token reads alice's key");
-    t.ok(calls.every(function (c) { return /innertable:(state|inbox):alice(\/|$)/.test(c.url); }),
+    // the one shared write is the day she opened the app (api/_activity.js),
+    // which carries a pseudonym and touches nothing of anyone's
+    var counting = calls.filter(function (c) { return /\/pipeline$/.test(c.url); });
+    t.ok(calls.every(function (c) { return /innertable:(state|inbox):alice(\/|$)/.test(c.url) || /\/pipeline$/.test(c.url); }),
       "...and nothing outside alice's own keys - her inbox of saved sessions included");
+    t.ok(counting.length === 1 && counting[0].opts.body.indexOf("alice") === -1 &&
+      JSON.parse(counting[0].opts.body).every(function (cmd) { return cmd[0] === "SADD" || cmd[0] === "EXPIRE" || cmd[0] === "HSETNX"; }),
+      "...and counting her day only adds a pseudonym to the day's list - no reads, no name");
 
     calls.length = 0;
     var bobToken = signWith(process.env.SESSION_SECRET, { u: "bob", exp: Date.now() + 60000 });

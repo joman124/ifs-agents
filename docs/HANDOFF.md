@@ -14,7 +14,10 @@ something real. It is on-device first — parts live in browser storage with an
 IndexedDB mirror — and signed-in users get two server-side services: **accounts
 with cloud sync** (the same parts on every device you sign in on) and
 **Web Push** for the daily check-in. The LLM sessions themselves still call the
-provider's API straight from the browser; there are no analytics anywhere.
+provider's API straight from the browser. There is no third-party analytics:
+the one thing counted is which days a signed-in account opens the app, under a
+pseudonymous id, so whoever runs the deployment can see how many people come
+back (*Returning users* below).
 
 It is the webapp half of **ifs-agents**, which also ships Claude Code skills and
 portable prompts that read and write the *same* `parts/<slug>.md` files.
@@ -32,7 +35,7 @@ portable prompts that read and write the *same* `parts/<slug>.md` files.
 | **Private repo** (real part data) | `joman124/ifs-agents-jm` — profiles, sessions, imports |
 | **Hosting** | Vercel project `ifs-agents`, auto-deploys every push to `main` |
 | **Vercel config** | `vercel.json` — serves `app/` as site root, `cleanUrls`, no-cache on `sw.js`; `api/` functions deploy as serverless endpoints |
-| **Server API** | `api/` — signup, login (scrypt-hashed passwords, HMAC-signed session tokens), state sync, Web Push subscription/sending. Stateless; all persistence is Upstash Redis. See *Server setup* below. |
+| **Server API** | `api/` — signup, login (scrypt-hashed passwords, HMAC-signed session tokens), state sync, Web Push subscription/sending, returning-user counts. Stateless; all persistence is Upstash Redis. See *Server setup* below. |
 | **State storage** | Signed-out: browser only (localStorage + IndexedDB mirror). Signed-in: same local storage as source of truth, plus a per-user state blob in Upstash Redis (`innertable:state:<username>`) for cross-device sync — whole-blob push/pull, reconciled before the first push, merged through `store.importAll` on pull. |
 | **CI** | `.github/workflows/test.yml` — runs `node test/run.js` on push and PR to `main`. (An earlier GitHub Pages workflow never succeeded and was deleted in `afb4b85`.) |
 
@@ -53,6 +56,7 @@ gracefully (local-only mode), it never crashes.
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | `node scripts/gen-vapid-keys.js` |
 | `VAPID_SUBJECT` | Web Push contact | `mailto:` address |
 | `FREELLMAPI_URL` / `FREELLMAPI_KEY` | the free AI (`api/free-ai.js`) — optional; without them the app simply offers no free AI | a FreeLLMAPI gateway you host, and its unified key — see `docs/free-ai.md`. Optional `FREELLMAPI_MODEL` (default `auto`) and `FREE_AI_DAILY_LIMIT` (default 200 per account per UTC day) |
+| `STATS_USERS` | Settings → Usage (`api/stats.js`) — optional | comma-separated usernames allowed to see how many people come back; to everyone else the section and the endpoint 404. `CRON_SECRET` as the bearer also reads `/api/stats`, for a script |
 | `CRON_SECRET` | check-in reminders (`api/push-remind.js`) | any long random string — Vercel sends it to the 24 daily crons in `vercel.json` (one per UTC hour: the Hobby-plan way to get an hourly clock); also set as a GitHub Actions secret of the same name for the backup tick in `.github/workflows/reminders.yml`. The endpoint notifies each device once a day at the hour chosen for it in Settings (8pm by default), on its own clock, up to 3 hours late if a run was missed, and never twice (`last` on the subscription); tapping the notification opens *Notice a part* |
 
 `scripts/add-user.js` provisions accounts from the command line when needed.
@@ -83,7 +87,10 @@ api/                 serverless functions (Vercel): signup, login, sync,
                      free-ai (the free AI: signed-in accounts' sessions relayed
                      to the deployment's FreeLLMAPI gateway, whose key never
                      leaves the server; per-account daily allowance in Upstash;
-                     SSE passed straight through - see docs/free-ai.md)
+                     SSE passed straight through - see docs/free-ai.md),
+                     stats (returning users, for the accounts in STATS_USERS;
+                     _activity.js marks the day on every pull - see
+                     *Returning users* below)
   root package.json  holds the `web-push` dependency for the functions only
 test/                node test/run.js — 741 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
@@ -125,6 +132,7 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `ui-ground.js` | 150 | *Ground me*: the person's own grounding plan, shaped like a safety plan (`store.plan`: warning signs, skills, people and places, contacts with call/text buttons, professionals, a safer space, reasons) - drawn into the grounding page and edited in place. It syncs, and `templates.groundingBlock` adds the skills and signs (never names or numbers) to every session prompt, in the app and through the bridge |
 | `ui-connect.js` | 52 | The free AI's one-time notice (`offerFree`): what it is, where the words go, Start or copy-prompt instead; `sayYes` and the shared `WHERE_WORDS_GO` sentence. The connect-a-key and "where would you like to talk?" sheets are gone |
 | `ui-practice.js` | 139 | The daily practice: *Notice a part* (ten seconds, no AI — a `notice` entry with an optional `feel` word in the part's own session log, which the next check-in reads as memory), and *Looking back* (`schema.lookBack`: who you sat with, how your feeling toward each part moved, threads that warmed, over 30 days) |
+| `ui-usage.js` | 87 | Settings → *Usage*, for whoever runs the deployment: asks `/api/stats` once per account per run, and only an account in `STATS_USERS` gets anything back - for everyone else the section never appears |
 | `app.js` | 49 | Boot, SW registration, storage persistence |
 
 ## The three tabs, and the profile menu
@@ -325,6 +333,31 @@ gets a 404 and sends nothing.
 - Only base64 jpeg/png/webp under `IMAGE_MAX_CHARS` counts as a picture
   (`schema.cleanImage`), checked on every way in (backups, the blob, imports)
   and again where one is drawn. A backup keeps them; the sync blob does not.
+
+### Returning users — `api/_activity.js` ⇄ `api/stats.js`
+
+The one thing the app counts. Every authenticated `GET /api/sync` - which is
+the app opening signed in, coming back to the foreground, *Sync now*, or
+signing in - adds the account to that UTC day's set,
+`innertable:active:<YYYY-MM-DD>` (expires after 150 days), in one Upstash
+pipeline sent alongside the state read and never awaited in its way: a
+failure is swallowed, and the pull answers exactly as it would have. The id
+is `HMAC-SHA256(SESSION_SECRET, "activity:" + username)`, first 16 hex
+characters, so the keys never hold a name. `innertable:firstseen` maps an id
+to the day the account was made: `api/signup.js` writes it (HSETNX) before
+sign-up answers, so a pull that finds no entry is an account from before
+counting began and is stored as `"before"` - it counts as returning, never as
+new, and sits in no cohort. Accounts made with `scripts/add-user.js` land
+there too.
+
+`api/stats.js` reads the last 56 day sets and the first-seen hash in one
+pipeline and `summarize()`s them: returning this week, new this week, the
+share who came back within 7 days of their first day (only first days 8-35
+days ago, so nobody still inside their week counts as gone), active
+today/7/28 days, and eight rolling weekly cohorts. It answers a session
+whose username is in `STATS_USERS`, or `CRON_SECRET` as the bearer; anyone
+else gets a 404 before the database is touched. Nothing here may ever record
+content, durations, or anything but the day.
 
 ## Invariants — do not break these
 

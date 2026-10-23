@@ -3392,6 +3392,9 @@
       return v ? esc(v.name) : "your device&rsquo;s voice";
     };
     var linkName = linked ? "Linked to " + esc(PROVIDER_NAMES[s.provider]) : "Your private link";
+    // how many people come back - only ever there for whoever runs the
+    // deployment (ui-usage.js); null for everyone else
+    var usage = window.IFS.ui.usage ? window.IFS.ui.usage.current() : null;
 
     $("#settingsPane").innerHTML =
       group("setAccount", "user", "Account",
@@ -3402,6 +3405,11 @@
             row("sync", "Sync now", "pull in changes from your other devices", '<button class="btn btn-soft" id="syncNowBtn">Sync</button>') +
             row("logout", "Sign out", "closes your parts and returns to the sign-in screen", '<button class="btn btn-soft" id="signOutBtn">Sign out</button>')
           : row("user", "Not signed in", "sign in to reach your parts", '<button class="btn btn-soft" id="signInBtn">Sign in</button>')) +
+
+      (usage
+        ? group("setUsage", "spark", "Usage", esc(String(usage.returningThisWeek || 0)) + " came back this week",
+          window.IFS.ui.usage.body(usage))
+        : "") +
 
       (ownKey || linked || link
         ? group("setOwnAi", "chat", "Your own AI", ownKey ? esc(LLM.label(s.ai)) : linkName,

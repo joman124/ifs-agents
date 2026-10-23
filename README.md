@@ -209,6 +209,27 @@ only ever holds a signed session token. This is still a journaling tool, not
 a therapy record system — the [safety guide](docs/safety.md) applies doubly
 once profiles are on a server.
 
+### Returning users
+
+For whoever runs a deployment, the app counts **how many people come back**,
+and nothing else. A day counts when a signed-in account opens the app; the
+server keeps, per UTC day, a list of pseudonymous ids (an HMAC of the
+username, never the name), plus the day each account was made. Nothing about
+what anyone writes is recorded, there is no third-party analytics, and
+signed-out use is not counted at all. Day lists expire after 150 days.
+
+The totals - who came back this week, who is new, how many came back within
+a week of their first day, weekly cohorts - appear in **Settings → Usage**,
+only for the accounts you name:
+
+| Variable | Where it comes from |
+|---|---|
+| `STATS_USERS` | optional - comma-separated usernames allowed to see Usage; to everyone else the section and `/api/stats` don't exist |
+
+A script can read the same JSON from `/api/stats` with `CRON_SECRET` as the
+bearer token. Accounts made before counting began count as returning, never
+as new.
+
 ### Push notifications
 
 A signed-in user can turn on notifications for one device at a time, from

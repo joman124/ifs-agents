@@ -6,6 +6,7 @@
   var ST = window.IFS.store;
   var T = window.IFS.templates;
   var LLM = window.IFS.llm;
+  var IN = window.IFS.integrate;
   var G = window.IFS.graph;
   var V = window.IFS.voice;
   var Q = window.IFS.questions;
@@ -2208,14 +2209,9 @@
   }
 
   /* What the model wrote, merged onto what's already stored - straight in,
-     nothing to confirm. Anything the model left out is kept, so a thin
-     closing reply can never quietly delete a field, and new text is added
-     under the old rather than replacing it (schema.mergeSession). */
-  function saveMerge(incoming) {
-    var merged = incoming.map(function (p) { return S.mergeSession(ST.getPart(p.slug), p); });
-    merged.forEach(function (p) { ST.upsertPart(p); });
-    return merged;
-  }
+     nothing to confirm, and nothing the closing reply left out is lost
+     (integrate.js, which writes conversations into parts the same way). */
+  var saveMerge = IN.saveMerge;
 
   /* A session held here leaves a dated line on each part it was about, even
      when the closing reply's profile skipped its sessions entry or never
@@ -2354,65 +2350,23 @@
     return out;
   }
 
-  /* "The Wandering Magician", "Wandering Magician", "the wandering-magician"
-     all name the same part. */
-  /* Whether a part already holds a profile update from that day: anything in
-     its log but a conversation's line or a quick notice. This, not a mark on
-     the transcript, is what says a conversation was written in - a mark can
-     be left by an attempt that saved nothing. */
-  function updatedOn(part, date) {
-    return (part.sessions || []).some(function (x) { return x.date === date && x.mode !== "talk" && x.mode !== "notice"; });
-  }
-
-  function nameKey(n) { return String(n || "").toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]+/g, ""); }
-
-  /* One call to the connected AI: this finished transcript, written into
-     these parts as profile updates, merged straight in. Only the parts that
-     actually came back are marked as written in; the rest are tried again
-     later (up to three times). Throws if the call itself fails. */
-  async function integrateTranscript(t, slugs) {
-    var parts = slugs.map(ST.getPart).filter(Boolean);
-    if (!parts.length) return [];
-    var reply = await LLM.chat(sessionAi(), T.integrateSystem(parts, ST.listParts()),
-      [{ role: "user", text: T.integrateAsk(parts.map(function (p) { return p.name; }), t.text, t.date) }]);
-    var want = {};
-    parts.forEach(function (p) { want[nameKey(p.name)] = p; want[nameKey(p.slug)] = p; });
-    var incoming = [];
-    try { incoming = MD.extractProfiles(reply); } catch (e) { console.error(e); }
-    // asked for one part and handed one profile: that is the part, whatever it was called
-    if (parts.length === 1 && incoming.length === 1) { incoming[0].slug = parts[0].slug; incoming[0].name = parts[0].name; }
-    incoming = incoming.map(function (p) {
-      var hit = want[nameKey(p.slug)] || want[nameKey(p.name)];
-      if (!hit) return null;
-      p.slug = hit.slug; p.name = hit.name;
-      return p;
-    }).filter(Boolean);
-    var saved = saveMerge(incoming);
-    // the update's own line in the log, dated the day of the conversation,
-    // in case the reply left its sessions entry out
-    saved.forEach(function (p) {
-      var cur = ST.getPart(p.slug);
-      if (!updatedOn(cur, t.date)) {
-        cur.sessions.push({ date: t.date, mode: "checkin", categories: [], note: "Conversation written into the profile" });
-        ST.upsertPart(cur);
-      }
-    });
-    var done = saved.map(function (p) { return p.slug; });
-    if (done.length) ST.markIntegrated(t.id, done);
-    var left = parts.filter(function (p) { return done.indexOf(p.slug) < 0; });
-    if (left.length) ST.noteIntegrateTry(t.id, left.map(function (p) { return p.slug; }));
-    return saved;
+  /* The names of these parts that the conversation from `date` has not
+     reached yet - after a failed call, the ones written before it have. */
+  function notYet(slugs, date) {
+    return slugs.map(ST.getPart).filter(function (p) { return p && !IN.updatedOn(p, date); })
+      .map(function (p) { return p.name; }).join(", ");
   }
 
   async function followUpIntegrate(transcriptId, slugs) {
     var t = ST.state.transcripts.filter(function (x) { return x.id === transcriptId; })[0];
     if (!t || !LLM.configured(sessionAi())) return;
     try {
-      var saved = await integrateTranscript(t, slugs);
+      var saved = await IN.transcript(sessionAi(), t, slugs);
       if (saved.length) { renderParts(); toast("Added this conversation to " + saved.map(function (p) { return p.name; }).join(", ")); }
       else toast("The AI didn't write that conversation into the profile - it will try again next time you open the app");
     } catch (e) {
-      toast("Couldn't write it into " + slugs.map(function (sl) { var p = ST.getPart(sl); return p ? p.name : sl; }).join(", ") + " yet - it will try again next time");
+      renderParts();
+      toast("Couldn't write it into " + notYet(slugs, t.date) + " yet - it will try again next time");
     }
   }
 
@@ -2425,9 +2379,9 @@
   function transcriptFor(note, talks) {
     var same = talks.filter(function (t) { return t.date === note.date && (!t.journal || t.journal === note.id); });
     if (!same.length) return null;
-    var keys = slugsOf(note.parts).map(function (sl) { return nameKey(ST.getPart(sl).name); });
+    var keys = slugsOf(note.parts).map(function (sl) { return IN.nameKey(ST.getPart(sl).name); });
     var score = function (t) {
-      var flat = nameKey(t.text);
+      var flat = IN.nameKey(t.text);
       return keys.filter(function (k) { return k && flat.indexOf(k) >= 0; }).length * 1e6 + (t.text || "").length;
     };
     return same.sort(function (a, b) { return score(b) - score(a); })[0];
@@ -2447,21 +2401,22 @@
         if (!t.journal) ST.linkTranscript(t.id, j.id);
         var tries = t.integrateTries || {};
         var missing = slugsOf(j.parts).filter(function (sl) {
-          return (tries[sl] || 0) < 3 && !updatedOn(ST.getPart(sl), t.date);
+          return (tries[sl] || 0) < 3 && !IN.updatedOn(ST.getPart(sl), t.date);
         });
         if (missing.length) queue.push({ t: t, slugs: missing });
       });
       for (var i = 0; i < queue.length && i < 3; i++) {
         var names = queue[i].slugs.map(function (sl) { return ST.getPart(sl).name; }).join(", ");
         try {
-          var saved = await integrateTranscript(queue[i].t, queue[i].slugs);
+          var saved = await IN.transcript(sessionAi(), queue[i].t, queue[i].slugs);
           renderParts();
           toast(saved.length
             ? "Added your " + queue[i].t.date + " conversation to " + saved.map(function (p) { return p.name; }).join(", ")
             : "Couldn't add your " + queue[i].t.date + " conversation to " + names + " yet - trying again next time");
         } catch (e) {
           // offline or out of credit: try again next open, and say why
-          toast("Couldn't add your " + queue[i].t.date + " conversation to " + names + ": " + (e.message || "the AI didn't answer"));
+          renderParts();
+          toast("Couldn't add your " + queue[i].t.date + " conversation to " + notYet(queue[i].slugs, queue[i].t.date) + ": " + (e.message || "the AI didn't answer"));
           break;
         }
       }

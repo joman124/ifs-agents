@@ -199,15 +199,38 @@
       return (data.content || []).map(function (b) { return b.type === "text" || !b.type ? b.text || "" : ""; }).join("");
     }
     var msg = data.choices && data.choices[0] && data.choices[0].message;
-    return (msg && msg.content) || "";
+    var content = msg && msg.content;
+    // some OpenAI-style servers send the text as a list of parts
+    if (Array.isArray(content)) return content.map(function (c) { return typeof c === "string" ? c : (c && c.text) || ""; }).join("");
+    return content || "";
   }
 
-  function emptyReply(provider, data) {
-    if (provider === "anthropic" && data && data.stop_reason === "refusal") {
-      return new Error("Claude stopped there - it declined to go on with this. Try saying it another way, or close the session.");
+  /* Why the provider stopped, in its own words: "length", "MAX_TOKENS" and
+     "max_tokens" all mean the model ran out of room before it wrote
+     anything - usually by thinking first. */
+  function stopReason(provider, data) {
+    if (!data) return "";
+    if (provider === "gemini") {
+      var cand = data.candidates && data.candidates[0];
+      return (cand && cand.finishReason) || (data.promptFeedback && data.promptFeedback.blockReason) || "";
     }
-    var why = provider === "gemini" && data && data.candidates && data.candidates[0] && data.candidates[0].finishReason;
-    return new Error(NAMES[provider] + " returned an empty reply" + (why ? " (" + why + ")" : "") + ".");
+    if (provider === "anthropic") return data.stop_reason || "";
+    var choice = data.choices && data.choices[0];
+    return (choice && choice.finish_reason) || "";
+  }
+
+  /* Marked empty, so a caller can tell an AI that answered with nothing from
+     one that could not be reached. */
+  function emptyReply(provider, data) {
+    var err;
+    if (provider === "anthropic" && data && data.stop_reason === "refusal") {
+      err = new Error("Claude stopped there - it declined to go on with this. Try saying it another way, or close the session.");
+    } else {
+      var why = stopReason(provider, data);
+      err = new Error(NAMES[provider] + " returned an empty reply" + (why ? " (" + why + ")" : "") + ".");
+    }
+    err.empty = true;
+    return err;
   }
 
   /* Send it; if an account turns down the refusal-fallback option (a 400

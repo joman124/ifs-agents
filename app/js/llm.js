@@ -74,11 +74,17 @@
     return provider + " error " + status + (said || ".");
   }
 
-  async function withRetry(fn) {
-    var delays = [0, 1500, 4000];
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* A retryable error may say how long to wait (e.wait, from the free AI's
+     server, which knows when a model has room again); otherwise the next
+     delay in the list. */
+  async function withRetry(fn, delays) {
+    delays = delays || [0, 1500, 4000];
     var lastErr;
     for (var i = 0; i < delays.length; i++) {
-      if (delays[i]) await new Promise(function (r) { setTimeout(r, delays[i]); });
+      var wait = i && lastErr && lastErr.wait != null ? lastErr.wait : delays[i];
+      if (wait) await sleep(wait);
       try { return await fn(); }
       catch (e) {
         lastErr = e;
@@ -86,6 +92,31 @@
       }
     }
     throw lastErr;
+  }
+
+  /* ---------------- the free AI's own errors ----------------
+     Its server has already tried every model it routes to before it answers
+     with an error, so retrying blind - 1.5 and 4 seconds later - only asks
+     the same full models again and spends their per-minute quota. It says
+     what kind of error it is and, when the models are only busy, when one
+     has room again; a wait longer than WAIT_MAX is not worth holding a
+     reply for. */
+  var WAIT_MAX = 30000;
+
+  function freeError(status, bodyText) {
+    var err = new Error(friendly(status, bodyText, NAMES.free));
+    var e = {};
+    try { e = JSON.parse(bodyText).error || {}; } catch (x) {}
+    var wait = Math.max(1, Number(e.retry_after) || 0) * 1000;
+    err.status = status;
+    err.code = typeof e.code === "string" ? e.code : "";
+    // busy: every model it routes to is at its per-minute limit just now
+    if (status === 503 && err.code !== "unavailable" && wait <= WAIT_MAX) { err.retryable = true; err.wait = Number(e.retry_after) ? wait : 5000; }
+    // the gateway itself could not be reached: once more, shortly
+    else if (status === 502 && err.code !== "unavailable") { err.retryable = true; err.wait = 2000; }
+    // the rest is final: the day's allowance, a session too long, sign in again
+    else err.final = true;
+    return err;
   }
 
   /* ---------------- request shapes ----------------
@@ -171,17 +202,20 @@
 
   /* The free AI: the app's own endpoint, which holds the gateway's key and
      answers in the chat-completions dialect. Only the session's words go;
-     the model is the server's choice. */
-  function freeRequest(ai, system, messages, stream) {
+     the model is the server's choice. opts.json asks for one JSON object
+     back, which the server holds the provider to. */
+  function freeRequest(ai, system, messages, stream, opts) {
+    var body = { system: system, messages: messages.map(function (m) { return { role: m.role, text: m.text }; }), stream: !!stream };
+    if (opts && opts.json) body.json = true;
     return {
       url: "/api/free-ai",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + ai.key },
-      body: { system: system, messages: messages.map(function (m) { return { role: m.role, text: m.text }; }), stream: !!stream }
+      body: body
     };
   }
 
-  function request(ai, system, messages, stream, noFallback) {
-    if (ai.provider === "free") return freeRequest(ai, system, messages, stream);
+  function request(ai, system, messages, stream, noFallback, opts) {
+    if (ai.provider === "free") return freeRequest(ai, system, messages, stream, opts);
     if (ai.provider === "gemini") return geminiRequest(ai, system, messages, stream);
     if (ai.provider === "anthropic") return anthropicRequest(ai, system, messages, stream, noFallback);
     return chatCompletionsRequest(ai, system, messages, stream);
@@ -235,8 +269,8 @@
 
   /* Send it; if an account turns down the refusal-fallback option (a 400
      naming it), send it once more without - the session matters more. */
-  async function send(ai, system, messages, stream) {
-    var req = request(ai, system, messages, stream);
+  async function send(ai, system, messages, stream, opts) {
+    var req = request(ai, system, messages, stream, false, opts);
     var res = await fetch(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body) });
     if (res.status === 400 && req.body.fallbacks) {
       var said = "";
@@ -249,22 +283,27 @@
     return res;
   }
 
-  async function chat(ai, system, messages) {
+  /* opts.json: the reply should be one JSON object (a write-in). opts.tries:
+     how many times to ask in all, for a caller that has already waited. */
+  async function chat(ai, system, messages, opts) {
     if (!configured(ai)) throw new Error("No AI connected. Connect one in Settings, or use copy-prompt mode.");
+    opts = opts || {};
+    var free = ai.provider === "free";
+    var delays = free ? [0, 0] : [0, 1500, 4000];
     return withRetry(async function () {
-      var res = await send(ai, system, messages, false);
+      var res = await send(ai, system, messages, false, opts);
       if (!res.ok) {
         var txt = await res.text();
+        if (free) throw freeError(res.status, txt);
         var err = new Error(friendly(res.status, txt, NAMES[ai.provider]));
-        // the free AI's 429 is the day's allowance, which waiting seconds won't bring back
-        err.retryable = res.status >= 500 || (res.status === 429 && ai.provider !== "free");
+        err.retryable = res.status >= 500 || res.status === 429;
         throw err;
       }
       var data = await res.json();
       var text = replyText(ai.provider, data);
       if (!text) throw emptyReply(ai.provider, data);
       return text;
-    });
+    }, delays.slice(0, opts.tries || delays.length));
   }
 
   /* ---------------- streaming ---------------- */
@@ -309,7 +348,11 @@
 
   async function stream(ai, system, messages, onDelta) {
     var res = await send(ai, system, messages, true);
-    if (!res.ok) throw new Error(friendly(res.status, await res.text(), NAMES[ai.provider]));
+    if (!res.ok) {
+      var txt = await res.text();
+      if (ai.provider === "free") throw freeError(res.status, txt);
+      throw new Error(friendly(res.status, txt, NAMES[ai.provider]));
+    }
     var text = "";
     var stop = null;
     await readSSE(res, function (data) {
@@ -327,16 +370,21 @@
 
   /* Stream when possible; if the stream setup or transport fails for any
      reason, fall back to the plain call (which has retry-with-backoff). A
-     refusal is an answer, not a transport failure, so it is not retried. */
+     refusal is an answer, not a transport failure, so it is not retried.
+     Nor is a free AI answer that is final (the day's allowance, a session
+     too long): asking again the plain way would only be told the same. When
+     it is busy, the plain call waits as long as its server says, once. */
   async function chatStream(ai, system, messages, onDelta) {
     if (!configured(ai)) throw new Error("No AI connected. Connect one in Settings, or use copy-prompt mode.");
+    var waited = false;
     try {
       return await stream(ai, system, messages, onDelta || function () {});
     } catch (e) {
-      if (/declined to go on/.test(e.message)) throw e;
+      if (/declined to go on/.test(e.message) || e.final) throw e;
       console.warn("stream failed, falling back to plain call:", e.message);
+      if (e.wait) { await sleep(e.wait); waited = true; }
     }
-    return chat(ai, system, messages);
+    return chat(ai, system, messages, waited ? { tries: 1 } : null);
   }
 
   function configured(ai) {

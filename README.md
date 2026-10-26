@@ -274,8 +274,14 @@ configured, sessions fall back to copy-prompt mode.
 |---|---|
 | `FREELLMAPI_URL` | your FreeLLMAPI gateway's HTTPS address |
 | `FREELLMAPI_KEY` | its unified key (`freellmapi-…`) from the gateway's Keys page |
-| `FREELLMAPI_MODEL` | optional — `auto` by default |
-| `FREE_AI_DAILY_LIMIT` | optional — messages per account per day, `200` by default |
+| `FREELLMAPI_MODEL` | optional — the models to try, in order, comma-separated; the gateway's own `auto` routing is always tried last. `auto` alone by default |
+| `FREE_AI_DAILY_LIMIT` | optional — messages per account per day, `500` by default |
+
+A model too small for a request, or at its per-minute limit, hands the
+request on to the next one instead of failing the person. Most of the free
+capacity is in a few providers: a gateway with only Groq's free tier runs out
+after a request or two a minute, because each session sends the person's whole
+inner system. [docs/free-ai.md](docs/free-ai.md) says which providers to add.
 
 FreeLLMAPI can't run on Vercel; it needs an always-on host. On Railway that
 is a few clicks in a browser. [docs/free-ai.md](docs/free-ai.md) walks

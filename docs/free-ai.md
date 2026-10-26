@@ -18,8 +18,13 @@ Groq, Cerebras, Mistral, OpenRouter's free models and so on.
 - **The gateway key never reaches the browser.** It lives only in a Vercel
   environment variable. The app sends nothing but the person's signed session.
 - **Only signed-in accounts can use it.** Every account gets a **daily
-  allowance**, 200 messages by default, so one person cannot use up the free
+  allowance**, 500 messages by default, so one person cannot use up the free
   quota everyone shares. A request that fails is not counted.
+- **A model that can't take a request passes it on.** Inner Table tries the
+  models you list in `FREELLMAPI_MODEL` in order, and the gateway's own
+  routing last. A model too small for the request, or at its per-minute
+  limit, hands it to the next one instead of failing the person. See *How a
+  request is routed* below.
 - **Nothing to set up.** The app has no AI settings: sessions run on the free
   AI. People who connected their own key, or linked their Claude, ChatGPT or
   Gemini app, before this keep using it. They can disconnect it under
@@ -125,14 +130,32 @@ account per day.
    A new code is printed each time the gateway starts, until an account
    exists. Use a strong password: this dashboard is reachable from the
    internet.
-2. On the **Keys** page, add free-tier keys from a few providers. Two or
-   three are enough to start. More providers means more free capacity before
-   everything hits its daily cap, and caps reset at UTC midnight. Some places
-   to get one:
-   - Groq: [console.groq.com/keys](https://console.groq.com/keys)
+2. On the **Keys** page, add free-tier keys from a few providers. More
+   providers means more free capacity before everything hits its cap, and
+   daily caps reset at UTC midnight. **Pick them for tokens per minute**,
+   not just requests. Every session request carries the person's whole inner
+   system, 4,000 to 10,000 tokens, and a model that takes only 8,000 tokens a
+   minute fits about one of those a minute, for all your users together.
+   These are the free-tier numbers in FreeLLMAPI's own catalog. Check each
+   provider's current page, since they change:
+
+   | Provider | Tokens a minute | Context | Fit for Inner Table |
+   |---|---|---|---|
+   | Google AI Studio (Gemini Flash, Flash-Lite) | 250,000 | 1M | The most room by far, but read the privacy note below |
+   | Mistral | 500,000 | 128k+ | Lots of tokens, only about 2 requests a minute |
+   | Cerebras | 30,000 | 131k | Good |
+   | OpenRouter `:free` models | no token cap | 131k+ | 20 a minute, but a small daily cap per key |
+   | Groq Llama 4 Scout | 30,000 | — | Good |
+   | Groq gpt-oss, Llama 3.3, Qwen | 6,000–12,000 | 131k | Too small on its own: one or two requests a minute |
+
+   A gateway with **only Groq** keys is the one setup that will keep saying
+   "at its limit" here. Add at least one of the first three. Where to get
+   keys:
    - Google AI Studio: [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
    - Cerebras: [cloud.cerebras.ai](https://cloud.cerebras.ai)
+   - Mistral: [console.mistral.ai](https://console.mistral.ai)
    - OpenRouter (its free models): [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)
+   - Groq: [console.groq.com/keys](https://console.groq.com/keys)
 3. Copy the **unified API key** from the header of the Keys page. It starts
    `freellmapi-`.
 
@@ -154,8 +177,8 @@ for both **Production** and **Preview**:
 |---|---|
 | `FREELLMAPI_URL` | The gateway's address, e.g. `https://freellmapi-production-1234.up.railway.app` (with or without `/v1`) |
 | `FREELLMAPI_KEY` | Its unified key, `freellmapi-…`. Mark it **Sensitive** |
-| `FREELLMAPI_MODEL` | Optional. Defaults to `auto` (the gateway's fallback chain); `auto:reliable`, `auto:smart` and the other routing strategies also work |
-| `FREE_AI_DAILY_LIMIT` | Optional. Messages per account per UTC day, default `200`; `0` means no cap |
+| `FREELLMAPI_MODEL` | Optional. The models to try, in order, comma-separated, for example `gemini-2.5-flash, auto:smart`. The gateway's own `auto` routing is always tried last, and is all there is when this is unset. Routing strategies (`auto:reliable`, `auto:smart`…) and your gateway's profiles (`auto:<name>`) work too. See *How a request is routed* |
+| `FREE_AI_DAILY_LIMIT` | Optional. Messages per account per UTC day, default `500`; `0` means no cap |
 
 The free AI also needs the account variables already described in the
 README (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
@@ -170,7 +193,7 @@ Environment variables only reach a deployment made after they are set, so
 1. Open your app's address with `/api/free-ai` on the end, for example
    `https://your-app.vercel.app/api/free-ai`. It should show:
    ```
-   {"available":true,"daily":200}
+   {"available":true,"daily":500}
    ```
    `"available":false` means the deployment doesn't have `FREELLMAPI_URL`,
    `FREELLMAPI_KEY` or the account variables yet. Check them, and redeploy.
@@ -181,19 +204,73 @@ To try it before it goes live, do both checks on a pull request's
 **preview** deployment: it has its own address, linked from the pull request,
 and uses the **Preview** variables.
 
+## How a request is routed
+
+The gateway never moves a request on from a model you **name** to a
+*different* model. It only tries other keys of that same model. So if
+`FREELLMAPI_MODEL` names a single small model, every request that model
+can't take fails, however much room the other models have. With Groq's
+`openai/gpt-oss-20b` (8,000 tokens a minute), that means:
+
+- `413 Request too large ... Limit 8000, Requested 9391`: a relationship
+  mapping, or a long session, can never fit.
+- `429 Rate limit reached ... Limit 8000, Used 5572, Requested 4324`: the
+  second request in any minute fails. That includes the step that writes a
+  finished conversation into each part's profile, which asks once per part,
+  one after another.
+
+So Inner Table treats `FREELLMAPI_MODEL` as a **ladder**:
+
+1. It tries each model you list, in order.
+2. A model that answers `413` is not asked for a request that size again for
+   six hours.
+3. A model that answers `429` rests for as long as it said, so later requests
+   skip straight past it. That memory is per server instance, so treat it as
+   a shortcut, not a guarantee.
+4. The gateway's own `auto` routing is always the last rung. It knows each
+   model's context window and per-minute limits, and moves between models
+   itself.
+
+Only when every rung fails does the person see an error. If the models are
+only busy, the app waits as long as the gateway says one needs, up to 30
+seconds, and asks once more.
+
+What to set:
+
+- **Unset, or `auto`**: the gateway picks. This is the simplest choice, and
+  right for most setups.
+- **A model you prefer, then auto**, e.g. `gemini-2.5-flash`: it is tried
+  first, and anything it can't take goes to `auto`.
+- **Not a small model on its own.** Naming one is harmless now, since
+  anything it can't take falls through. But every request it turns down
+  costs a round trip first.
+
+Writing a conversation into a profile asks for a small JSON answer
+(`response_format: json_object`). The gateway sends those only to models
+that can return JSON, and checks the reply.
+
 ## When something goes wrong
 
 - People see plain messages, for example "Every free model is at its limit
   right now". The gateway's actual reason is logged by the function. Look in
-  Vercel → the project → Logs for lines starting `free-ai: gateway answered`.
+  Vercel → the project → Logs:
+  - `free-ai: gateway answered 429 for openai/gpt-oss-20b: …` is what one
+    model said.
+  - `free-ai: answered on auto (google/gemini-2.5-flash) after passing over
+    openai/gpt-oss-20b (429)` says which model answered in the end, and
+    what was passed over on the way.
 - `401` / `403` in those logs: `FREELLMAPI_KEY` doesn't match the
   gateway's unified key. The key changes if it is regenerated in the
   dashboard.
 - `429` / `503` with `no_providers_configured` or `quota_exceeded`: no
   provider key has room. Add more providers, or wait for the UTC reset.
-- `413`: a session's prompt is over the gateway's token budget. It carries
-  the person's whole inner system, so very large systems can hit this on
-  models with small context windows.
+- `429` naming **tokens per minute (TPM)**, again and again, even for `auto`:
+  your providers are too small for these prompts. See the table in step 2,
+  and add Google AI Studio, Cerebras or Mistral.
+- `413`: a session's prompt is over a model's token budget. It carries the
+  person's whole inner system. If it comes from every rung, including
+  `auto`, no model you have keys for can take it. Add a provider with a
+  bigger context window.
 
 ## Limits to keep in mind
 

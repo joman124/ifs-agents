@@ -121,12 +121,18 @@ module.exports = function (t) {
   t.ok(/do not repeat what you already know/.test(tk) && !/## The profile files/.test(tk), "...and asks for updates of what is new, not whole profile files");
   t.ok(/An update for EVERY part in that parts line/.test(tk), "...one for every part that took part, so the conversation reaches each profile");
   var ask = T.integrateAsk(["The Watcher"], "YOU: hi", "2026-10-15");
-  t.ok(/only these: The Watcher/.test(ask) && /Session notes entry 2026-10-15, not today/.test(ask) && /do not continue it/.test(ask),
+  t.ok(/only these: The Watcher/.test(ask) && /on 2026-10-15, not today/.test(ask) && /do not continue it/.test(ask) && !/mapped how/.test(ask),
     "a follow-up asks only for the missing parts, dated the day of the conversation");
+  t.ok(/This session mapped how The Watcher and The Dreamer relate/.test(T.integrateAsk(["The Watcher"], "YOU: hi", "2026-10-15", { pair: ["The Watcher", "The Dreamer"] })),
+    "...and after a mapping, for the relationship between the pair");
   var isys = T.integrateSystem([known], [known, dreamer2]);
-  t.ok(/You are not in a conversation/.test(isys) && !/Begin now/.test(isys) && /Output only the fenced blocks/.test(isys),
-    "...under a prompt whose one job is writing updates, not one that tells the model to open a conversation");
-  t.ok(/name: The Watcher/.test(isys), "...and that shows the part's profile as it stands, so only what is new is written");
+  t.ok(/You are not in a conversation/.test(isys) && !/Begin now/.test(isys) && /one JSON object and nothing else/.test(isys),
+    "...under a prompt whose one job is writing an update, not one that tells the model to open a conversation");
+  t.ok(/## The Watcher, as its profile stands now/.test(isys) && /- Kind of part: manager/.test(isys),
+    "...and that shows the part's profile as it stands, so only what is new is written");
+  t.ok(/- the-dreamer \(The Dreamer\)/.test(isys) && !/- the-watcher \(/.test(isys) && /protected-by/.test(isys),
+    "...with the other parts' slugs and the five edge types, so a relationship can land on the map");
+  t.ok(isys.length < 6000, "...and is small: a brief and a key list, not a whole profile file and its format spec (" + isys.length + " chars)");
 
   /* a talk stays small enough for a linked AI to take as one tool result,
      however many parts there are - it once carried every profile file whole */

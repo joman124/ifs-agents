@@ -768,34 +768,56 @@
   /* Its own system prompt, not a session's: a session prompt ends by telling
      the model to open the conversation, and a model handed a transcript
      under it may do exactly that - greet, ask a question - instead of
-     writing anything down. This one has a single job. */
+     writing anything down. This one has a single job: one part, and only
+     what is new about it, as one small JSON object (integrate.js reads it).
+     A whole profile file was the longest, most exacting thing the app asked
+     a model to write - every key, nine coverage lines, six headings - and the
+     free models dropped it: they ran out of room, or bent the YAML until it
+     no longer read. A few keys of JSON fits any model, and the free AI holds
+     the provider to it (JSON mode). */
   function integrateSystem(parts, roster) {
+    var part = parts[0];
+    var others = (roster || []).filter(function (p) { return p.slug !== part.slug; });
     return [
-      "You keep a person's Inner Table profiles: written profiles of their inner parts, from Internal Family Systems-style self-exploration (journalling, not therapy). You are not in a conversation with anyone. You are given the transcript of a conversation that has already happened, and you write profile updates from it - nothing else.",
+      "You keep a person's Inner Table profiles: written profiles of their inner parts, from Internal Family Systems-style self-exploration (journalling, not therapy). You are not in a conversation with anyone. You are given the transcript of a conversation that has already happened, and you write down what it showed about one part - nothing else.",
       "",
-      "## The parts, as their profiles stand now",
-      parts.map(profileBlock).join("\n\n"),
+      "## " + part.name + ", as its profile stands now",
+      briefLines(part, roster),
       "",
       "## The person's other parts (for relationships - use these slugs)",
-      (roster || []).map(function (p) { return "- " + p.slug + " (" + p.name + ")"; }).join("\n"),
+      others.length ? others.map(function (p) { return "- " + p.slug + " (" + p.name + ")"; }).join("\n") : "- none yet",
       "",
-      "## How to write each update",
-      "- One fenced ```markdown block per part asked for, in the profile format below, with the part's exact name.",
-      "- Hold what this conversation showed about that part: its own words (quoted, in In its own words), what it did or wanted, what activates it, fears, needs, its job and age if it said, how it relates to another part, how the person felt toward it. Only what the transcript says - never invent.",
-      "- Do not repeat what the profile above already says. Leave every field and section with nothing new empty: Inner Table adds the update to what is stored, combining lists and adding new text under the old, and erases nothing.",
-      "- coverage: only the categories this conversation explored for that part - partial, or complete if richly answered; leave the rest untouched.",
-      "- One sessions entry and one dated Session notes entry, on the date you are given.",
-      "- Headline level only for anything painful: no trauma detail.",
-      "- Output only the fenced blocks - no greeting, no question, no commentary.",
+      "## What to write",
+      "Answer with one JSON object and nothing else: no greeting, no question, no commentary, no code fence. Put in only the keys this conversation has something NEW for and leave the rest out. Inner Table adds it to what is stored - lists are combined, new text goes under the old - and erases nothing, so never repeat what the profile above already says.",
       "",
-      portableFormatSpec()
+      "Keys - part and note always, the rest only when the conversation gave you something:",
+      "- part: the part's exact name, \"" + part.name + "\"",
+      "- note: one line - what this conversation showed about it",
+      "- session_note: two to four sentences for its Session notes - what came up, its own words where it spoke",
+      "- own_words: list of phrases the part itself said, word for word",
+      "- emotions, fears, hopes_goals, behaviors, wants_needs: lists of short phrases",
+      "- what_activates_it, what_it_needs, relates_to_others, origin_story: a few sentences each (origin_story: headline only)",
+      "- age, location, appearance, origin, positive_intent, unburdened_vision: one line each",
+      "- type: manager, firefighter or exile - only if the conversation made it clear",
+      "- trust_in_self: none, low, growing or high - from evidence only",
+      "- relationships: list of {\"part\": a slug from the list above, \"type\": protects | protected-by | polarized-with | allied-with | conflicts-with, \"notes\": one line}. Only a relationship the conversation actually named between this part and that one. protects: this part protects the other; protected-by: the reverse. When unsure between conflicts-with and polarized-with, choose conflicts-with.",
+      "- coverage: {category: \"partial\" or \"complete\"} for the categories this conversation explored for this part, from: " + S.CATEGORIES.join(", "),
+      "",
+      "The shape, for some other part: {\"part\": \"The Gardener\", \"note\": \"Spoke up about the deadline.\", \"fears\": [\"being caught unprepared\"], \"own_words\": [\"I have to keep checking\"], \"relationships\": [{\"part\": \"the-sleeper\", \"type\": \"conflicts-with\", \"notes\": \"pushes when it wants rest\"}], \"coverage\": {\"emotions_feelings\": \"partial\"}}",
+      "",
+      "Only what the transcript says - never invent; when in doubt, leave the key out. Headline level only for anything painful: no trauma detail."
     ].join("\n");
   }
 
-  function integrateAsk(names, transcript, date) {
+  /* opts.pair: the names of the two parts a mapping session was about, so
+     the relationship between them is what gets written down first. */
+  function integrateAsk(names, transcript, date, opts) {
+    opts = opts || {};
+    var pair = opts.pair && opts.pair.length >= 2 ? opts.pair : null;
     return "The transcript of a conversation from " + date + ". It is over - do not continue it, and do not reply to it.\n\n" +
       "----- transcript -----\n" + transcript + "\n----- end of transcript -----\n\n" +
-      "Write the profile update for each of these parts, and only these: " + names.join(", ") + ". Date the sessions entry and the Session notes entry " + date + ", not today. Output only the fenced ```markdown blocks.";
+      (pair ? "This session mapped how " + pair.join(" and ") + " relate. If the conversation named the relationship between them, it belongs in relationships.\n\n" : "") +
+      "Write the update for only these: " + names.join(", ") + ". The conversation was on " + date + ", not today. Answer with the JSON object only.";
   }
 
 

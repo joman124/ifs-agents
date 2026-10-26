@@ -617,7 +617,10 @@
 
   /* A conversation note and the transcript it came from, tied together once
      found, and how often writing a transcript into a part has come back
-     empty - after three, it stops asking. */
+     empty - after three, it stops asking. Counted as writeTries: the old
+     integrateTries were spent on the whole-profile write-ins the free models
+     could not manage, and are left where they are, unread, so every
+     conversation they gave up on gets three tries at the JSON one. */
   function linkTranscript(id, journalId) {
     var t = state.transcripts.filter(function (x) { return x.id === id; })[0];
     if (!t || t.journal) return;
@@ -627,8 +630,8 @@
   function noteIntegrateTry(id, slugs) {
     var t = state.transcripts.filter(function (x) { return x.id === id; })[0];
     if (!t) return;
-    t.integrateTries = t.integrateTries || {};
-    (slugs || []).forEach(function (sl) { t.integrateTries[sl] = (t.integrateTries[sl] || 0) + 1; });
+    t.writeTries = t.writeTries || {};
+    (slugs || []).forEach(function (sl) { t.writeTries[sl] = (t.writeTries[sl] || 0) + 1; });
     save();
   }
 

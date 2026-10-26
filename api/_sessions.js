@@ -183,13 +183,23 @@ function prepareSave(state, args) {
     var found = res.profiles.length ? res.profiles : (res.salvage ? [res.salvage] : []);
     if (!found.length) return { error: "No profile could be read from that. Each profile needs YAML frontmatter with at least a name, inside a ```markdown block." };
     if (found.length > MAX_PROFILES) return { error: "At most " + MAX_PROFILES + " profiles can be saved at once." };
+    var incoming = [];
     found.forEach(function (raw) {
       var clean = S.normalizePart(raw);
       if (!clean) return;
+      // each relationship pointed at the real part it names, before it merges
+      S.resolveEdges(clean, Object.keys(bySlug).map(function (k) { return bySlug[k]; }));
       var merged = mergeOne(S, bySlug[clean.slug], clean, stamp);
       bySlug[merged.slug] = merged;
       changed[merged.slug] = 1;
       profiled[merged.slug] = 1;
+      incoming.push(clean);
+    });
+    // ...and written to the other part's profile too, as the app does
+    S.mirrorEdges(incoming, function (sl) { return bySlug[sl] || null; }).forEach(function (p) {
+      p.updated = stamp;
+      bySlug[p.slug] = p;
+      changed[p.slug] = 1;
     });
   }
 

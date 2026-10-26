@@ -8,8 +8,23 @@ var SUITES = ["schema", "markdown", "files", "questions", "reference", "store", 
 
 var pass = 0;
 var failures = [];
+var running = null;
+
+/* A suite left waiting on something that never comes - a timer on the
+   harness's virtual clock nobody ticks, a promise nothing settles - empties
+   the event loop, and Node exits quietly with 0 before the summary: a pass
+   in CI. Say which suite never finished, and fail. */
+process.on("exit", function () {
+  if (running === null) return;
+  failures.push(running + " - the suite never finished (it waited on something that never came)");
+  console.log("\n" + pass + " passed, " + failures.length + " failed");
+  failures.forEach(function (f) { console.log("\n  FAIL  " + f); });
+  console.log("");
+  process.exitCode = 1;
+});
 
 async function runSuite(name) {
+  running = name;
   var t = {
     ok: function (cond, msg) {
       if (cond) pass++;
@@ -34,6 +49,7 @@ async function runSuite(name) {
 
 SUITES.reduce(function (p, name) { return p.then(function () { return runSuite(name); }); }, Promise.resolve())
   .then(function () {
+    running = null;
     console.log("\n" + pass + " passed, " + failures.length + " failed");
     failures.forEach(function (f) { console.log("\n  FAIL  " + f); });
     console.log("");

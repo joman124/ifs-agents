@@ -2322,6 +2322,18 @@
       var missing = named.filter(function (sl) { return done.indexOf(sl) < 0; });
       if (missing.length) setTimeout(function () { followUpIntegrate(transcriptId, missing); }, 1200);
     }
+    /* A check-in or a mapping is about the parts it was started with. One its
+       closing reply left without an update - a model that ran out of room, or
+       bent the profile file until it no longer read - is written in from the
+       transcript the same way, straight after. For a mapping that is how the
+       relationship reaches both parts even when the reply only had room for
+       one. */
+    else if ((sess.mode === "checkin" || sess.mode === "mapping") && transcriptId && reply) {
+      var wrote = saved.map(function (p) { return p.slug; });
+      ST.markIntegrated(transcriptId, wrote);
+      var skipped = sess.slugs.filter(function (sl) { return wrote.indexOf(sl) < 0 && ST.getPart(sl); });
+      if (skipped.length) setTimeout(function () { followUpIntegrate(transcriptId, skipped); }, 1200);
+    }
     renderParts();
     var where = saved.map(function (p) { return p.name; });
     if (noted) {
@@ -2360,13 +2372,20 @@
   async function followUpIntegrate(transcriptId, slugs) {
     var t = ST.state.transcripts.filter(function (x) { return x.id === transcriptId; })[0];
     if (!t || !LLM.configured(sessionAi())) return;
+    // a conversation is tried again when the app opens; a check-in or mapping
+    // is not, but its transcript stays in Past sessions
+    var later = t.mode === "talk" ? " - it will try again next time you open the app" : " - the transcript is in Past sessions";
     try {
       var saved = await IN.transcript(sessionAi(), t, slugs);
       if (saved.length) { renderParts(); toast("Added this conversation to " + saved.map(function (p) { return p.name; }).join(", ")); }
-      else toast("The AI didn't write that conversation into the profile - it will try again next time you open the app");
+      else toast("The AI didn't write that conversation into the profile" + later);
     } catch (e) {
       renderParts();
-      toast("Couldn't write it into " + notYet(slugs, t.date) + " yet - it will try again next time");
+      // a check-in's own line in the log reads as an update, so ask the transcript what landed
+      var left = t.mode === "talk" ? notYet(slugs, t.date) : slugs.filter(function (sl) {
+        return (t.integrated || []).indexOf(sl) < 0 && ST.getPart(sl);
+      }).map(function (sl) { return ST.getPart(sl).name; }).join(", ");
+      toast("Couldn't write it into " + left + " yet" + later);
     }
   }
 
@@ -2399,7 +2418,7 @@
         var t = talks.filter(function (x) { return x.journal === j.id; })[0] || transcriptFor(j, talks);
         if (!t) return;
         if (!t.journal) ST.linkTranscript(t.id, j.id);
-        var tries = t.integrateTries || {};
+        var tries = t.writeTries || {};
         var missing = slugsOf(j.parts).filter(function (sl) {
           return (tries[sl] || 0) < 3 && !IN.updatedOn(ST.getPart(sl), t.date);
         });

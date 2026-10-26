@@ -151,8 +151,8 @@ the theme switch and sign out.
    positive intent, a "profile depth" bar, readiness and how long it has been
    quiet), headed by the **daily check-in** hero card: once a day it asks one rotating question and offers the
    part that has gone quietest, with a way straight into a session. A profile
-   page has a single primary next-step CTA, tap-to-edit fields, and
-   per-category coverage.
+   page has a single primary next-step CTA, tap-to-edit fields,
+   per-category coverage, and its own **+** (see *+ menu* below).
 2. **Map** — every pair of parts is drawn as a faint thread ("you already relate,
    you just haven't named it"). Tap a thread to name it; tap a part to focus it.
    Once a table exists, seating becomes distance from Self. Thread thickness is
@@ -306,7 +306,13 @@ are asked once (`connect.chooseWhere`).
   part speaking for itself), then *Notice a part*. The specific sessions follow
   in IFS order — one part, two parts, the table — and each pair that once came
   twice (AI and no-AI) is one item that uses AI when one is connected or
-  linked (`ui.js hasAI`); the other way sits under *More ways*.
+  linked (`ui.js hasAI`); the other way sits under *More ways*. A part's
+  profile page has the same **+** (`partSessionSheet`), every item already
+  pointed at that part: notice it, get to know it, map it with another part
+  (the picker asks only for the other one), hear it react, a table meeting
+  with it (`meetingWith`: no room yet, choose who sits with it; a room
+  built, and the part seated elsewhere, offers it the seat first, since only
+  seated parts speak). A part not ready to speak says so on the menu.
 - **One rule for speaking**: a part reacts to material or speaks at a meeting
   once `schema.readiness` says it is ready. Seating on the Table tab decides who
   is invited; readiness decides who talks (`templates.meeting`, and the

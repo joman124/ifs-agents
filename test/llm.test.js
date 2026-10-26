@@ -68,6 +68,26 @@ module.exports = async function (t) {
   try { await L.chat(ai, "S", [{ role: "user", text: "hi" }]); } catch (e) { refused = e.message; }
   t.ok(/declined/.test(refused || ""), "a refusal is said plainly, not as an empty reply");
 
+  /* An empty reply says why, and says it was empty: a caller writing a
+     conversation into a part counts that as a try instead of asking again
+     at every open (integrate.js). */
+  var nothing = function (provider, body) {
+    reply = function () { return json(body); };
+    return L.chat({ provider: provider, key: "k", model: "" }, "S", [{ role: "user", text: "hi" }])
+      .then(function () { return null; }, function (e) { return e; });
+  };
+  var e1 = await nothing("free", { choices: [{ message: { role: "assistant", content: "" }, finish_reason: "length" }] });
+  t.eq([e1 && e1.message, e1 && e1.empty], ["Free AI returned an empty reply (length).", true],
+    "a chat-completions reply with no text names the reason it stopped");
+  var e2 = await nothing("anthropic", { content: [{ type: "thinking", thinking: "" }], stop_reason: "max_tokens" });
+  t.eq([e2 && e2.message, e2 && e2.empty], ["Anthropic returned an empty reply (max_tokens).", true],
+    "so does a Claude reply that thought until it ran out of room");
+  var e3 = await nothing("gemini", { promptFeedback: { blockReason: "SAFETY" } });
+  t.eq(e3 && e3.message, "Gemini returned an empty reply (SAFETY).", "and a Gemini prompt it blocked");
+  t.ok((await nothing("anthropic", { content: [], stop_reason: "refusal" })).empty, "a refusal also counts as nothing written");
+  reply = function () { return json({ choices: [{ message: { content: [{ type: "text", text: "In " }, { type: "text", text: "parts." }] } }] }); };
+  t.eq(await L.chat({ provider: "openai", key: "k", model: "" }, "S", []), "In parts.", "text sent as a list of parts is read whole");
+
   reply = function () { return json({ error: { message: "invalid x-api-key" } }, 401); };
   var bad = null;
   try { await L.chat(ai, "S", [{ role: "user", text: "hi" }]); } catch (e) { bad = e.message; }

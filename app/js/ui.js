@@ -686,7 +686,9 @@
       '<button class="btn btn-soft btn-big" id="pfExport">Export profile (.md)</button>' +
       '<button class="btn btn-soft btn-big" id="pfEdit">Edit raw markdown</button>' +
       '<button class="btn btn-danger btn-big" id="pfDelete">Delete this part</button>' +
-      "</div></div>";
+      "</div></div>" +
+      // the + from the Parts tab, here too, with every door already pointed at this part
+      '<button class="fab fab-panel" id="pfPlus" aria-label="Start something with ' + esc(p.name) + '"><span class="fab-plus">+</span></button>';
 
     var tw = S.towardPart(p);
     openPanel(p.name, p.type + (tw.times ? " · sat with " + tw.times + "×" : ""), body, "", null,
@@ -731,6 +733,7 @@
       else notReadySheet([p.slug]);
     });
     bind("#pfNotice", function () { window.IFS.ui.practice.notice(p.slug); });
+    bind("#pfPlus", function () { partSessionSheet(p.slug); });
     $("#pfExport").addEventListener("click", function () { exportPartMd(p); });
     $("#pfEdit").addEventListener("click", function () { editRaw(p.slug); });
     $("#pfDelete").addEventListener("click", function () {
@@ -1021,6 +1024,109 @@
     bind("#mi-add", function () { closeSheet(); setTimeout(addPartSheet, 230); });
   }
 
+  /* The same doors from a part's own page, already pointed at it: the + there
+     offers everything the + on the Parts tab does - get to know it, map it
+     with another part, hear it react, bring it to the table - without a walk
+     back to the list and a picker that asks which part you meant. */
+  function partSessionSheet(slug) {
+    var p = ST.getPart(slug);
+    if (!p) { newSessionSheet(); return; }
+    var name = p.name;
+    var others = ST.listParts().filter(function (x) { return x.slug !== slug; }).length;
+    var ai = hasAI();
+    var ready = S.readiness(p).ready;
+    var tb = ST.state.table;
+    var next = Q.nextCategory(p);
+    var notYet = "not ready to speak yet · tap to see why";
+    openSheet(
+      '<h2 class="sheet-title serif">Start something with ' + esc(name) + "</h2>" +
+      menuItem("", "Notice " + name, "ten seconds · what it is up to, and how you feel toward it", "mi-notice") +
+      menuItem("", "Just talk", "an open conversation · it remembers " + name + " and your other parts", "mi-talk") +
+      '<div class="mi-head">With ' + esc(name) + "</div>" +
+      menuItem("", "Get to know " + name, ai ? "a check-in · picks up where you left off" : "answer its questions yourself · no AI needed", "mi-know") +
+      menuItem("", "How " + name + " relates to another part", !others ? "you need a second part first" : ai ? "a session with both · who protects, who clashes" : "record it yourself · no AI needed", "mi-relate", !others) +
+      menuItem("", name + " reacts to something", ready ? "a decision, a draft, a situation · in its own voice" : notYet, "mi-embody") +
+      menuItem("", "Table meeting with " + name, !others ? "you need two parts first" : !ready ? notYet
+        : !tb.built ? "choose who sits with it · Self sums up"
+        : tb.seats[slug] === "table" ? "with everyone at your table · Self sums up" : "it isn't at your table yet · seat it, then meet", "mi-meeting", !others) +
+      '<div class="mi-head">Your system</div>' +
+      menuItem("", "Add a part", "an interview, by hand, or upload", "mi-add") +
+      '<details class="mi-more"><summary>More ways</summary>' +
+      (ai
+        ? menuItem("", "Answer " + name + "'s questions yourself", next ? S.CATEGORY_LABELS[next].toLowerCase() + " next · no AI" : "every category is covered or declined", "mi-ask") +
+          menuItem("", "Record how " + name + " relates to another part", !others ? "you need a second part first" : "name the relationship yourself · no AI", "mi-link", !others)
+        : menuItem("", "Check in with " + name + " (AI)", "an AI session · connect an AI or copy a prompt", "mi-checkin") +
+          menuItem("", "Map " + name + " with another part (AI)", !others ? "you need a second part first" : "an AI session with both parts", "mi-map", !others)) +
+      "</details>"
+    );
+    var askIt = function () {
+      if (!next) { closeSheet(); toast("Every category is covered or declined - tap one on the page to revisit"); return; }
+      askCategory(slug, next);
+    };
+    var checkIn = function () { startSession("checkin", [slug]); };
+    var linkIt = function () { connectPart(slug); };
+    var mapIt = function () {
+      pickPart("Map " + name + " with which part?", function (other) { startSession("mapping", [slug, other]); }, false, slug);
+    };
+    bind("#mi-notice", function () { closeSheet(); setTimeout(function () { window.IFS.ui.practice.notice(slug); }, 230); });
+    bind("#mi-talk", function () { closeSheet(); startSession("talk", []); });
+    bind("#mi-know", ai ? checkIn : askIt);
+    bind("#mi-relate", ai ? mapIt : linkIt);
+    bind("#mi-ask", askIt);
+    bind("#mi-link", linkIt);
+    bind("#mi-checkin", checkIn);
+    bind("#mi-map", mapIt);
+    bind("#mi-embody", function () {
+      if (ready) askMaterial("embody", [slug]);
+      else notReadySheet([slug]);
+    });
+    bind("#mi-meeting", function () { meetingWith(slug); });
+    bind("#mi-add", function () { closeSheet(); setTimeout(addPartSheet, 230); });
+  }
+
+  /* A table meeting from a part's page has that part in the room. Once the
+     room is built, seating decides who is invited - and only a part seated at
+     the table speaks - so a part sitting elsewhere is offered the seat first,
+     never moved without asking. Before then, the person chooses who sits
+     with it. */
+  function meetingWith(slug) {
+    var p = ST.getPart(slug);
+    if (!p) return;
+    if (!S.readiness(p).ready) {
+      notReadySheet([slug], esc(p.name) + " can't speak for itself at a meeting yet:");
+      return;
+    }
+    var tb = ST.state.table;
+    if (tb.built) {
+      if (tb.seats[slug] === "table") { startMeeting(); return; }
+      closeSheet();
+      setTimeout(function () {
+        openSheet(
+          '<h2 class="sheet-title serif">' + esc(p.name) + " isn&rsquo;t at your table</h2>" +
+          '<p class="dim">Only the parts seated at the table speak at a meeting. Seat ' + esc(p.name) +
+          " there and it joins this meeting and the ones after it &mdash; you can move it again on the Table tab.</p>" +
+          '<button class="btn btn-primary btn-big" id="mwSeat">Seat ' + esc(p.name) + " at the table</button>" +
+          '<button class="btn btn-ghost btn-big" id="mwNo">Not now</button>'
+        );
+        bind("#mwSeat", function () {
+          tb.seats[slug] = "table";
+          ST.saveTable({ seats: tb.seats });
+          buzz();
+          startMeeting();
+        });
+        bind("#mwNo", closeSheet);
+      }, 230);
+      return;
+    }
+    var rest = ST.listParts().filter(function (x) { return x.slug !== slug; });
+    if (!rest.some(function (x) { return S.readiness(x).ready; })) {
+      notReadySheet(rest.sort(function (a, b) { return S.coverageScore(b) - S.coverageScore(a); }).slice(0, 4).map(function (x) { return x.slug; }),
+        "A meeting needs another part that can speak for itself. Closest:");
+      return;
+    }
+    pickParts("Who sits with " + p.name + "?", 1, 98, true, function (slugs) { askMaterial("meeting", [slug].concat(slugs)); }, slug);
+  }
+
   /* ---------- who can speak for itself ----------
      One rule everywhere - reacting to material, or speaking at a table
      meeting: a part speaks once it is ready (schema.readiness). Seating on
@@ -1062,7 +1168,7 @@
       var seated = all.filter(function (p) { return tb.seats[p.slug] === "table"; });
       var speaking = seated.filter(function (p) { return S.readiness(p).ready; });
       if (seated.length < 2) {
-        closeSheet(); showView("table");
+        closeSheet(); closePanel(); showView("table");
         toast("Seat at least two parts at your table first");
         return;
       }
@@ -1116,10 +1222,13 @@
   }
 
   /* Multi-select picker: choose between min and max parts, then confirm.
-     Only sends the chosen parts' profiles to the AI - no more than needed. */
-  function pickParts(title, min, max, mustBeReady, cb) {
-    var parts = ST.listParts().filter(function (p) { return !mustBeReady || S.readiness(p).ready; });
-    var waiting = mustBeReady ? ST.listParts().filter(function (p) { return !S.readiness(p).ready; }) : [];
+     Only sends the chosen parts' profiles to the AI - no more than needed.
+     excludeSlug: a part already in, left off the list (the one whose page
+     this was started from). */
+  function pickParts(title, min, max, mustBeReady, cb, excludeSlug) {
+    var all = ST.listParts().filter(function (p) { return p.slug !== excludeSlug; });
+    var parts = all.filter(function (p) { return !mustBeReady || S.readiness(p).ready; });
+    var waiting = mustBeReady ? all.filter(function (p) { return !S.readiness(p).ready; }) : [];
     openSheet(
       '<h2 class="sheet-title serif">' + esc(title) + "</h2>" +
       parts.map(function (p) {

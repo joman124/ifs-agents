@@ -434,6 +434,8 @@ main#views { flex: 1; overflow: hidden; position: relative; }
   z-index: 6; transition: transform .12s ease;
 }
 .fab:active { transform: scale(.92) rotate(90deg); }
+/* on a part's page: the panel covers the tab bar, so the + sits lower */
+.fab.fab-panel { bottom: calc(var(--sab) + 18px); }
 .fab-plus { font-size: 30px; line-height: 1; margin-top: -3px; }
 
 /* ================= sheet ================= */
@@ -509,7 +511,7 @@ main#views { flex: 1; overflow: hidden; position: relative; }
 .panel-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ---------- profile view ---------- */
-.profile { padding: 18px 18px calc(40px + var(--sab)); max-width: 640px; margin: 0 auto; }
+.profile { padding: 18px 18px calc(96px + var(--sab)); max-width: 640px; margin: 0 auto; }   /* room under the last button for the + */
 .profile-hero { --tc: var(--accent); text-align: center; padding: 8px 0 18px; }
 .profile-hero.t-manager { --tc: var(--manager); }
 .profile-hero.t-firefighter { --tc: var(--firefighter); }

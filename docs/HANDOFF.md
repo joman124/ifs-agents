@@ -55,7 +55,7 @@ gracefully (local-only mode), it never crashes.
 | `SESSION_SECRET` | signing login tokens (HMAC-SHA256) | any long random string |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | `node scripts/gen-vapid-keys.js` |
 | `VAPID_SUBJECT` | Web Push contact | `mailto:` address |
-| `FREELLMAPI_URL` / `FREELLMAPI_KEY` | the free AI (`api/free-ai.js`) — optional; without them the app simply offers no free AI | a FreeLLMAPI gateway you host, and its unified key — see `docs/free-ai.md`. Optional `FREELLMAPI_MODEL` (default `auto`) and `FREE_AI_DAILY_LIMIT` (default 200 per account per UTC day) |
+| `FREELLMAPI_URL` / `FREELLMAPI_KEY` | the free AI (`api/free-ai.js`) — optional; without them the app simply offers no free AI | a FreeLLMAPI gateway you host, and its unified key — see `docs/free-ai.md`. Optional `FREELLMAPI_MODEL` (a ladder of models tried in order, comma-separated; the gateway's `auto` is always the last rung) and `FREE_AI_DAILY_LIMIT` (default 500 per account per UTC day) |
 | `STATS_USERS` | Settings → Usage (`api/stats.js`) — optional | comma-separated usernames allowed to see how many people come back; to everyone else the section and the endpoint 404. `CRON_SECRET` as the bearer also reads `/api/stats`, for a script |
 | `CRON_SECRET` | check-in reminders (`api/push-remind.js`) | any long random string — Vercel sends it to the 24 daily crons in `vercel.json` (one per UTC hour: the Hobby-plan way to get an hourly clock); also set as a GitHub Actions secret of the same name for the backup tick in `.github/workflows/reminders.yml`. The endpoint notifies each device once a day at the hour chosen for it in Settings (8pm by default), on its own clock, up to 3 hours late if a run was missed, and never twice (`last` on the subscription); tapping the notification opens *Notice a part* |
 
@@ -87,12 +87,17 @@ api/                 serverless functions (Vercel): signup, login, sync,
                      free-ai (the free AI: signed-in accounts' sessions relayed
                      to the deployment's FreeLLMAPI gateway, whose key never
                      leaves the server; per-account daily allowance in Upstash;
-                     SSE passed straight through - see docs/free-ai.md),
+                     FREELLMAPI_MODEL is a ladder: a rung that answers 413 or
+                     429 hands the request to the next, `auto` last, and is
+                     remembered per instance (rests after a 429, the size it
+                     refused after a 413); errors carry a code and retry_after;
+                     json: true asks the gateway for json_object; SSE passed
+                     straight through once a rung answers - see docs/free-ai.md),
                      stats (returning users, for the accounts in STATS_USERS;
                      _activity.js marks the day on every pull - see
                      *Returning users* below)
   root package.json  holds the `web-push` dependency for the functions only
-test/                node test/run.js — 741 assertions, no dependencies
+test/                node test/run.js — 1212 assertions, no dependencies
 docs/                ifs-primer.md, safety.md, HANDOFF.md (this file)
   source/            the practitioner notes the whole system derives from
 schema/part-schema.md  canonical profile format — the contract
@@ -118,8 +123,8 @@ All are IIFEs hanging off `window.IFS`. No framework, no bundler, ES5-style
 | `store.js` | 959 | localStorage + IndexedDB mirror; parts, transcripts, table, settings, `absorbPart`, table-only `exportTable`/`importTable`; the pictures blob (`exportImages`/`importImages`/`imageFingerprint`) and `exportAll({images:false})` for sync |
 | `portrait.js` | 194 | A part's picture and the room's photo: drawing (`face`/`cls`, the picture or the initial inside a circle) and making (open a picked file, crop, shrink to a small JPEG in a named shape: square for a part, 16:9 for the room) |
 | `templates.js` | 425 | LLM prompt builders; `roomBlock` injects the person's room into meetings |
-| `llm.js` | 300 | One connection `{provider, key, model}` (`settings.ai`): Anthropic, OpenRouter, OpenAI, Gemini; provider detected from the key's shape; chat + SSE streaming, retry; the system prompt is cached (Anthropic `cache_control`, and on OpenRouter's Claude models); current Claude models run at medium effort with server-side refusal fallback; `active()` falls back to the free AI (`{provider: "free", key: <session token>}`, via `api/free-ai.js`) for a signed-in person with no connection, once `checkFree()` has heard the deployment runs one. `ui.js` `sessionAi()` only uses it after the person said yes (`settings.freeAi`), asked once by `ui-connect.js` `offerFree`. Pasting a key is no longer offered in the UI; keys from before still work |
-| `integrate.js` | 94 | Writing a finished conversation into the parts its note names (`transcript`): one call per part, so no reply has to hold every part's update at once; each update merged with `mergeSession` and logged on the conversation's date. A part the AI wrote nothing for (an empty reply, a refusal, no update in it) counts a try, and `ui.js` stops asking after three; a call that fails outright counts nothing and keeps what was already written. Also `saveMerge`, `updatedOn`, `nameKey` |
+| `llm.js` | 443 | One connection `{provider, key, model}` (`settings.ai`): Anthropic, OpenRouter, OpenAI, Gemini; provider detected from the key's shape; chat + SSE streaming, retry; the system prompt is cached (Anthropic `cache_control`, and on OpenRouter's Claude models); current Claude models run at medium effort with server-side refusal fallback; `active()` falls back to the free AI (`{provider: "free", key: <session token>}`, via `api/free-ai.js`) for a signed-in person with no connection, once `checkFree()` has heard the deployment runs one. `ui.js` `sessionAi()` only uses it after the person said yes (`settings.freeAi`), asked once by `ui-connect.js` `offerFree`. The free AI is not retried blind (its server already tried every model): an error marked final (the day's allowance, too long) is said at once, with no second plain call after a refused stream; a busy one waits the server's `retry_after` (up to 30 s) and asks once more. `chat(…, {json: true})` asks it for JSON. Pasting a key is no longer offered in the UI; keys from before still work |
+| `integrate.js` | 199 | Writing a finished conversation into the parts its note names (`transcript`), and into any part a check-in or mapping was about that its closing reply left out: one call per part, answered as a small JSON object of what is new (`templates.integrateSystem`; JSON mode on the free AI), read tolerantly (fences, prose, `<think>`; a markdown profile still works), built into a part and merged with `mergeSession`, logged on the conversation's date. After a mapping, the write-in asks for the pair's relationship. A part the AI wrote nothing for (an empty reply, a refusal, no update in it) counts a try (`transcript.writeTries`; the older `integrateTries`, spent on whole-profile write-ins, are left unread, so a conversation those gave up on gets three more), and `ui.js` stops asking after three; a call that fails outright counts nothing and keeps what was already written. `saveMerge` (also the session close) resolves every relationship to a real part and mirrors it onto the other side (`schema.resolveEdges`/`mirrorEdges`). Also `updatedOn`, `nameKey` |
 | `voice.js` | 360 | Web Speech dictation + TTS, optional ElevenLabs voice |
 | `graph.js` | 615 | Force-directed SVG swarm map, implicit and felt threads, seating forces, thread weight and recency heat; a part's picture fills its circle; a dragged part stays where it is dropped (per device, per account) |
 | `auth.js` | 62 | Session token storage, sign-in/up/out flows against `api/` |
@@ -211,7 +216,16 @@ How it relates to other parts / What it needs / Session notes*.
 - 9 coverage categories, each `untouched | partial | complete | declined`.
 - 5 edge types: `protects` / `protected-by` (mirrors) and `polarized-with` /
   `allied-with` / `conflicts-with` (self-mirroring). Edges are always written to
-  **both** profiles.
+  **both** profiles. A model only ever writes its own part's side, and names
+  the other part however it likes ("Sleeper", "the-magician"), so every save
+  of a model's profile - the session close, a write-in, the bridge's
+  `save_session` - goes through `schema.resolveEdges` (point the edge at the
+  one part it means: exact slug or name, else the only part whose name holds
+  it; to itself is dropped; naming no part stays as written) before the
+  merge, and `schema.mirrorEdges` after it (the other part gets the mirrored
+  edge, unless the same save spoke for that side). Only edges the save names
+  are touched; stored edges, including the private repo's drifted ones, are
+  left alone.
 - `EDGE_TONE` in `schema.js` groups those five into three tones for the map
   key and the relationship sheet. The five stay the source of truth on disk.
   `namedEdge(a, b)` is the one place a pair's edge is looked up from either
@@ -533,7 +547,7 @@ as an off-device backup. Signed-out users still rely on browser storage
 
 ### 3. Commit the test harness — **done**
 
-`test/` now holds 741 assertions over the pure logic, run with
+`test/` now holds 1212 assertions over the pure logic, run with
 `node test/run.js`. `.github/workflows/test.yml` runs the suite on push and
 PR to `main`, so regressions get caught before they merge. See *Running and
 verifying locally* above for what is and isn't covered. What's left here is

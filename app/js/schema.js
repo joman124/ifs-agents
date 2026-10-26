@@ -691,6 +691,81 @@
            ((b.relationships || []).filter(function (x) { return x.part === a.slug; })[0]) || null;
   }
 
+  /* "The Wandering Magician", "Wandering Magician", "the-wandering-magician"
+     all name the same part. */
+  function nameKey(n) { return String(n || "").toLowerCase().replace(/^the[\s-]+/, "").replace(/[^a-z0-9]+/g, ""); }
+
+  /* The one part in roster that `who` means: its slug or name exactly, or
+     else the only part whose name holds it (or is held by it) - "the-magician"
+     for The Wandering Magician. Null when nothing, or more than one, fits. */
+  function findPart(who, roster) {
+    var k = nameKey(who);
+    if (!k) return null;
+    var exact = (roster || []).filter(function (p) { return nameKey(p.slug) === k || nameKey(p.name) === k; });
+    if (exact.length) return exact[0];
+    if (k.length < 4) return null;
+    var near = (roster || []).filter(function (p) {
+      var n = nameKey(p.name);
+      return n.length >= 4 && (n.indexOf(k) >= 0 || k.indexOf(n) >= 0);
+    });
+    return near.length === 1 ? near[0] : null;
+  }
+
+  /* What a model writes about relationships, made to land on the map. A
+     profile update names the other part however the model spelled it, so each
+     edge in an incoming update is pointed at the real part it means - before
+     the update is merged, so it replaces that pair's stored edge instead of
+     sitting beside it. An edge to the part itself goes; one naming no part the
+     person has stays as written (the profile shows it as not in the library
+     yet). A part that names another has covered some relationship ground,
+     the way both sides of a thread named on the map have. Mutates and
+     returns `part`. */
+  function resolveEdges(part, roster) {
+    var seen = {}, real = 0;
+    part.relationships = (part.relationships || []).map(function (r) {
+      var q = findPart(r.part, roster);
+      if (q && q.slug !== part.slug) real++;
+      return q ? { part: q.slug, type: r.type, notes: r.notes || "" } : r;
+    }).filter(function (r) {
+      if (r.part === part.slug || seen[r.part]) return false;
+      seen[r.part] = 1;
+      return true;
+    });
+    if (real && part.coverage && part.coverage.relationships === "untouched") part.coverage.relationships = "partial";
+    return part;
+  }
+
+  /* Every edge is written to both profiles - the map's "name this thread"
+     does it by hand, and a model asked to update one part only ever writes
+     its own side. For each edge the incoming updates name, the other part
+     gets the mirrored edge, unless the same save spoke for that side itself.
+     Only edges this save names are touched; what was already stored is left
+     as it was. getPart(slug) reads the part as it stands after the merge.
+     Returns copies of the other parts it changed, for the caller to store. */
+  function mirrorEdges(incoming, getPart) {
+    var stated = {};
+    incoming.forEach(function (p) {
+      (p.relationships || []).forEach(function (r) { stated[p.slug + ">" + r.part] = 1; });
+    });
+    var out = {};
+    incoming.forEach(function (p) {
+      (p.relationships || []).forEach(function (r) {
+        if (stated[r.part + ">" + p.slug] || r.part === p.slug) return;
+        var q = out[r.part] || getPart(r.part);
+        var type = EDGE_MIRROR[r.type];
+        if (!q || !type) return;
+        var cur = (q.relationships || []).filter(function (x) { return x.part === p.slug; })[0];
+        if (cur && cur.type === type && (cur.notes || !r.notes)) return;   // it already says so
+        q = out[q.slug] || JSON.parse(JSON.stringify(q));
+        q.relationships = (q.relationships || []).filter(function (x) { return x.part !== p.slug; });
+        q.relationships.push({ part: p.slug, type: type, notes: r.notes || (cur && cur.notes) || "" });
+        if (q.coverage && q.coverage.relationships === "untouched") q.coverage.relationships = "partial";
+        out[q.slug] = q;
+      });
+    });
+    return Object.keys(out).map(function (k) { return out[k]; });
+  }
+
   /* One pass over every pair, for the map key. The three tone counts are what
      the key filters on; the rest is the read the key gives back - how many
      pairs someone has actually named, how many were rated at a table, and how
@@ -1011,7 +1086,7 @@
     feelingHistory: feelingHistory,
     feelingWeight: feelingWeight,
     pairTone: pairTone,
-    namedEdge: namedEdge,
+    namedEdge: namedEdge, nameKey: nameKey, findPart: findPart, resolveEdges: resolveEdges, mirrorEdges: mirrorEdges,
     mapCounts: mapCounts,
     edgeWeight: edgeWeight,
     quietestPart: quietestPart,

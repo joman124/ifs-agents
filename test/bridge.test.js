@@ -165,6 +165,14 @@ module.exports = async function (t) {
   t.eq(Object.keys(db["innertable:inbox:ann"]).length, 1, "...and neither refusal writes anything");
   var newPart = await save("```markdown\n---\nname: The Watcher\n---\n\n# The Watcher\n```");
   t.ok(/The Watcher/.test(newPart) && JSON.parse(db["innertable:state:ann"]).parts.some(function (p) { return p.slug === "the-watcher"; }), "an intake's new part is created");
+  await save("```markdown\n---\nname: The Watcher\nrelationships:\n  - part: critic\n    type: protects\n    notes: stands guard for it\n---\n\n# The Watcher\n```");
+  var after = JSON.parse(db["innertable:state:ann"]).parts;
+  var bySlugA = function (sl) { return after.filter(function (p) { return p.slug === sl; })[0]; };
+  t.eq(bySlugA("the-watcher").relationships, [{ part: "the-critic", type: "protects", notes: "stands guard for it" }],
+    "a linked AI's relationship naming \"critic\" is pointed at the real part, the-critic");
+  t.ok(bySlugA("the-critic").relationships.some(function (r) { return r.part === "the-watcher" && r.type === "protected-by"; }) &&
+    bySlugA("the-critic").relationships.some(function (r) { return r.part === "the-dreamer"; }),
+    "...and mirrored onto The Critic, beside what it already had - both sides, as the app writes them");
   t.eq((await call("POST", { query: { t: made }, body: [] })).code, 202, "an empty batch is harmless");
 
   // -- just talk: an open conversation that knows the system and remembers
@@ -221,12 +229,13 @@ module.exports = async function (t) {
       .then(function (r) { return r.body.result.content[0].text; });
   };
   var inboxBefore = Object.keys(db["innertable:inbox:ann"]).length;
+  var edgesBefore = JSON.stringify(JSON.parse(db["innertable:state:ann"]).parts.filter(function (p) { return p.slug === "the-critic"; })[0].relationships);
   t.ok(/^Saved to Inner Table: a notice for The Critic/.test(await notice({ part: "The Critic", note: "Loud before the standup.", feel: "Curious" })),
     "a notice saves, by name, and says so");
   var cN = JSON.parse(db["innertable:state:ann"]).parts.filter(function (p) { return p.slug === "the-critic"; })[0];
   var lastN = cN.sessions[cN.sessions.length - 1];
   t.ok(lastN.mode === "notice" && lastN.note === "Loud before the standup." && lastN.feel === "curious", "...as the same notice entry the app writes");
-  t.ok(/I'm early, not cruel/.test(cN.narrative.in_its_own_words) && cN.relationships.length === 1, "...touching nothing else in the profile");
+  t.ok(/I'm early, not cruel/.test(cN.narrative.in_its_own_words) && JSON.stringify(cN.relationships) === edgesBefore, "...touching nothing else in the profile");
   t.eq(Object.keys(db["innertable:inbox:ann"]).length, inboxBefore + 1, "...and waits in the inbox for the app");
   t.ok(/Loud before the standup/.test(await start({ mode: "checkin", parts: ["the-critic"] })), "the next check-in already knows it");
   t.ok(/^Saved/.test(await notice({ part: "the-dreamer", feel: "warm" })), "a feel word alone is enough");

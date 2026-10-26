@@ -148,6 +148,53 @@ module.exports = async function (t) {
   t.eq(lim, limitWords, "the free AI's own words reach the person as they are");
   t.eq(calls.length, 1, "and the day's allowance is not retried seconds later");
 
+  /* Its server has already tried every model it routes to, so the app does
+     not retry blind: it waits as long as the server says a model needs, once,
+     and takes a final answer as final. */
+  var tick = async function (ms) { for (var i = 0; i < 6; i++) { await flush(); env.clock.tick(ms); } };
+  var busyThen = function (wait, then) {
+    var n = 0;
+    return function (url, opts) {
+      n++;
+      if (n === 1) return json({ error: { message: "Every free model is at its limit right now.", code: "busy", retry_after: wait } }, 503);
+      return then(url, opts);
+    };
+  };
+  calls = [];
+  reply = busyThen(3, function () { return json({ choices: [{ message: { content: "Room now." } }] }); });
+  var waiting = L.chat(free, "S", [{ role: "user", text: "hi" }]);
+  await flush(); await flush();
+  env.clock.tick(2900);
+  await flush();
+  t.eq(calls.length, 1, "busy: the free AI is not asked again before the wait its server named");
+  await tick(200);
+  t.eq(await waiting, "Room now.", "...and once it has passed, the one more try gets the reply");
+  t.eq(calls.length, 2, "...one more, not two");
+
+  calls = [];
+  reply = function () { return json({ error: { message: "Every free model is at its limit right now. Try again in about 300 seconds.", code: "busy", retry_after: 300 } }, 503); };
+  var longWait = null;
+  try { await L.chat(free, "S", []); } catch (e) { longWait = e; }
+  t.eq([calls.length, /300 seconds/.test(longWait.message)], [1, true], "a wait of minutes is said, not sat through");
+
+  calls = [];
+  reply = function () { return json({ error: { message: "This session is too long for every model the free AI can use.", code: "too_long" } }, 400); };
+  var tooLong = null;
+  try { await L.chatStream(free, "S", [], function () {}); } catch (e) { tooLong = e; }
+  t.eq([calls.length, /too long/.test(tooLong && tooLong.message)], [1, true],
+    "a stream turned down for good is not asked again the plain way - the same answer would come back");
+
+  calls = [];
+  reply = busyThen(2, function () { return json({ choices: [{ message: { content: "Plain, later." } }] }); });
+  var streamed = L.chatStream(free, "S", [], function () {});
+  await tick(1000);
+  t.eq(await streamed, "Plain, later.", "a busy stream waits as long as it was told, then asks the plain way");
+  t.eq([calls.length, JSON.parse(calls[0].opts.body).stream, JSON.parse(calls[1].opts.body).stream], [2, true, false], "...once");
+
+  t.eq(L._request(free, "S", [], false, false, { json: true }).body.json, true, "a write-in asks the free AI's server for JSON");
+  t.ok(!("json" in L._request({ provider: "openai", key: "k", model: "" }, "S", [], false, false, { json: true }).body),
+    "...which is the free AI's own word; a provider's API is not sent it");
+
   seen = [];
   reply = function () {
     return Promise.resolve(sse('data: {"choices":[{"delta":{"content":"Free"}}]}\n\ndata: {"choices":[{"delta":{"content":" words"}}]}\n\ndata: [DONE]\n\n'));

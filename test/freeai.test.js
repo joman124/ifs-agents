@@ -255,6 +255,49 @@ module.exports = async function (t) {
   t.eq([(await call("POST", as("bob", small()))).code, models(mark)], [200, ["openai/gpt-oss-20b", "auto"]],
     "a pinned model the gateway does not know hands down too");
 
+  /* ---- straight at a provider's own API (the live Groq setup): no "auto" ---- */
+  var GROQ_NO_AUTO = JSON.stringify({ error: { message: "The model `auto` does not exist or you do not have access to it.", type: "invalid_request_error", code: "model_not_found" } });
+  var GROQ_TOOL = JSON.stringify({ error: { message: "Tool choice is none, but model called a tool", type: "invalid_request_error", code: "tool_use_failed" } });
+  I2.forget();
+  mark = gateway.calls.length;
+  gateway.reply = function (body) { return body.model === "auto" ? reply(404, GROQ_NO_AUTO) : reply(400, GROQ_TOOL); };
+  var fumbled = await call("POST", as("bob", small()));
+  t.eq([fumbled.code, fumbled.body.error.code, models(mark)], [502, "upstream", ["openai/gpt-oss-20b", "auto"]],
+    "a model that fumbled its reply, then a provider with no 'auto' (the live 404): a try-again, not 'not set up right'");
+  t.ok(warned.some(function (w) { return /has no "auto", so it is not a FreeLLMAPI gateway/.test(w); }), "...and the log says what the 404 means");
+
+  mark = gateway.calls.length;
+  gateway.reply = function (body) { return body.model === "auto" ? reply(404, GROQ_NO_AUTO) : reply(429, GROQ_429); };
+  var noAuto = await call("POST", as("bob", small()));
+  t.eq([noAuto.code, noAuto.body.error.code, models(mark)], [503, "busy", ["openai/gpt-oss-20b"]],
+    "a fumble does not rest the model, and 'auto' is not asked again once the endpoint said it has none");
+  mark = gateway.calls.length;
+  await call("POST", as("bob", small()));
+  t.eq(models(mark), ["openai/gpt-oss-20b"], "...so the last model it does have is the one always asked, even resting");
+
+  I2.forget();
+  process.env.FREELLMAPI_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct, openai/gpt-oss-20b";
+  mark = gateway.calls.length;
+  gateway.reply = function (body) {
+    if (body.model === "auto") return reply(404, GROQ_NO_AUTO);
+    return body.model === "openai/gpt-oss-20b" ? answered(body.model) : reply(400, GROQ_TOOL);
+  };
+  var next = await call("POST", as("bob", small()));
+  t.eq([next.code, models(mark)], [200, ["meta-llama/llama-4-scout-17b-16e-instruct", "openai/gpt-oss-20b"]], "a fumble hands down the ladder");
+  mark = gateway.calls.length;
+  await call("POST", as("bob", small()));
+  t.eq(models(mark)[0], "meta-llama/llama-4-scout-17b-16e-instruct", "...and the model that fumbled is asked first again next time");
+
+  I2.forget();
+  process.env.FREELLMAPI_MODEL = "no-such-model";
+  gateway.reply = function (body) { return reply(404, body.model === "auto" ? GROQ_NO_AUTO : "{}"); };
+  var none = await call("POST", as("bob", small()));
+  t.eq([none.code, none.body.error.code], [502, "unavailable"], "no model the endpoint has: the server's setup");
+  mark = gateway.calls.length;
+  var none2 = await call("POST", as("bob", small()));
+  t.eq([none2.body.error.code, models(mark)], ["unavailable", []], "...said again without asking it again");
+  process.env.FREELLMAPI_MODEL = "openai/gpt-oss-20b";
+
   /* ---- JSON for write-ins ---- */
   I2.forget();
   delete process.env.FREELLMAPI_MODEL;

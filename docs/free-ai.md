@@ -180,6 +180,22 @@ for both **Production** and **Preview**:
 | `FREELLMAPI_MODEL` | Optional. The models to try, in order, comma-separated, for example `gemini-2.5-flash, auto:smart`. The gateway's own `auto` routing is always tried last, and is all there is when this is unset. Routing strategies (`auto:reliable`, `auto:smart`…) and your gateway's profiles (`auto:<name>`) work too. See *How a request is routed* |
 | `FREE_AI_DAILY_LIMIT` | Optional. Messages per account per UTC day, default `500`; `0` means no cap |
 
+**No gateway yet?** `FREELLMAPI_URL` can point straight at a provider's own
+OpenAI-style API instead, for example Groq's, `https://api.groq.com/openai/v1`,
+with a Groq key in `FREELLMAPI_KEY`. A provider's API has no `auto`, so
+`FREELLMAPI_MODEL` must list its models, the roomiest first. For Groq's free
+tier, where each model has its own per-minute allowance:
+
+```
+meta-llama/llama-4-scout-17b-16e-instruct, llama-3.3-70b-versatile, openai/gpt-oss-120b, openai/gpt-oss-20b
+```
+
+That is about 58,000 tokens a minute between them, against 8,000 for
+`openai/gpt-oss-20b` alone. Groq retires and renames models, so check its
+current list. A model it no longer has is skipped, and said so in the logs.
+A gateway still gives far more room, because it can use Gemini, Cerebras
+and Mistral too.
+
 The free AI also needs the account variables already described in the
 README (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
 `SESSION_SECRET`), because it is only for signed-in accounts and the daily
@@ -259,6 +275,14 @@ that can return JSON, and checks the reply.
   - `free-ai: answered on auto (google/gemini-2.5-flash) after passing over
     openai/gpt-oss-20b (429)` says which model answered in the end, and
     what was passed over on the way.
+- `404` for `auto`, saying ``The model `auto` does not exist``, and
+  `FREELLMAPI_URL has no "auto"`: the URL is a provider's own API, not a
+  FreeLLMAPI gateway. List that provider's models in `FREELLMAPI_MODEL`
+  (see *No gateway yet?* in step 3). People only see "not set up right"
+  when no model on the list exists there.
+- `400` with `tool_use_failed` or `json_validate_failed`: the model fumbled
+  its reply, usually Groq's gpt-oss. The next model on the list takes the
+  request, and the app tries once more on its own.
 - `401` / `403` in those logs: `FREELLMAPI_KEY` doesn't match the
   gateway's unified key. The key changes if it is regenerated in the
   dashboard.

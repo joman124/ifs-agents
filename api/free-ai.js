@@ -25,8 +25,14 @@
    prompt carries their whole inner system and runs to thousands of tokens,
    and some free models take only 8000 a minute. Here it is the next rung's
    turn. What a rung said is remembered by this instance for a while - when it
-   has room again after a 429, the size it turned down with a 413 - so the
-   next request does not ask it again in vain.
+   has room again after a 429, the size it turned down with a 413, that the
+   endpoint has no such model (404) - so the next request does not ask it
+   again in vain.
+
+   FREELLMAPI_URL can also be a provider's own OpenAI-style API, such as
+   Groq's, with FREELLMAPI_MODEL listing its models. That API has no "auto":
+   it answers 404, which is remembered like any model it does not have, and
+   the last model it does have becomes the rung that is always asked.
 
    Errors come back as { error: { message, code, retry_after } } in words
    meant for the person, which is the shape llm.js already reads. code is
@@ -42,6 +48,7 @@ var MAX_CHARS = 600000;           // system prompt + every message, together
 var REST_DEFAULT = 20;            // seconds a busy rung rests when it names no time
 var REST_MAX = 900;
 var ROOM_MS = 6 * 3600 * 1000;    // how long a size a rung turned down is believed
+var GONE_MS = 10 * 60 * 1000;     // how long "no such model" (404) is believed
 
 function dailyKey(username, day) { return "innertable:freeai:" + username + ":" + day; }
 
@@ -106,6 +113,7 @@ function tokens(ask) { return Math.ceil((ask.chars + 16 * (ask.messages.length +
 
 var rest = {};   // rung -> epoch ms it has room again
 var room = {};   // rung -> { tokens, until }: the size it turned down, and how long that holds
+var gone = {};   // rung -> epoch ms until which the endpoint is believed not to have it
 
 /* Seconds until a busy rung has room again, from whatever it said: a
    Retry-After header, the gateway's retryAtMs, or a provider's own words
@@ -142,6 +150,16 @@ function usable(rung, need, now) {
   return !(r && r.until > now && need >= r.tokens * 0.9);
 }
 
+/* A reply the model itself got wrong, not the request: Groq's
+   tool_use_failed (gpt-oss calling a tool nobody offered) and
+   json_validate_failed (JSON mode broken). The model is fine, and the same
+   request may well be answered on another try or by another model. */
+var GLITCHES = { tool_use_failed: 1, json_validate_failed: 1 };
+function glitch(status, text) {
+  if (status !== 400) return false;
+  try { return !!GLITCHES[(JSON.parse(text).error || {}).code]; } catch (e) { return false; }
+}
+
 /* ---------------- talking to the gateway ---------------- */
 
 function fail(res, status, message, code, wait) {
@@ -161,6 +179,7 @@ function upstreamError(status, bodyText, wait) {
     said = (j.error && (j.error.message || j.error)) || j.message || "";
     if (typeof said !== "string") said = "";
   } catch (e) {}
+  if (glitch(status, bodyText)) return { status: 502, code: "upstream", message: "The free AI could not answer just now. Try again in a moment." };
   if (status === 400) return { status: 400, code: "bad_request", message: "The free AI could not take that request." + (said ? " It said: " + said.slice(0, 200) : "") };
   if (status === 413) return { status: 400, code: "too_long", message: "This session is too long for every model the free AI can use. Start a new one, or hold this one in another AI chat." };
   if (status === 401 || status === 403 || status === 404) {
@@ -177,17 +196,25 @@ function upstreamError(status, bodyText, wait) {
 /* Down the ladder until a rung answers. A rung that is resting, or that
    turned down a request this size, is passed over - except the last, the
    gateway's own routing, which is always asked: it knows the models better
-   than this instance's memory does. A key the gateway refuses stops the
-   climb, since no rung will do better. Resolves to { upstream, rung, passed }
-   or { failed: { status, text }, wait }. */
+   than this instance's memory does. A rung the endpoint said it does not
+   have is passed over even as the last, and the last one it does have is
+   always asked instead. A key the gateway refuses stops the climb, since no
+   rung will do better. What the person is told comes from the most useful
+   failure: busy, then too big, then anything else, and "no such model" only
+   when that is all there was - so a provider's 404 for "auto" never hides
+   what a real model said. Resolves to { upstream, rung, passed } or
+   { failed: { status, text }, wait }. */
 async function climb(cfg, ask, rungs) {
   var need = tokens(ask);
   var passed = [];
-  var busy = null, tooBig = null, other = null, wait = 0;
+  var busy = null, tooBig = null, other = null, missing = null, wait = 0;
+  var last = rungs.length - 1;
+  while (last >= 0 && (gone[rungs[last]] || 0) > Date.now()) last--;
   for (var i = 0; i < rungs.length; i++) {
     var rung = rungs[i];
     var now = Date.now();
-    if (i < rungs.length - 1 && !usable(rung, need, now)) { passed.push(rung + " (resting)"); continue; }
+    if ((gone[rung] || 0) > now) { passed.push(rung + " (not found)"); missing = missing || { status: 404, text: "" }; continue; }
+    if (i < last && !usable(rung, need, now)) { passed.push(rung + " (resting)"); continue; }
     var payload = {
       model: rung,
       messages: [{ role: "system", content: ask.system }].concat(ask.messages),
@@ -223,12 +250,18 @@ async function climb(cfg, ask, rungs) {
       busy = { status: r.status, text: text };
       continue;
     }
-    // a model id the gateway does not know is not going to start working soon
-    rest[rung] = now + (r.status === 404 ? 600000 : 15000);
+    // a model id the endpoint does not know is not going to start working soon
+    if (r.status === 404) {
+      gone[rung] = now + GONE_MS;
+      missing = { status: 404, text: text };
+      if (/^auto(:|$)/.test(rung)) console.warn("free-ai: FREELLMAPI_URL has no \"" + rung + "\", so it is not a FreeLLMAPI gateway - FREELLMAPI_MODEL should list the models it does have");
+      continue;
+    }
+    if (!glitch(r.status, text)) rest[rung] = now + 15000;
     other = { status: r.status, text: text };
   }
   // busy beats too big: a bigger model exists, and will have room again
-  return { failed: busy || tooBig || other || { status: 0, text: "" }, wait: busy ? wait : 0 };
+  return { failed: busy || tooBig || other || missing || { status: 0, text: "" }, wait: busy ? wait : 0 };
 }
 
 /* Pass the gateway's SSE stream on as it arrives. If the person leaves, stop
@@ -335,5 +368,5 @@ module.exports = async function handler(req, res) {
 
 module.exports._internal = {
   endpoint: endpoint, cleanAsk: cleanAsk, upstreamError: upstreamError, ladder: ladder, retryAfter: retryAfter, tokens: tokens,
-  forget: function () { rest = {}; room = {}; }
+  forget: function () { rest = {}; room = {}; gone = {}; }
 };

@@ -32,7 +32,10 @@
    FREELLMAPI_URL can also be a provider's own OpenAI-style API, such as
    Groq's, with FREELLMAPI_MODEL listing its models. That API has no "auto":
    it answers 404, which is remembered like any model it does not have, and
-   the last model it does have becomes the rung that is always asked.
+   the last model it does have becomes the rung that is always asked. Groq's
+   is known by its address: "auto" is never sent there, and a
+   FREELLMAPI_MODEL that names none of its models - unset, or "auto", as
+   suits a gateway - gets a ladder of its own models instead.
 
    Errors come back as { error: { message, code, retry_after } } in words
    meant for the person, which is the shape llm.js already reads. code is
@@ -59,22 +62,37 @@ function config() {
   return {
     url: url,
     key: key,
-    ladder: ladder(process.env.FREELLMAPI_MODEL),
+    ladder: ladder(process.env.FREELLMAPI_MODEL, url),
     daily: isNaN(limit) || limit < 0 ? DEFAULT_DAILY : limit,   // 0 = no cap
     ready: !!(url && key && process.env.UPSTASH_REDIS_REST_URL &&
       process.env.UPSTASH_REDIS_REST_TOKEN && process.env.SESSION_SECRET)
   };
 }
 
+/* Groq's free-tier models, the most tokens a minute first: each has its own
+   allowance, so together they take several sessions a minute where one
+   takes one. One Groq has since retired answers 404 and is passed over. */
+var GROQ_LADDER = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+
+function isGroq(url) {
+  try { return /(^|\.)groq\.com$/i.test(new URL(url).hostname); } catch (e) { return false; }
+}
+
 /* "gemini-2.5-flash, auto:smart" -> ["gemini-2.5-flash", "auto:smart"];
-   "openai/gpt-oss-20b" -> ["openai/gpt-oss-20b", "auto"]. */
-function ladder(spec) {
+   "openai/gpt-oss-20b" -> ["openai/gpt-oss-20b", "auto"]. Straight at Groq,
+   whose API has no "auto": only the models named, or GROQ_LADDER when none
+   is. */
+function ladder(spec, url) {
   var seen = {};
   var rungs = String(spec || "").split(",").map(function (s) { return s.trim(); }).filter(function (s) {
     if (!s || seen[s]) return false;
     seen[s] = 1;
     return true;
   });
+  if (isGroq(url)) {
+    rungs = rungs.filter(function (r) { return !/^auto(:|$)/.test(r); });
+    return rungs.length ? rungs : GROQ_LADDER.slice();
+  }
   if (!rungs.length || !/^auto(:|$)/.test(rungs[rungs.length - 1])) rungs.push("auto");
   return rungs;
 }

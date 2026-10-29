@@ -37,7 +37,7 @@ module.exports = async function (t) {
       if (cmd[0] === "EXPIRE") { expiry[cmd[1]] = Number(cmd[2]); return ok({ result: 1 }); }
       return { ok: false, status: 400 };
     }
-    if (url.indexOf("https://gateway.example") === 0) {
+    if (url.indexOf("https://gateway.example") === 0 || url.indexOf("https://api.groq.com") === 0) {
       gateway.calls.push({ url: url, headers: opts.headers, body: JSON.parse(opts.body) });
       return gateway.reply(JSON.parse(opts.body));
     }
@@ -296,6 +296,25 @@ module.exports = async function (t) {
   mark = gateway.calls.length;
   var none2 = await call("POST", as("bob", small()));
   t.eq([none2.body.error.code, models(mark)], ["unavailable", []], "...said again without asking it again");
+
+  /* ---- Groq's own API, known by its address ---- */
+  var GROQ = "https://api.groq.com/openai/v1";
+  var GL = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+  t.eq([I2.ladder("", GROQ), I2.ladder("auto", GROQ), I2.ladder(" auto:smart ", GROQ)], [GL, GL, GL],
+    "straight at Groq with none of its models named (unset, or 'auto' as suits a gateway): its own free-tier ladder");
+  t.eq([I2.ladder("openai/gpt-oss-20b", GROQ), I2.ladder("llama-3.3-70b-versatile, auto", GROQ), I2.ladder("", "https://groq.example.com/v1")],
+    [["openai/gpt-oss-20b"], ["llama-3.3-70b-versatile"], ["auto"]],
+    "...the models named, and never 'auto', which Groq does not have; an address that only looks like Groq's is a gateway");
+  I2.forget();
+  process.env.FREELLMAPI_URL = GROQ;
+  delete process.env.FREELLMAPI_MODEL;
+  mark = gateway.calls.length;
+  gateway.reply = function (body) { return body.model === "auto" ? reply(404, GROQ_NO_AUTO) : answered(body.model); };
+  var onGroq = await call("POST", as("bob", small()));
+  t.eq([onGroq.code, models(mark), gateway.calls[gateway.calls.length - 1].url],
+    [200, [GL[0]], "https://api.groq.com/openai/v1/chat/completions"],
+    "FREELLMAPI_MODEL cleared on a Groq deployment (the live break): answered by Groq's own models, never 'auto'");
+  process.env.FREELLMAPI_URL = "https://gateway.example/";
   process.env.FREELLMAPI_MODEL = "openai/gpt-oss-20b";
 
   /* ---- JSON for write-ins ---- */

@@ -183,8 +183,10 @@ for both **Production** and **Preview**:
 **No gateway yet?** `FREELLMAPI_URL` can point straight at a provider's own
 OpenAI-style API instead, for example Groq's, `https://api.groq.com/openai/v1`,
 with a Groq key in `FREELLMAPI_KEY`. A provider's API has no `auto`, so
-`FREELLMAPI_MODEL` must list its models, the roomiest first. For Groq's free
-tier, where each model has its own per-minute allowance:
+`FREELLMAPI_MODEL` must list its models, the roomiest first. Groq is the one
+exception: Inner Table knows its address, never sends it `auto`, and when
+`FREELLMAPI_MODEL` is unset or `auto` it uses this list of Groq's free-tier
+models, where each model has its own per-minute allowance:
 
 ```
 meta-llama/llama-4-scout-17b-16e-instruct, llama-3.3-70b-versatile, openai/gpt-oss-120b, openai/gpt-oss-20b
@@ -253,8 +255,10 @@ seconds, and asks once more.
 
 What to set:
 
-- **Unset, or `auto`**: the gateway picks. This is the simplest choice, and
-  right for most setups.
+- **Unset, or `auto`**: the gateway picks. This is the simplest choice
+  with a FreeLLMAPI gateway. Pointed straight at Groq, it means the list
+  under *No gateway yet?* in step 3. Pointed at any other provider's own
+  API, it breaks the free AI, because only a gateway has `auto`.
 - **A model you prefer, then auto**, e.g. `gemini-2.5-flash`: it is tried
   first, and anything it can't take goes to `auto`.
 - **Not a small model on its own.** Naming one is harmless now, since

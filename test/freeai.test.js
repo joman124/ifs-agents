@@ -37,7 +37,7 @@ module.exports = async function (t) {
       if (cmd[0] === "EXPIRE") { expiry[cmd[1]] = Number(cmd[2]); return ok({ result: 1 }); }
       return { ok: false, status: 400 };
     }
-    if (url.indexOf("https://gateway.example") === 0 || url.indexOf("https://api.groq.com") === 0) {
+    if (/^https:\/\/(gateway\.example|api\.groq\.com|generativelanguage\.googleapis\.com)\//.test(url)) {
       gateway.calls.push({ url: url, headers: opts.headers, body: JSON.parse(opts.body) });
       return gateway.reply(JSON.parse(opts.body));
     }
@@ -303,8 +303,9 @@ module.exports = async function (t) {
   t.eq([I2.ladder("", GROQ), I2.ladder("auto", GROQ), I2.ladder(" auto:smart ", GROQ)], [GL, GL, GL],
     "straight at Groq with none of its models named (unset, or 'auto' as suits a gateway): its own free-tier ladder");
   t.eq([I2.ladder("openai/gpt-oss-20b", GROQ), I2.ladder("llama-3.3-70b-versatile, auto", GROQ), I2.ladder("", "https://groq.example.com/v1")],
-    [["openai/gpt-oss-20b"], ["llama-3.3-70b-versatile"], ["auto"]],
-    "...the models named, and never 'auto', which Groq does not have; an address that only looks like Groq's is a gateway");
+    [["openai/gpt-oss-20b", GL[0], GL[1], GL[2]], ["llama-3.3-70b-versatile", GL[0], GL[2], GL[3]], ["auto"]],
+    "...the models named, then its own, and never 'auto', which Groq does not have; an address that only looks like Groq's is a gateway");
+  t.eq(I2.endpoint("https://api.groq.com"), "https://api.groq.com/openai/v1/chat/completions", "Groq's chat endpoint, however its address was given");
   I2.forget();
   process.env.FREELLMAPI_URL = GROQ;
   delete process.env.FREELLMAPI_MODEL;
@@ -314,6 +315,46 @@ module.exports = async function (t) {
   t.eq([onGroq.code, models(mark), gateway.calls[gateway.calls.length - 1].url],
     [200, [GL[0]], "https://api.groq.com/openai/v1/chat/completions"],
     "FREELLMAPI_MODEL cleared on a Groq deployment (the live break): answered by Groq's own models, never 'auto'");
+
+  /* ---- Google's Gemini API, known by its address ---- */
+  var GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai";
+  var GEMINI_CHAT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+  var GM = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemma-4-31b-it", "gemma-4-26b-a4b-it"];
+  var gem = function (code, status, message) { return JSON.stringify([{ error: { code: code, message: message, status: status } }]); };
+  var GEM_DAY = gem(429, "RESOURCE_EXHAUSTED", "You exceeded your current quota. Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.5-flash. quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier. Please retry in 29.06s.");
+  t.eq([I2.endpoint(GEMINI), I2.endpoint(GEMINI + "/"), I2.endpoint("https://generativelanguage.googleapis.com")], [GEMINI_CHAT, GEMINI_CHAT, GEMINI_CHAT],
+    "Gemini's OpenAI-style endpoint, however its address was given");
+  t.eq([I2.ladder("", GEMINI), I2.ladder("auto", GEMINI), I2.ladder("gemini-2.5-flash-lite", GEMINI)],
+    [GM, GM, ["gemini-2.5-flash-lite", GM[0], GM[1], GM[3], GM[4]]], "...its own free-tier models, after any named");
+  t.eq(I2.retryAfter(null, GEM_DAY), 30, "...and when it says it has room again, in its own words, inside its own error shape");
+
+  I2.forget();
+  process.env.FREELLMAPI_URL = GEMINI;
+  process.env.FREELLMAPI_MODEL = GL.join(", ");
+  mark = gateway.calls.length;
+  gateway.reply = function (body) {
+    if (GL.indexOf(body.model) >= 0) return reply(404, gem(404, "NOT_FOUND", "models/" + body.model + " is not found for API version v1main"));
+    return body.model === "gemini-3.5-flash" ? reply(429, GEM_DAY) : answered(body.model);
+  };
+  var switched = await call("POST", as("bob", small()));
+  t.eq([switched.code, models(mark), gateway.calls[gateway.calls.length - 1].url],
+    [200, GL.concat(["gemini-3.5-flash", "gemini-2.5-flash"]), GEMINI_CHAT],
+    "switched to Gemini with FREELLMAPI_MODEL still naming Groq's models: those are not found, and Gemini's own answer");
+  mark = gateway.calls.length;
+  await call("POST", as("bob", small()));
+  t.eq(models(mark), ["gemini-2.5-flash"], "...the next request skips them, and the model whose day is used up rests, not just the seconds it named");
+
+  I2.forget();
+  mark = gateway.calls.length;
+  gateway.reply = function () { return reply(400, gem(400, "INVALID_ARGUMENT", "API key not valid. Please pass a valid API key.")); };
+  var badGem = await call("POST", as("bob", small()));
+  t.eq([badGem.code, badGem.body.error.code, models(mark).length], [502, "unavailable", 1],
+    "a Gemini key that is not valid (its 400) is the server's setup, and stops the climb");
+  I2.forget();
+  gateway.reply = function () { return reply(400, gem(400, "INVALID_ARGUMENT", "Invalid value at 'messages'")); };
+  var badAsk = await call("POST", as("bob", small()));
+  t.eq([badAsk.body.error.code, /Invalid value at 'messages'/.test(badAsk.body.error.message)], ["bad_request", true],
+    "...and any other refusal carries Gemini's own reason");
   process.env.FREELLMAPI_URL = "https://gateway.example/";
   process.env.FREELLMAPI_MODEL = "openai/gpt-oss-20b";
 

@@ -181,22 +181,43 @@ for both **Production** and **Preview**:
 | `FREE_AI_DAILY_LIMIT` | Optional. Messages per account per UTC day, default `500`; `0` means no cap |
 
 **No gateway yet?** `FREELLMAPI_URL` can point straight at a provider's own
-OpenAI-style API instead, for example Groq's, `https://api.groq.com/openai/v1`,
-with a Groq key in `FREELLMAPI_KEY`. A provider's API has no `auto`, so
-`FREELLMAPI_MODEL` must list its models, the roomiest first. Groq is the one
-exception: Inner Table knows its address, never sends it `auto`, and when
-`FREELLMAPI_MODEL` is unset or `auto` it uses this list of Groq's free-tier
-models, where each model has its own per-minute allowance:
+OpenAI-style API instead, with that provider's key in `FREELLMAPI_KEY`. A
+provider's API has no `auto`, so `FREELLMAPI_MODEL` must list its models,
+the roomiest first. Two providers are exceptions. Inner Table knows their
+addresses, never sends them `auto`, and after whatever `FREELLMAPI_MODEL`
+names, it tries their own free-tier models below. So `FREELLMAPI_MODEL` can
+be left unset, and a stale one left over from another provider does no harm.
+Each provider retires and renames models, so check its current list. A
+model it no longer has is skipped, and said so in the logs.
 
-```
-meta-llama/llama-4-scout-17b-16e-instruct, llama-3.3-70b-versatile, openai/gpt-oss-120b, openai/gpt-oss-20b
-```
+- **Google Gemini**: `FREELLMAPI_URL` =
+  `https://generativelanguage.googleapis.com/v1beta/openai`, with a key from
+  [aistudio.google.com/apikey](https://aistudio.google.com/apikey). The
+  models tried:
 
-That is about 58,000 tokens a minute between them, against 8,000 for
-`openai/gpt-oss-20b` alone. Groq retires and renames models, so check its
-current list. A model it no longer has is skipped, and said so in the logs.
-A gateway still gives far more room, because it can use Gemini, Cerebras
-and Mistral too.
+  ```
+  gemini-3.5-flash, gemini-2.5-flash, gemini-2.5-flash-lite, gemma-4-31b-it, gemma-4-26b-a4b-it
+  ```
+
+  Unpaid, each Gemini model takes only about **20 requests a day**, and one
+  session spends a request on every reply. Each Gemma model takes about
+  1,000, so on the free tier most replies come from Gemma. **Unpaid, Google
+  may use what is sent to improve its products, and people may read it**
+  (see the privacy note in step 2). Turning on billing for the key's Google
+  Cloud project puts it under the paid terms, which don't, and lifts the
+  daily caps. Each request is then charged by the token. Check Google's
+  current pricing, and set a budget alert in Google Cloud.
+- **Groq**: `FREELLMAPI_URL` = `https://api.groq.com/openai/v1`, with a key
+  from [console.groq.com/keys](https://console.groq.com/keys). The models
+  tried, each with its own per-minute allowance, about 58,000 tokens a
+  minute between them:
+
+  ```
+  meta-llama/llama-4-scout-17b-16e-instruct, llama-3.3-70b-versatile, openai/gpt-oss-120b, openai/gpt-oss-20b
+  ```
+
+A gateway still gives the most room, because it can use several providers
+at once.
 
 The free AI also needs the account variables already described in the
 README (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
@@ -256,9 +277,10 @@ seconds, and asks once more.
 What to set:
 
 - **Unset, or `auto`**: the gateway picks. This is the simplest choice
-  with a FreeLLMAPI gateway. Pointed straight at Groq, it means the list
-  under *No gateway yet?* in step 3. Pointed at any other provider's own
-  API, it breaks the free AI, because only a gateway has `auto`.
+  with a FreeLLMAPI gateway. Pointed straight at Gemini or Groq, it means
+  their lists under *No gateway yet?* in step 3. Pointed at any other
+  provider's own API, it breaks the free AI, because only a gateway has
+  `auto`.
 - **A model you prefer, then auto**, e.g. `gemini-2.5-flash`: it is tried
   first, and anything it can't take goes to `auto`.
 - **Not a small model on its own.** Naming one is harmless now, since
@@ -289,7 +311,10 @@ that can return JSON, and checks the reply.
   request, and the app tries once more on its own.
 - `401` / `403` in those logs: `FREELLMAPI_KEY` doesn't match the
   gateway's unified key. The key changes if it is regenerated in the
-  dashboard.
+  dashboard. Straight at Gemini, a key that isn't valid answers `400` with
+  `API key not valid` instead, and is treated the same way.
+- `429` from Gemini naming `PerDay`: that model's day is used up. It is
+  passed over for 15 minutes at a time until Google resets the count.
 - `429` / `503` with `no_providers_configured` or `quota_exceeded`: no
   provider key has room. Add more providers, or wait for the UTC reset.
 - `429` naming **tokens per minute (TPM)**, again and again, even for `auto`:

@@ -29,13 +29,14 @@
    endpoint has no such model (404) - so the next request does not ask it
    again in vain.
 
-   FREELLMAPI_URL can also be a provider's own OpenAI-style API, such as
-   Groq's, with FREELLMAPI_MODEL listing its models. That API has no "auto":
-   it answers 404, which is remembered like any model it does not have, and
-   the last model it does have becomes the rung that is always asked. Groq's
-   is known by its address: "auto" is never sent there, and a
-   FREELLMAPI_MODEL that names none of its models - unset, or "auto", as
-   suits a gateway - gets a ladder of its own models instead.
+   FREELLMAPI_URL can also be a provider's own OpenAI-style API, with
+   FREELLMAPI_MODEL listing its models. That API has no "auto": it answers
+   404, which is remembered like any model it does not have, and the last
+   model it does have becomes the rung that is always asked. Groq's and
+   Google's Gemini API are known by their address (PROVIDERS): "auto" is
+   never sent there, and their own free-tier models follow whatever
+   FREELLMAPI_MODEL names - so it can be left unset, or still name another
+   provider's models after a switch, and models that exist are still asked.
 
    Errors come back as { error: { message, code, retry_after } } in words
    meant for the person, which is the shape llm.js already reads. code is
@@ -69,19 +70,29 @@ function config() {
   };
 }
 
-/* Groq's free-tier models, the most tokens a minute first: each has its own
-   allowance, so together they take several sessions a minute where one
-   takes one. One Groq has since retired answers 404 and is passed over. */
-var GROQ_LADDER = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b"];
+/* Providers FREELLMAPI_URL can point straight at, known by their address:
+   the chat endpoint, whatever path the address was given with, and their
+   free-tier models, the most room first. A model one has since retired
+   answers 404 and is passed over. */
+var PROVIDERS = [
+  { host: /(^|\.)groq\.com$/i, chat: "https://api.groq.com/openai/v1/chat/completions",
+    // each has its own tokens-a-minute allowance: together, several sessions a minute where one takes one
+    models: ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b"] },
+  { host: /^generativelanguage\.googleapis\.com$/i, chat: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    // unpaid, each Gemini model takes about 20 requests a day and each Gemma about 1000
+    models: ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemma-4-31b-it", "gemma-4-26b-a4b-it"] }
+];
 
-function isGroq(url) {
-  try { return /(^|\.)groq\.com$/i.test(new URL(url).hostname); } catch (e) { return false; }
+function provider(url) {
+  var host;
+  try { host = new URL(url).hostname; } catch (e) { return null; }
+  for (var i = 0; i < PROVIDERS.length; i++) if (PROVIDERS[i].host.test(host)) return PROVIDERS[i];
+  return null;
 }
 
 /* "gemini-2.5-flash, auto:smart" -> ["gemini-2.5-flash", "auto:smart"];
-   "openai/gpt-oss-20b" -> ["openai/gpt-oss-20b", "auto"]. Straight at Groq,
-   whose API has no "auto": only the models named, or GROQ_LADDER when none
-   is. */
+   "openai/gpt-oss-20b" -> ["openai/gpt-oss-20b", "auto"]. Straight at a
+   known provider, whose API has no "auto": the models named, then its own. */
 function ladder(spec, url) {
   var seen = {};
   var rungs = String(spec || "").split(",").map(function (s) { return s.trim(); }).filter(function (s) {
@@ -89,17 +100,21 @@ function ladder(spec, url) {
     seen[s] = 1;
     return true;
   });
-  if (isGroq(url)) {
+  var p = provider(url);
+  if (p) {
     rungs = rungs.filter(function (r) { return !/^auto(:|$)/.test(r); });
-    return rungs.length ? rungs : GROQ_LADDER.slice();
+    p.models.forEach(function (m) { if (!seen[m]) rungs.push(m); });
+    return rungs;
   }
   if (!rungs.length || !/^auto(:|$)/.test(rungs[rungs.length - 1])) rungs.push("auto");
   return rungs;
 }
 
 /* The gateway's chat endpoint, whether FREELLMAPI_URL was given as the bare
-   address or already ending in /v1. */
+   address or already ending in /v1; a known provider's own. */
 function endpoint(base) {
+  var p = provider(base);
+  if (p) return p.chat;
   var b = String(base).replace(/\/+$/, "");
   return (/\/v1$/.test(b) ? b : b + "/v1") + "/chat/completions";
 }
@@ -133,21 +148,30 @@ var rest = {};   // rung -> epoch ms it has room again
 var room = {};   // rung -> { tokens, until }: the size it turned down, and how long that holds
 var gone = {};   // rung -> epoch ms until which the endpoint is believed not to have it
 
+/* A reply's error object: { error } as OpenAI and the gateway send it, or
+   [{ error }] as Gemini's OpenAI-style API does. {} when there is none. */
+function errorOf(text) {
+  try {
+    var j = JSON.parse(text);
+    if (Array.isArray(j)) j = j[0];
+    return (j && j.error) || {};
+  } catch (e) { return {}; }
+}
+
 /* Seconds until a busy rung has room again, from whatever it said: a
    Retry-After header, the gateway's retryAtMs, or a provider's own words
-   ("Please try again in 14.2s"). 0 when it named no time. */
+   ("Please try again in 14.2s", Gemini's "Please retry in 29.1s"). 0 when it
+   named no time. */
 function retryAfter(headers, text) {
   var s = 0;
   var h = headers && typeof headers.get === "function" ? headers.get("retry-after") : null;
   if (h && /^\d+(\.\d+)?$/.test(String(h).trim())) s = Number(h);
   if (!s) {
-    try {
-      var at = Number((JSON.parse(text).error || {}).retryAtMs);
-      if (at > Date.now()) s = (at - Date.now()) / 1000;
-    } catch (e) {}
+    var at = Number(errorOf(text).retryAtMs);
+    if (at > Date.now()) s = (at - Date.now()) / 1000;
   }
   if (!s) {
-    var m = /try again in\s+(?:(\d+)m)?\s*([\d.]+)\s*(ms|s)\b/i.exec(text || "");
+    var m = /(?:try again|retry) in\s+(?:(\d+)m)?\s*([\d.]+)\s*(ms|s)\b/i.exec(text || "");
     if (m) s = (Number(m[1] || 0) * 60) + Number(m[2]) / (m[3].toLowerCase() === "ms" ? 1000 : 1);
   }
   return s > 0 ? Math.min(REST_MAX, Math.ceil(s)) : 0;
@@ -174,8 +198,13 @@ function usable(rung, need, now) {
    request may well be answered on another try or by another model. */
 var GLITCHES = { tool_use_failed: 1, json_validate_failed: 1 };
 function glitch(status, text) {
-  if (status !== 400) return false;
-  try { return !!GLITCHES[(JSON.parse(text).error || {}).code]; } catch (e) { return false; }
+  return status === 400 && !!GLITCHES[errorOf(text).code];
+}
+
+/* The server's own key refused: 401 or 403, or Gemini's 400 for a key that
+   is not valid. No rung will do better. */
+function keyRefused(status, text) {
+  return status === 401 || status === 403 || (status === 400 && /API_KEY_INVALID|API key not valid/i.test(text || ""));
 }
 
 /* ---------------- talking to the gateway ---------------- */
@@ -194,6 +223,7 @@ function upstreamError(status, bodyText, wait) {
   var said = "";
   try {
     var j = JSON.parse(bodyText);
+    if (Array.isArray(j)) j = j[0] || {};
     said = (j.error && (j.error.message || j.error)) || j.message || "";
     if (typeof said !== "string") said = "";
   } catch (e) {}
@@ -259,11 +289,12 @@ async function climb(cfg, ask, rungs) {
     // the gateway's own reason, for whoever runs the deployment (the person gets plainer words)
     console.warn("free-ai: gateway answered " + r.status + " for " + rung + ": " + text.slice(0, 300));
     passed.push(rung + " (" + r.status + ")");
-    if (r.status === 401 || r.status === 403) return { failed: { status: r.status, text: text } };
+    if (keyRefused(r.status, text)) return { failed: { status: r.status === 400 ? 401 : r.status, text: text } };
     if (r.status === 413) { learnRoom(rung, text, need); tooBig = { status: 413, text: text }; continue; }
     if (r.status === 429 || r.status === 503) {
       var w = retryAfter(r.headers, text);
-      rest[rung] = now + (w || REST_DEFAULT) * 1000;
+      // a day's quota used up does not come back in the seconds a provider names
+      rest[rung] = now + (/per.?day/i.test(text) ? REST_MAX : (w || REST_DEFAULT)) * 1000;
       if (w && (!wait || w < wait)) wait = w;
       busy = { status: r.status, text: text };
       continue;

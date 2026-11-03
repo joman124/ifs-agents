@@ -8,8 +8,9 @@
    in. Anything else appends to the category's default section.
 
    The doc's "What memories or traumas are associated with your presence?" is
-   deliberately absent: docs/safety.md excludes trauma content, and a
-   tap-through form has no interviewer to back off when it lands badly. */
+   deliberately absent: a tap-through form has no guide to ground the person
+   or slow down when it lands badly, and in a session a part's past is its own
+   to show, never asked for (docs/safety.md). */
 (function () {
   "use strict";
 

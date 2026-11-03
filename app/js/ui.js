@@ -3551,8 +3551,8 @@
           isStandalone() ? "Installed" : "Add to home screen",
           isStandalone() ? "running from your home screen &middot; works offline" : installHint(),
           !isStandalone() && deferredInstall ? '<button class="btn btn-soft" id="setInstall">Install</button>' : "") +
-        '<details class="advanced set-pad" style="margin:0"><summary>This is not therapy</summary>' +
-        '<p class="dim" style="margin:10px 2px"><b>Inner Table</b> is the webapp of the open-source <a href="https://github.com/joman124/ifs-agents" target="_blank" rel="noopener">ifs-agents</a> system, inspired by Internal Family Systems (Richard C. Schwartz). It is a self-exploration and journaling tool &mdash; no trauma processing, no unburdening. Read the <a href="https://github.com/joman124/ifs-agents/blob/main/docs/safety.md" target="_blank" rel="noopener">safety guide</a>.</p>' +
+        '<details class="advanced set-pad" style="margin:0"><summary>What this is</summary>' +
+        '<p class="dim" style="margin:10px 2px"><b>Inner Table</b> is the webapp of the open-source <a href="https://github.com/joman124/ifs-agents" target="_blank" rel="noopener">ifs-agents</a> system, inspired by Internal Family Systems (Richard C. Schwartz). It is IFS-informed inner work with an AI guide: it can go as deep as your parts are willing to go, always through their protectors and never by digging for memories. The guide is not a therapist, and is not a substitute for one. Read the <a href="https://github.com/joman124/ifs-agents/blob/main/docs/safety.md" target="_blank" rel="noopener">safety guide</a>.</p>' +
         '<p class="dim" style="margin:0 2px">In crisis? Call or text <b>988</b> (US) or visit <a href="https://findahelpline.com" target="_blank" rel="noopener">findahelpline.com</a>.</p></details>');
 
     $("#settingsPane").querySelectorAll("details.set-group").forEach(function (d) {

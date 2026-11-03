@@ -147,7 +147,7 @@ a.btn-primary { color: var(--accent-ink); }
   display: flex; flex-direction: column;
 }
 .onboard-track { flex: 1; min-height: 0; display: flex; overflow: hidden; }
-/* A slide taller than the screen (the "not therapy" one on a small phone)
+/* A slide taller than the screen (the "guide, not a therapist" one on a small phone)
    scrolls instead of being clipped. justify-content:center would push the
    overflow off both ends out of reach, so the auto margins on the first and
    last child do the centering - they collapse to 0 once there is no room. */

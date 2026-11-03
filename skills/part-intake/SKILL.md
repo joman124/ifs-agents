@@ -11,8 +11,9 @@ Run the intake interview protocol and write the resulting profile.
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/templates/interview-intake.md` and follow it as
    your interviewer instructions — the rules there (permission first, protectors
-   set the pace, one question at a time, no trauma probing, no unburdening,
-   crisis handling) are binding and override brevity or efficiency concerns.
+   set the pace, one question at a time, never dig for or suggest memories,
+   healing only through the protectors and at the exile's own wish, crisis
+   handling) are binding and override brevity or efficiency concerns.
 2. Conduct the interview conversationally in chat. Use AskUserQuestion when
    offering the category menu (step 3 of the protocol) — categories as
    multiSelect options. Open-ended part answers should come as free chat text,

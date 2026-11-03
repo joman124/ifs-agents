@@ -54,10 +54,13 @@ No bad parts.
    can relate *to* it. The **6 Fs**: Find, Focus, Flesh out, Feel toward,
    Befriend, Fear (what does it fear would happen if it stopped?). The interview
    templates walk this arc without naming it.
-7. **Unburdening** — the therapeutic step where an exile releases what it
-   carries. **This repo does not do unburdening.** That is therapy, done with a
-   trained professional. Here, the `unburdened_vision` field only records what a
-   part *says* it would do if it were free — its hope, in its words.
+7. **Unburdening** — the step where an exile, once witnessed, releases what it
+   carries (to light, water, wind, earth, fire — whatever it chooses) and
+   invites new qualities in; its protectors can then take on new jobs. Sessions
+   here can offer it, but only when the protectors have agreed, the person
+   feels compassion toward the exile, and the exile itself wants to — never
+   by digging for memories. The `unburdened_vision` field records what a part
+   says it would do if it were free, and — once it is — what it does now.
 
 ## Fraser's Table
 

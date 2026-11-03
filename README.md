@@ -10,11 +10,12 @@ This repo ships **no specific parts**. It ships the flow: the question protocol,
 the profile schema, the safety rails, and the compilation step that turns a
 developed profile into a runnable agent. Your parts are yours.
 
-> **This is not therapy.** It is a self-exploration and journaling tool that
-> borrows IFS structure. It deliberately excludes therapeutic depth work
-> (no trauma processing, no unburdening). Read [docs/safety.md](docs/safety.md)
-> before you start. If you are in crisis, use a crisis line (988 in the US), not
-> this tool.
+> **A guide, not a therapist.** Sessions are IFS-informed inner work. They can
+> go as deep as a person's parts are willing to go — witnessing an exile,
+> helping it let go of what it carries — but only through its protectors, and
+> never by digging for or suggesting memories. The AI guide is not a therapist
+> or a substitute for one. Read [docs/safety.md](docs/safety.md) before you
+> start. If you are in crisis, use a crisis line (988 in the US), not this tool.
 
 ## IFS in 30 seconds
 
@@ -52,10 +53,13 @@ part has a positive intent; there are no bad parts. Longer version:
 
 1. **Intake** — a guided interview (permission-first, one question at a time)
    meets one part and writes its profile.
-2. **Check-ins** — short ongoing sessions deepen the profile over weeks. A
+2. **Check-ins** — ongoing sessions deepen the profile over weeks. A
    per-category `coverage` map tracks what's been explored, what's partial, and
    what the part has *declined* — declined topics stay closed. Protectors set
-   the pace; there is no finish line.
+   the pace; there is no finish line. As a part comes to trust Self, a
+   check-in can go further than getting to know it — updating it, meeting what
+   it protects, helping it let go of something — and the profile records how
+   the part has changed, not just what it said.
 3. **Mapping** — pairwise sessions capture how parts relate: who protects whom,
    who's allied, who's polarized. Edges are written symmetrically into both
    profiles, and the whole swarm renders as a Mermaid graph.
@@ -205,8 +209,8 @@ as an argument, so it never lands in shell history.
 
 Each user's parts live under their own key and are never readable by another
 account. The Upstash token stays server-side in [`api/`](api/); the browser
-only ever holds a signed session token. This is still a journaling tool, not
-a therapy record system — the [safety guide](docs/safety.md) applies doubly
+only ever holds a signed session token. This is a personal inner-work tool, not
+a clinical record system — the [safety guide](docs/safety.md) applies doubly
 once profiles are on a server.
 
 ### Returning users

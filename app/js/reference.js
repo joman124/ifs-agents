@@ -90,7 +90,7 @@
         ["h", "Why nobody is made to sit"],
         ["p", "A part that stays at the side of the room, or watches from an adjoining room, is participating. Being invited and declining is a real answer, and this tab records it as one rather than treating it as a gap."],
         ["h", "What this tab leaves out"],
-        ["p", "In clinical use the table can be a way into deeper work with dissociated parts. Here it is only for meeting and listening &mdash; no memory work, no unburdening. If parts feel very separate from you (losing time, finding things you don't remember doing), explore that with a clinician trained in dissociation rather than here."]
+        ["p", "In clinical use the table can be a way into deeper work with dissociated parts. Here it is for meeting and listening together; deeper work with one part happens in a check-in, where there is room for it. If parts feel very separate from you (losing time, finding things you don't remember doing), explore that with a clinician trained in dissociation rather than here."]
       ] },
     { id: "self", title: "Self and the 8 Cs", blurb: "How to tell Self is present",
       body: [
@@ -123,9 +123,10 @@
         ["p", "A burden is something a part carries that isn't native to it — a belief, an emotion, a rule it picked up from an experience. \"I am too much.\" \"It isn't safe to be seen.\" The part isn't the burden; it is weighed down by it."],
         ["h", "Legacy burdens"],
         ["p", "Some burdens were never yours to begin with. They arrive down a family line — inherited shame, a family's relationship to anger or money or grief, the residue of what happened to people before you. They can feel older and more impersonal than a burden that came from your own history, and they often show up in a part that seems disproportionate to anything you remember."],
-        ["p", "Naming something as a possible legacy burden is a hypothesis to hold, not a conclusion to act on. It is a useful thing to notice and record, and a thing to explore with a practitioner rather than alone."],
-        ["h", "Unburdening is not done here"],
-        ["p", "The release itself is therapy, done with a trained professional. This app only records what a part says it <i>would</i> do if it no longer had to carry its role — its hope, in its own words."]
+        ["p", "Naming something as a possible legacy burden is a hypothesis to hold, not a conclusion to act on. It is a useful thing to notice and record, and something a part can be asked about gently &mdash; without deciding for it."],
+        ["h", "Letting go, at the part's pace"],
+        ["p", "When an exile has been witnessed &mdash; shown the person as much as it wanted to show, and felt understood &mdash; it may want to let go of what it carries: giving it to light, water, wind, earth, fire, or anything else it chooses, and inviting something new into the space. A session can offer this; only the part decides, and only once its protectors agree. Being witnessed alone often changes a part a great deal."],
+        ["p", "Change settles with attention, so a short check-in over the next few days helps. The profile keeps the story: what the part carried, what it let go of, and the job it does now."]
       ] },
     { id: "rules", title: "The working rules", blurb: "What this app is built to obey",
       body: [
@@ -139,13 +140,14 @@
         ["h", "The 5 Ps"],
         ["p", "What the facilitating stance asks for, whether that's a therapist or you sitting with yourself: Presence, Patience, Perspective, Persistence, Playfulness."]
       ] },
-    { id: "safety", title: "What this app will not do", blurb: "Boundaries, and where to go instead",
+    { id: "safety", title: "How sessions keep you safe", blurb: "Boundaries, and where to go instead",
       body: [
-        ["p", "This is a self-exploration and journalling tool that borrows IFS structure. It deliberately excludes therapeutic depth work: no trauma processing, no unburdening."],
+        ["p", "Inner Table is IFS-informed inner work with an AI guide. Sessions can go as deep as your parts are willing to go &mdash; meeting an exile, witnessing it, helping it let go &mdash; but only through its protectors, and never by digging for memories. The guide never asks what happened or suggests what might have; a part's past is its own to show."],
         ["l", ["Anything can be declined, and a declined topic stays closed unless the part reopens it.",
-               "Hesitation is a signal to back off, not to push.",
-               "Stopping at any point is a fine outcome. Partial profiles are the norm.",
-               "Feeling moved is normal. Feeling overwhelmed is the signal to close the session."]],
+               "Hesitation is a protector speaking. The guide gets curious about it rather than pushing past it.",
+               "Partial profiles are the norm, and you can stop whenever you like.",
+               "Feeling moved is normal. Feeling overwhelmed is the signal to ground and slow down &mdash; the part can be asked to hold back."]],
+        ["p", "The guide is an AI, not a therapist. If you are carrying a lot, losing time, or sessions leave you worse rather than more curious, a trained IFS practitioner can go where this can't (<a href=\"https://ifs-institute.com/practitioners\" target=\"_blank\" rel=\"noopener\">directory</a>)."],
         ["p", "If you are in crisis, this is not the right support for the moment. Call or text <b>988</b> in the US, or find a line at <a href=\"https://findahelpline.com\" target=\"_blank\" rel=\"noopener\">findahelpline.com</a>."]
       ] },
     { id: "credits", title: "Where this comes from", blurb: "Credits",

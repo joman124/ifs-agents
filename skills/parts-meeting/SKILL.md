@@ -19,7 +19,8 @@ real subagent; you facilitate as Self and synthesize.
      list (AskUserQuestion, multiSelect).
 2. Read `${CLAUDE_PLUGIN_ROOT}/templates/table-meeting.md` — its ground rules
    bind the whole meeting (invitation not summons; talking stick; safety rules
-   from embody-part apply to every part; Self may adjourn; not therapy).
+   from embody-part apply to every part; Self slows the room if the person is
+   flooded and may adjourn).
 3. **Opening round — spawn the parts in parallel.** One Agent call per attendee
    in a single message, each with `subagent_type` set to that part's agent and a
    prompt containing: the meeting agenda/question, the material (or the relevant
@@ -52,5 +53,6 @@ real subagent; you facilitate as Self and synthesize.
    statement, the discussion exchange, the synthesis. Offer to append a
    `sessions` entry (`mode: meeting`) to each attendee's profile.
 
-If a part-agent's response drifts into distress content, drop that thread,
-note that the topic was too tender for this format, and continue without it.
+If a part-agent's response drifts into distress content, don't relay it as
+written: say in Self's voice, in a sentence, what that part is feeling, check
+how the person is doing, and continue from there.

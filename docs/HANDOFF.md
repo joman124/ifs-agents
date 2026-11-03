@@ -22,9 +22,14 @@ back (*Returning users* below).
 It is the webapp half of **ifs-agents**, which also ships Claude Code skills and
 portable prompts that read and write the *same* `parts/<slug>.md` files.
 
-> **Not therapy.** A self-exploration and journalling tool that borrows IFS
-> structure and deliberately excludes depth work: no trauma processing, no
-> unburdening. This constraint is load-bearing — see *Invariants* below.
+> **A guide, not a therapist.** IFS-informed inner work. Sessions can go as
+> deep as the parts allow — updating protectors, witnessing an exile,
+> unburdening — but only in IFS order and with consent: through the protectors,
+> with Self present, at the exile's own wish, and never by digging for or
+> suggesting memories. Those gates are load-bearing — see *Invariants* below.
+> (Until November 2026 sessions stopped at getting to know a part; the depth
+> was opened up deliberately, and the old "not therapy / let's pause there"
+> brakes were taken out of the prompts on purpose — don't put them back.)
 
 ## Where things live
 
@@ -398,8 +403,13 @@ These are not style preferences; several were fixed *because* they were broken.
 5. **Coverage only ever climbs.** So does `rounds` on a reading — it counts
    meetings that actually happened, and a merge that lost one would be lying
    about the map's thickness.
-6. **No trauma depth, no unburdening.** The source doc's trauma question is
-   deliberately absent from both the questionnaire and the prompts.
+6. **Depth through the gates, never by digging.** Witnessing, retrieval and
+   unburdening are offered only when protectors permit, the feel-toward check
+   shows Self, and the exile wants it. The guide never asks what happened or
+   suggests memories, and an AI-voiced exile (embody, meeting) never narrates
+   its memories. Crisis and flooding rules stay. The source doc's trauma
+   question stays out of the tap-through questionnaire, which has no guide to
+   slow down when it lands badly. `test/templates.test.js` pins all of this.
 7. **Personal profiles never go in the public repo.** `.gitignore` root-anchors
    `/parts/` and `/sessions/`. Real data belongs in `ifs-agents-jm` (private).
 8. **Escape user text.** `esc()` before any `innerHTML` interpolation.

@@ -26,7 +26,7 @@ in the current project.
      leanings — the agent analyzes material; it should not need write tools.
    - Body: a system prompt that **inlines** (a) the embodiment rules and hard
      safety rules from `embody-part.md` (part-not-person, no distress role-play,
-     no harmful advice, defer to Self, not therapy), (b) the part's full profile
+     no harmful advice, defer to Self, changes only honestly), (b) the part's full profile
      content — frontmatter attributes and narrative sections — as its identity,
      and (c) the five-part output shape. The generated file must be
      self-contained: no runtime dependency on this plugin or the profile file.

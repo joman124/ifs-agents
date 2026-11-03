@@ -27,6 +27,8 @@ module.exports = function (t) {
     var p = built[mode];
     t.ok(typeof p === "string" && p.length > 500, mode + " builds a real prompt");
     t.ok(!/undefined|\[object Object\]/.test(p), mode + " has no unfilled values");
+    // the brakes that wound sessions down for being tender, and the disclaimer the guide kept repeating
+    t.ok(!/not therapy|too tender for this format|offer to end|offer to pause|3 to 5 questions/i.test(p), mode + " carries none of the old brakes");
   });
 
   /* every interviewing mode carries the guide and the boundaries */
@@ -34,7 +36,12 @@ module.exports = function (t) {
     var p = built[mode];
     t.ok(/How do you feel toward it right now\?/.test(p), mode + " asks the feel-toward question");
     t.ok(/step back a little/.test(p), mode + " knows what to do when a reactive part answers");
-    t.ok(/No unburdening/.test(p), mode + " rules out unburdening");
+    t.ok(/Healing follows the part/.test(p) && /only when the protectors have given permission/.test(p) && /the exile itself wants it/.test(p),
+      mode + " lets healing happen, but only through the protectors and at the exile's own wish");
+    t.ok(/When a part is ready to change/.test(p) && /Witness:/.test(p) && /Unburden, only if it wants to/.test(p), mode + " knows the steps a part can take when it is ready");
+    t.ok(/Never dig for memories/.test(p) && /suggest what might have happened/.test(p), mode + " never digs for, or suggests, memories");
+    t.ok(/never stop on their behalf/.test(p), mode + " does not wind a session down just because it is tender");
+    t.ok(/clinician who works with dissociation/.test(p), mode + " knows where dissociation belongs");
     t.ok(/988/.test(p) && /findahelpline/.test(p), mode + " carries crisis resources");
     t.ok(/ask directly whether they are safe/.test(p), mode + " checks safety directly, even when a part says it");
     t.ok(/The app will tell you the session is closing\. When it does, respond with:/.test(p),
@@ -70,6 +77,16 @@ module.exports = function (t) {
   t.ok(thinLine.indexOf("Positive intent") < 0, "a category the profile already holds counts as covered even when never flagged");
   t.ok(/Closed - the part declined these.*History & origin/.test(ck), "declined ground is named as closed");
   t.ok(/## The profile file \(update this at the close\)/.test(ck), "the raw profile still rides along for the update");
+  t.ok(/Parts change, and the profile should show who the part is now/.test(ck), "a check-in writes a part's change into its profile");
+  t.ok(!/has moved over time/.test(ck), "one recorded feeling is not yet an arc");
+  known.sessions = [
+    { date: "2026-08-01", mode: "intake", categories: [], note: "met", feel: "wary" },
+    { date: "2026-08-20", mode: "checkin", categories: [], note: "again", feel: "wary" },
+    { date: "2026-09-01", mode: "checkin", categories: [], note: "softer", feel: "curious" },
+    { date: "2026-09-20", mode: "checkin", categories: [], note: "softened when thanked", feel: "compassionate" }
+  ];
+  t.ok(/has moved over time: wary → curious → compassionate \(2026-08-01 to 2026-09-20\)/.test(T.checkin(known, [known, dreamer2])),
+    "a check-in sees how the person's feeling toward the part has moved, oldest first, repeats folded");
 
   var em = T.embody(known, "", [known, dreamer2]);
   t.ok(/Who you are - your memory/.test(em) && /I'm not cruel, I'm early/.test(em), "an embodied part speaks from its memory");

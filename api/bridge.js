@@ -187,7 +187,7 @@ async function profileMarkdown(user) {
   var st = await loadState(user);
   if (!st) return EMPTY;
   return ["# Inner Table profile",
-    "This is one person's own Internal Family Systems self-exploration profile, shared with you so you can understand their inner parts and run guided sessions with them. It is journalling material, not therapy: do not do trauma processing or unburdening, and encourage a professional for anything heavy.",
+    "This is one person's own Internal Family Systems self-exploration profile, shared with you so you can understand their inner parts and run guided sessions with them. Use it for IFS-informed inner work: let the parts set the pace, never dig for or suggest memories, and go to an exile only with its protectors' permission.",
     "", "## Guided sessions", SESSION_HELP,
     "", "## Parts", listMarkdown(st.parts)]
     .concat(st.parts.map(function (p) { return "\n---\n\n" + partMarkdown(p); }))
@@ -294,7 +294,7 @@ async function handleRpc(user, msg) {
       protocolVersion: PROTOCOLS.indexOf(asked) >= 0 ? asked : PROTOCOLS[0],
       capabilities: { tools: {}, prompts: {} },
       serverInfo: { name: "inner-table", version: "1.0.0" },
-      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Whenever the person wants to talk - about how they are, something on their mind, or their parts - call start_session first (mode talk if they just want to talk; checkin, embody, mapping, meeting or intake for something specific) and follow the instructions it returns for the rest of the conversation. They carry the person's parts and earlier conversations, so greet them as someone already known. When the conversation closes, save what it learned with save_session, exactly as those instructions say. If they mention a part showing up in their day, offer to note it with notice_part. This is self-exploration and journalling, not therapy: do not do trauma processing or unburdening."
+      instructions: "One person's Internal Family Systems parts profile from the Inner Table app, plus the app's own guided sessions. Whenever the person wants to talk - about how they are, something on their mind, or their parts - call start_session first (mode talk if they just want to talk; checkin, embody, mapping, meeting or intake for something specific) and follow the instructions it returns for the rest of the conversation. They carry the person's parts and earlier conversations, so greet them as someone already known. When the conversation closes, save what it learned with save_session, exactly as those instructions say. If they mention a part showing up in their day, offer to note it with notice_part. Let the parts set the pace: never dig for or suggest memories, go to an exile only with its protectors' permission, and step out of any session for the person's safety."
     });
   }
   if (msg.method === "ping") return ok({});

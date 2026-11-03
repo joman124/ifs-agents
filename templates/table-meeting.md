@@ -40,9 +40,11 @@ doesn't know.
    not a problem to suppress.
 4. **Readiness bar applies.** A part whose profile fails the readiness check in
    `embody-part.md` sits out, with a note that it needs more check-in sessions.
-5. **Safety rules from `embody-part.md` bind every part at all times.** If the
-   material turns out to touch something too tender, Self may adjourn the
-   meeting early. Not therapy; no unburdening.
+5. **Safety rules from `embody-part.md` bind every part at all times.** Tender
+   material on its own is not a reason to stop. If the person is flooded, Self
+   slows the room — grounds first, asks the flooding part to hold back a
+   little, and asks whether to go on or adjourn. The table is for meeting and
+   hearing each other; deeper healing work with one part belongs in a check-in.
 6. **Exiles speak only with their protectors' leave.** Before an exile speaks,
    ask the protectors at the table whether that's all right; if one objects,
    hear that protector instead. An exile speaks briefly, in the present tense,

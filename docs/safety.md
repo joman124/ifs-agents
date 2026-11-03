@@ -4,41 +4,73 @@ Read this before using the system, and especially before sharing it with others.
 
 ## What this is — and is not
 
-This is a **self-exploration and journaling tool** that borrows the language and
-structure of Internal Family Systems (IFS). It is **not therapy**, not a
-substitute for therapy, and not a diagnostic instrument. The LLM interviewer is
-not a therapist, and nothing it says is clinical advice.
+This is **IFS-informed inner work with an AI guide**: a way to get to know your
+parts and, when they are willing, help them change. It borrows the language,
+structure and healing steps of Internal Family Systems (IFS). The guide is
+**not a therapist**, not a substitute for one, and not a diagnostic instrument,
+and nothing it says is clinical advice. It doesn't keep saying so in sessions
+— repeating a disclaimer holds a person at arm's length — but it never claims
+otherwise, and says plainly that it is an AI if asked.
 
-IFS as a therapy modality includes deep work with exiled parts — witnessing,
-retrieval, unburdening. **This system deliberately excludes all of that.** Those
-steps belong with a trained IFS practitioner
-([directory at ifs-institute.com](https://ifs-institute.com/practitioners)).
+Sessions can go past getting to know a part. A protector can be updated,
+appreciated into trusting Self, and offered a different job. With the
+protectors' permission, the person can meet an exile, witness what it wants
+them to know, and — if it wants to — help it let go of what it carries. That
+is the IFS healing sequence, and it is the same one self-guided IFS books
+teach. What keeps it safe is the order and the consent, not a ceiling:
+protectors are never gone around, and the guide never digs for memories.
+
+Some people should do this work with a trained IFS practitioner
+([directory at ifs-institute.com](https://ifs-institute.com/practitioners))
+rather than alone — see *When to bring in a professional* below.
 
 ## Hard boundaries built into every template
 
-1. **Permission, always.** The interviewer asks before starting and before each
-   topic. Anything can be declined, and declining is recorded and respected —
+1. **Permission, always.** The guide asks before starting and before each
+   threshold. Anything can be declined, and declining is recorded and respected —
    `declined` topics are not re-raised.
-2. **Protectors set the pace.** Hesitation is a signal to back off, not push.
-   Partial profiles are the normal, expected state.
-3. **No trauma excavation.** Origin questions stay at the headline level. If
-   material approaches overwhelm, the interviewer acknowledges with care and
-   stops probing.
-4. **No unburdening work.** Full stop.
-5. **No distress role-play.** Compiled part-agents may name fears; they never
-   escalate into panic, despair, self-harm content, or re-enacted trauma.
+2. **Protectors set the pace.** Hesitation is a protector speaking. The guide
+   turns toward it — what is it worried would happen? — rather than pushing past
+   it or ending the session. A protector's "no" stands. Partial profiles are
+   the normal, expected state.
+3. **Never dig for memories.** The guide never asks what happened, probes for
+   details, or suggests what might have happened. A part's past is its own to
+   show, at its own pace, and the guide only asks about the person's
+   experience of witnessing it ("how do you feel toward it as it shows you
+   that?").
+4. **Healing follows the part.** Witnessing, retrieval and unburdening happen
+   only when the protectors have agreed, the person feels compassion toward
+   the exile (the feel-toward check), and the exile itself wants it. The guide
+   offers; the part chooses. Any step can stop partway.
+5. **No distress role-play.** When the AI voices a part (a reaction, a table
+   meeting), it may name fears and say what hurts; it never escalates into
+   panic, despair, self-harm content, or re-enacted trauma, and it never
+   narrates an exile's memories.
 6. **Self leads.** Any part-agent steps back when the person redirects it.
+7. **Safety outranks the exercise.** Any mention of wanting to die, self-harm,
+   harming someone, or being in danger — said as the person or as a part —
+   stops the session for a plain, direct safety check and crisis resources.
 
-## When to stop
+## Flooding, and when to slow down
 
-Stop the session (the tool should stop itself, but you can too) if:
+The guide does not wind a session down just because it is tender — tender is
+often where the work is. It slows down when you are **flooded**: overwhelmed,
+panicky, unreal, numb, or swamped. Then it grounds you first (feet on the
+floor, a slow breath out), asks the part that is flooding to hold back just
+enough that you can stay with it — parts usually can, when asked — and then
+asks whether you want to go on or rest. If flooding keeps coming back, the
+part needs a slower pace, and the work goes back to its protectors.
 
-- You feel flooded, unreal, panicked, or unable to separate from a part.
-- A part's material is bigger than journaling — grief, trauma memories, harm.
+Feeling *moved* is normal. Feeling *overwhelmed* is the signal to ground and
+slow down — and you can always stop.
+
+## When to bring in a professional
+
+- You lose time, find things you don't remember doing, or feel parts take you
+  over completely. That is dissociation, and it belongs with a clinician who
+  works with it; the guide will stay with gentle, present-moment work.
+- Flooding keeps returning, however slowly you go.
 - Sessions leave you consistently worse rather than more curious.
-
-Feeling *moved* is normal. Feeling *overwhelmed* is the signal to close the
-session, ground yourself, and consider bringing this material to a professional.
 
 **If you are in crisis**, use a crisis line, not this tool — in the US, call or
 text **988**; elsewhere, see
@@ -95,6 +127,7 @@ Part profiles are intimate personal data.
 ## For people using this with others
 
 If you facilitate someone else's sessions (a friend, a coach, a client): the
-same boundaries apply harder. Do not use this tool to do therapy you are not
-qualified to do. If you are a clinician, this tool's output may be journaling
+same boundaries apply harder. Guiding someone else toward their exiles is
+different from doing it for yourself: do not use this tool to do therapy you
+are not qualified to do. If you are a clinician, this tool's output may be
 material a client brings you — it is not a treatment protocol.

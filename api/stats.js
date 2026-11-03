@@ -173,3 +173,4 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports.summarize = summarize;
+module.exports.allowed = allowed;   // the same owners see api/free-ai.js?check=1

@@ -238,6 +238,19 @@ Environment variables only reach a deployment made after they are set, so
    `FREELLMAPI_KEY` or the account variables yet. Check them, and redeploy.
 2. Sign in and start a session. The first time, the app shows its one-time
    free AI notice; press **Start**, and a reply should come back.
+3. If your account is in `STATS_USERS`, open **Settings → Free AI setup**. It
+   checks every free AI setting against where `FREELLMAPI_URL` points, and
+   names each one that is wrong with what to set instead: `auto` sent to
+   Groq or Gemini, another provider's models in `FREELLMAPI_MODEL`, a key
+   that does not look like that provider's, a gateway address ending in
+   `/chat/completions`. The same list goes to the server log on each
+   instance's first request. With `FREE_AI_LIVE_CHECK=1` set, **Check each
+   model** sends every model one tiny fixed request ("Say OK.") and says
+   which ones answer. A script can read the same check from
+   `/api/free-ai?check=1` (or `?check=live`) with `CRON_SECRET` as the bearer.
+
+Every supported setting, per provider, is in `.env.example` at the top of
+the repo.
 
 To try it before it goes live, do both checks on a pull request's
 **preview** deployment: it has its own address, linked from the pull request,

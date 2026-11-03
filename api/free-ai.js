@@ -45,6 +45,7 @@
 "use strict";
 
 var verifySession = require("./sync.js").verifySession;
+var ownerAllowed = require("./stats.js").allowed;
 
 var DEFAULT_DAILY = 500;          // requests per account per UTC day
 var MAX_MESSAGES = 500;
@@ -70,25 +71,10 @@ function config() {
   };
 }
 
-/* Providers FREELLMAPI_URL can point straight at, known by their address:
-   the chat endpoint, whatever path the address was given with, and their
-   free-tier models, the most room first. A model one has since retired
-   answers 404 and is passed over. */
-var PROVIDERS = [
-  { host: /(^|\.)groq\.com$/i, chat: "https://api.groq.com/openai/v1/chat/completions",
-    // each has its own tokens-a-minute allowance: together, several sessions a minute where one takes one
-    models: ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b"] },
-  { host: /^generativelanguage\.googleapis\.com$/i, chat: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-    // unpaid, each Gemini model takes about 20 requests a day and each Gemma about 1000
-    models: ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemma-4-31b-it", "gemma-4-26b-a4b-it"] }
-];
-
-function provider(url) {
-  var host;
-  try { host = new URL(url).hostname; } catch (e) { return null; }
-  for (var i = 0; i < PROVIDERS.length; i++) if (PROVIDERS[i].host.test(host)) return PROVIDERS[i];
-  return null;
-}
+/* Providers FREELLMAPI_URL can point straight at, and the check of every
+   free-AI setting against them, live in _free-ai-settings.js. */
+var SETTINGS = require("./_free-ai-settings.js");
+var provider = SETTINGS.provider;
 
 /* "gemini-2.5-flash, auto:smart" -> ["gemini-2.5-flash", "auto:smart"];
    "openai/gpt-oss-20b" -> ["openai/gpt-oss-20b", "auto"]. Straight at a
@@ -340,8 +326,71 @@ async function pipe(upstream, res) {
   res.end();
 }
 
+/* ---------------- whoever runs the deployment ---------------- */
+
+var LIVE_MS = 8000;      // how long one live check waits for a model
+var checkedOnce = false;
+
+/* The settings' problems, in the server log, once per instance: the first
+   request is the first time this instance runs any of it. */
+function checkOnce() {
+  if (checkedOnce) return;
+  checkedOnce = true;
+  SETTINGS.lines(SETTINGS.check(process.env)).forEach(function (l) { console.warn(l); });
+}
+
+function queryOf(req) {
+  if (req.query) return req.query;
+  try { return Object.fromEntries(new URL(req.url || "/", "http://x").searchParams); } catch (e) { return {}; }
+}
+
+/* One tiny request per model on the ladder, all at once, with nothing of
+   anyone's in it: does each one answer, on this URL with this key? */
+function liveCheck(cfg) {
+  return Promise.all(cfg.ladder.map(async function (model) {
+    var status = 0, text = "", timedOut = false;
+    try {
+      var r = await fetch(endpoint(cfg.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + cfg.key },
+        body: JSON.stringify({ model: model, messages: [{ role: "user", content: "Say OK." }], max_tokens: 16 }),
+        signal: AbortSignal.timeout(LIVE_MS)
+      });
+      status = r.status;
+      try { text = await r.text(); } catch (e) {}
+    } catch (e) {
+      timedOut = !!(e && (e.name === "TimeoutError" || e.name === "AbortError"));
+    }
+    return Object.assign({ model: model }, SETTINGS.liveSaid(status, text, timedOut));
+  }));
+}
+
+/* GET ?check=1 -> what is wrong with the settings and what to set instead;
+   ?check=live also asks each model once, when FREE_AI_LIVE_CHECK=1. Only an
+   account in STATS_USERS (or CRON_SECRET, for a script) - anyone else gets a
+   404, as for api/stats.js. */
+async function diagnose(req, res, cfg, how) {
+  res.setHeader("Cache-Control", "no-store");
+  var owner = false;
+  // with no SESSION_SECRET only CRON_SECRET can get in: the session check throws, and that is a no
+  try { owner = ownerAllowed(req, process.env.SESSION_SECRET); } catch (e) {}
+  if (!owner) { res.status(404).json({ error: "Not found" }); return; }
+  var result = SETTINGS.check(process.env);
+  result.models = cfg.url ? cfg.ladder : [];
+  result.liveAllowed = String(process.env.FREE_AI_LIVE_CHECK || "").trim() === "1";
+  if (how === "live") {
+    if (!result.liveAllowed) result.live = { off: "Live checks are off. Set FREE_AI_LIVE_CHECK=1 to allow one tiny request per model." };
+    else if (!cfg.url || !cfg.key) result.live = { off: "Nothing to check live until FREELLMAPI_URL and FREELLMAPI_KEY are set." };
+    else result.live = { models: await liveCheck(cfg) };
+  }
+  res.status(200).json(result);
+}
+
 module.exports = async function handler(req, res) {
+  checkOnce();
   var cfg = config();
+  var how = req.method === "GET" ? queryOf(req).check : null;
+  if (how) { await diagnose(req, res, cfg, how); return; }
 
   if (req.method === "GET") {
     res.setHeader("Cache-Control", "no-store");
@@ -417,5 +466,5 @@ module.exports = async function handler(req, res) {
 
 module.exports._internal = {
   endpoint: endpoint, cleanAsk: cleanAsk, upstreamError: upstreamError, ladder: ladder, retryAfter: retryAfter, tokens: tokens,
-  forget: function () { rest = {}; room = {}; gone = {}; }
+  forget: function () { rest = {}; room = {}; gone = {}; checkedOnce = false; }
 };

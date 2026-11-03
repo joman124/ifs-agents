@@ -3478,6 +3478,8 @@
     // how many people come back - only ever there for whoever runs the
     // deployment (ui-usage.js); null for everyone else
     var usage = window.IFS.ui.usage ? window.IFS.ui.usage.current() : null;
+    // and whether the free AI's settings fit where it points - same owners
+    var freeAiSetup = window.IFS.ui.usage ? window.IFS.ui.usage.freeAi() : null;
 
     $("#settingsPane").innerHTML =
       group("setAccount", "user", "Account",
@@ -3492,6 +3494,11 @@
       (usage
         ? group("setUsage", "spark", "Usage", esc(String(usage.returningThisWeek || 0)) + " came back this week",
           window.IFS.ui.usage.body(usage))
+        : "") +
+
+      (freeAiSetup
+        ? group("setFreeAi", "chat", "Free AI setup", esc(window.IFS.ui.usage.freeAiSummary(freeAiSetup)),
+          window.IFS.ui.usage.freeAiBody(freeAiSetup))
         : "") +
 
       (ownKey || linked || link

@@ -83,5 +83,69 @@
       "</div>";
   }
 
-  window.IFS.ui.usage = { current: current, body: body };
+  /* ---- Settings -> Free AI setup: the same owners only ----
+     api/free-ai.js?check=1 says which free-AI setting is wrong and what to
+     set instead; a 404 for everyone else, so the section never appears for
+     them. "Check each model" asks the server for one tiny request per model,
+     when the deployment allows it (FREE_AI_LIVE_CHECK=1). */
+  var setup = {};      // username -> the check, false when not theirs; undefined until asked
+  var settingUp = {};
+
+  function ask(who, how) {
+    return fetch("/api/free-ai?check=" + how, { headers: { Authorization: "Bearer " + AUTH.getToken() } })
+      .then(function (r) { return r.ok ? r.json() : false; })
+      .then(function (data) {
+        setup[who] = data && typeof data === "object" ? data : false;
+        if (setup[who] && AUTH.getUsername() === who) window.IFS.ui.renderSettings();
+      });
+  }
+
+  function freeAi() {
+    if (!AUTH.isLoggedIn()) return null;
+    var who = AUTH.getUsername();
+    if (setup[who] !== undefined) return setup[who] || null;
+    if (!settingUp[who]) {
+      settingUp[who] = true;
+      ask(who, "1").catch(function () { settingUp[who] = false; });
+    }
+    return null;
+  }
+
+  function freeAiSummary(d) {
+    var errors = (d.problems || []).filter(function (p) { return p.severity === "error"; }).length;
+    if (!d.on) return "off";
+    if (errors) return errors + (errors === 1 ? " setting" : " settings") + " to fix";
+    return (d.problems || []).length ? "works, with notes" : "settings look right";
+  }
+
+  function freeAiBody(d) {
+    var esc = window.IFS.ui._share.esc;
+    var rows = (d.problems || []).map(function (p) {
+      return '<div class="sr-copy"><b>' + esc((p.severity === "error" ? "Fix: " : "Note: ") + p.setting) + "</b>" +
+        '<span class="sr-sub">' + esc(p.setting + " " + p.problem) + " " + esc(p.fix) + "</span></div>";
+    }).join("");
+    var live = d.live
+      ? (d.live.off ? '<p class="dim usage-note">' + esc(d.live.off) + "</p>"
+        : (d.live.models || []).map(function (m) {
+          return '<div class="sr-copy"><b>' + esc(m.model) + '</b><span class="sr-sub">' + esc(m.said) + "</span></div>";
+        }).join(""))
+      : "";
+    return '<div class="set-pad usage">' +
+      '<div class="sr-copy"><b>' + esc(d.target ? "Sessions go to: " + d.target : "No free AI address set") + "</b>" +
+      '<span class="sr-sub">' + esc((d.models || []).length ? "models tried, in order: " + d.models.join(", ") : "no models to try") + "</span></div>" +
+      (rows || '<p class="dim usage-note">Every setting fits ' + esc(d.target || "the free AI") + ".</p>") +
+      live +
+      (d.liveAllowed ? '<button class="btn btn-soft" id="freeAiLiveBtn">Check each model</button>' : "") +
+      "</div>";
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest("#freeAiLiveBtn") : null;
+    if (!btn || !AUTH.isLoggedIn()) return;
+    btn.disabled = true;
+    btn.textContent = "Checking…";
+    ask(AUTH.getUsername(), "live").catch(function () { btn.disabled = false; btn.textContent = "Check each model"; });
+  });
+
+  window.IFS.ui.usage = { current: current, body: body, freeAi: freeAi, freeAiSummary: freeAiSummary, freeAiBody: freeAiBody };
 })();
